@@ -25,6 +25,7 @@ from linebot.v3.messaging import (
 )
 from linebot.v3.webhooks import (
     MessageEvent,
+    FollowEvent,
     TextMessageContent
 )
 
@@ -58,6 +59,9 @@ def callback(request):
 
     return HttpResponse('OK')
 
+@handler.add(FollowEvent)
+def handle_follow(event):
+    print('加入')
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
