@@ -1,18 +1,14 @@
-from django.shortcuts import render
-
 # Create your views here.
-from django.http import HttpResponse, HttpResponseBadRequest
-from django.views.decorators.csrf import csrf_exempt
-from django.conf import settings
 import logging
 import os
 
 import certifi
+from django.http import HttpResponse, HttpResponseBadRequest
+from django.views.decorators.csrf import csrf_exempt
 
 # 設定 SSL 憑證路徑
 os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
-
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -47,6 +43,7 @@ LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+
 @csrf_exempt
 def callback(request):
     if request.method != 'POST':
@@ -68,21 +65,24 @@ def callback(request):
 
     return HttpResponse('OK')
 
+
 @handler.add(FollowEvent)
 def handle_follow(event):
     print('加入')
+
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
+        text = event.message.text
 
-        if event.message.text=='postback':
-            button_template=ButtonsTemplate(
+        if text == 'postback':
+            button_template = ButtonsTemplate(
                 titile='嗨',
                 text='postback action',
                 actions=[
-                    PostbackAction(label='Postback action',text='postback action button clicked',data='postback')
+                    PostbackAction(label='Postback action', text='postback action button clicked', data='postback')
                 ])
             template_message = TemplateMessage(
                 alt_text='postback action',
@@ -95,10 +95,31 @@ def handle_message(event):
                 )
             )
 
-        result=line_bot_api.reply_message_with_http_info(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=event.message.text)]
+        elif text == '貼圖':
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[StickerMessage(package_id='446', sticker_id='1998')]
+                )
             )
-        )
-        print('result',result.status_code)
+
+        elif text == '表情符號':
+            emojis = [
+                Emoji(index=0, product_id='5ac1bfd5040ab15980c9b435', emoji_id='001'),
+                Emoji(index=6, product_id='5ac1bfd5040ab15980c9b435', emoji_id='002')
+            ]
+            line_bot_api.reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text='$LINE~$ 表情', emojis=emojis)]
+                )
+            )
+
+        else:
+            result = line_bot_api.reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=event.message.text)]
+                )
+            )
+            print('result', result.status_code)
