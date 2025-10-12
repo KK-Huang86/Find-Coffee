@@ -21,12 +21,21 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
-    TextMessage
+    TextMessage,
+    ButtonsTemplate,
+    PostbackAction,
+    TemplateMessage,
+    Emoji,
+    VideoMessage,
+    LocationMessage,
+    StickerMessage,
+    ImageMessage,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
     FollowEvent,
-    TextMessageContent
+    TextMessageContent,
+    PostbackEvent
 )
 
 logger = logging.getLogger(__name__)
@@ -67,9 +76,29 @@ def handle_follow(event):
 def handle_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message_with_http_info(
+
+        if event.message.text=='postback':
+            button_template=ButtonsTemplate(
+                titile='嗨',
+                text='postback action',
+                actions=[
+                    PostbackAction(label='Postback action',text='postback action button clicked',data='postback')
+                ])
+            template_message = TemplateMessage(
+                alt_text='postback action',
+                template=button_template,
+            )
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[template_message]
+                )
+            )
+
+        result=line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
                 messages=[TextMessage(text=event.message.text)]
             )
         )
+        print('result',result.status_code)
