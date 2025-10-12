@@ -115,6 +115,16 @@ def handle_message(event):
                 )
             )
 
+        elif text =='圖片':
+            url=os.getenv('image_url')
+            logger.info("Image URL: " + url)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[ImageMessage(original_content_url=url, preview_image_url=url)]
+                )
+            )
+
         else:
             result = line_bot_api.reply_message_with_http_info(
                 ReplyMessageRequest(
