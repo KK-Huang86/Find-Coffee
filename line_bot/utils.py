@@ -16,4 +16,5 @@ def get_get_coffee_shop_detail(name:str)->dict:
     }
 
     response = requests.get(textsearch_url, params=params)
+
     print(response.json())
