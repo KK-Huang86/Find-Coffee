@@ -124,6 +124,13 @@ def handle_message(event):
                     messages=[ImageMessage(original_content_url=url, preview_image_url=url)]
                 )
             )
+        elif text=='位置':
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[LocationMessage(title='台北101', address='台北市信義路五段7號', latitude=25.033611, longitude=121.565000)]
+                )
+            )
 
         else:
             result = line_bot_api.reply_message_with_http_info(
