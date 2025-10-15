@@ -7,8 +7,8 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 BASE_URL = 'https://maps.googleapis.com/maps/api/place'
 
 
-def get_coffee_shop_info(shop_name):
-    # 1. Text Search 取得 place_id
+def search_coffee_shops(shop_name):
+    #  Text Search 取得 place_id
     search_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {
         'query': f'{shop_name} 咖啡店',
@@ -19,11 +19,25 @@ def get_coffee_shop_info(shop_name):
     search_result = requests.get(search_url, params=params).json()
 
     if search_result['status'] != 'OK' or not search_result['results']:
-        return None
+        return []
 
-    place_id = search_result['results'][0]['place_id']
+    results = search_result['results'][:5]  # 若有多筆資料，僅取前五筆
 
-    # 2. Place Details 取得完整資訊
+    shops = []
+    for shop in results:
+        shops.append({
+            'name': shop.get('name'),
+            'address': shop.get('formatted_address'),
+            'place_id': shop.get('place_id'),
+            'rating': shop.get('rating')
+        })
+
+    return shops
+
+
+def get_shop_detail(place_id):
+    # Place Details 取得完整資訊
+
     details_url = "https://maps.googleapis.com/maps/api/place/details/json"
     details_params = {
         'place_id': place_id,
