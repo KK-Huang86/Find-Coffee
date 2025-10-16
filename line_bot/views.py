@@ -5,6 +5,7 @@ import os
 import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
+from line_bot.utils import GoogleAPI
 
 # 設定 SSL 憑證路徑
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -132,11 +133,22 @@ def handle_message(event):
                 )
             )
 
+
         else:
-            result = line_bot_api.reply_message_with_http_info(
+            shops = GoogleAPI.search_coffee_shops(text)
+
+            if len(shops) >1:
+                pass
+
+            else:
+                place_id=shops[0]['place_id'] if shops else None
+                result=GoogleAPI.get_shop_detail(place_id)
+                result_text=result.get('address', '查無地址')
+
+
+            line_bot_api.reply_message_with_http_info(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text=event.message.text)]
+                    messages=[TextMessage(text=result_text)]
                 )
             )
-            print('result', result.status_code)
