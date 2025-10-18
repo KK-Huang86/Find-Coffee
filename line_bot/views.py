@@ -1,4 +1,5 @@
 # Create your views here.
+import json
 import logging
 import os
 
@@ -6,7 +7,7 @@ import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 
-from line_bot.utils import GoogleAPI
+from line_bot.utils import GoogleAPI, FlexMessageBuilder
 
 # 設定 SSL 憑證路徑
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -28,6 +29,15 @@ from linebot.v3.messaging import (
     LocationMessage,
     StickerMessage,
     ImageMessage,
+    FlexBubble,
+    FlexMessage,
+    FlexImage,
+    FlexBox,
+    FlexText,
+    FlexIcon,
+    FlexButton,
+    FlexSeparator,
+    FlexContainer
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -140,21 +150,37 @@ def handle_message(event):
             shops = GoogleAPI.search_coffee_shops(text)
 
             if len(shops) == 1:
-                place_id= shops[0]['place_id']
-                result = GoogleAPI.get_shop_detail(place_id)
-                result_text = result.get('address', '查無地址')
+                place_id = shops[0]['place_id']
+                info_d = GoogleAPI.get_shop_detail(place_id)
+                flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
+
+                # 轉成 JSON 給 FlexContainer
+                flex_container = FlexContainer.from_json(json.dumps(flex_data))
+
+                # 回覆
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            FlexMessage(
+                                alt_text='詳細說明',
+                                contents=flex_container
+                            )
+                        ]
+                    )
+                )
 
 
             # 搜尋結果 介於2 ~3 筆
             else:
                 for shop in shops:
-                    place_id = shop[0]['place_id'] if shops else None
+                    place_id = shop.get('place_id') if shops else None
                     result = GoogleAPI.get_shop_detail(place_id)
                     result_text = result.get('address', '查無地址')
 
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=result_text)]
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=result_text)]
+                    )
                 )
-            )
