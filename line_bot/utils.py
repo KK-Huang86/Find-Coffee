@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class GoogleAPI:
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     BASE_URL = 'https://maps.googleapis.com/maps/api/place'
 
     @staticmethod
@@ -30,14 +30,14 @@ class GoogleAPI:
             search_result = response.json()
 
         except Timeout:
-            logger.warning("Google API 請求逾時")
+            logger.warning('Google API 請求逾時')
             return {}
 
         except RequestException as e:
-            logger.error(f"Google API 請求失敗: {e}")
+            logger.error(f'Google API 請求失敗: {e}')
             return {}
 
-        if search_result.get('status') != 'OK' or not search_result['results']:
+        if search_result.get('status') != 'OK' or not search_result.get('results'):
             return {}
 
 
@@ -89,11 +89,11 @@ class GoogleAPI:
             details_result = response.json()
 
         except Timeout:
-            logger.warning("Google API 請求逾時")
+            logger.warning('Google API 請求逾時')
             return {}
 
         except RequestException as e:
-            logger.error(f"Google API 請求失敗: {e}")
+            logger.error(f'Google API 請求失敗: {e}')
             return {}
 
         if details_result.get('status') != 'OK' or not details_result.get('result'):
@@ -101,11 +101,6 @@ class GoogleAPI:
 
 
         result = details_result.get('result', {})
-
-        if not result:
-            logger.warning(f"Google API 無回傳資料: {details_result.get('status')}")
-            return {}
-
         location = result.get('geometry', {}).get('location', {})
 
         # 處理地址：移除郵遞區號前綴

@@ -5,6 +5,7 @@ import os
 import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
+
 from line_bot.utils import GoogleAPI
 
 # 設定 SSL 憑證路徑
@@ -55,13 +56,13 @@ def callback(request):
 
     # 取得 request body
     body = request.body.decode('utf-8')
-    logger.info("Request body: " + body)
+    logger.info('Request body: ' + body)
 
     # 處理 webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        logger.error("Invalid signature. Please check your channel access token/channel secret.")
+        logger.error('Invalid signature. Please check your channel access token/channel secret.')
         return HttpResponseBadRequest()
 
     return HttpResponse('OK')
@@ -116,8 +117,8 @@ def handle_message(event):
                 )
             )
 
-        elif text =='圖片':
-            url=os.getenv('image_url')
+        elif text == '圖片':
+            url = os.getenv('image_url')
             logger.info("Image URL: " + url)
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -125,11 +126,12 @@ def handle_message(event):
                     messages=[ImageMessage(original_content_url=url, preview_image_url=url)]
                 )
             )
-        elif text=='位置':
+        elif text == '位置':
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[LocationMessage(title='台北101', address='台北市信義路五段7號', latitude=25.033611, longitude=121.565000)]
+                    messages=[LocationMessage(title='台北101', address='台北市信義路五段7號', latitude=25.033611,
+                                              longitude=121.565000)]
                 )
             )
 
@@ -137,14 +139,18 @@ def handle_message(event):
         else:
             shops = GoogleAPI.search_coffee_shops(text)
 
-            if len(shops) >1:
-                pass
+            if len(shops) == 1:
+                place_id= shops[0]['place_id']
+                result = GoogleAPI.get_shop_detail(place_id)
+                result_text = result.get('address', '查無地址')
 
+
+            # 搜尋結果 介於2 ~3 筆
             else:
-                place_id=shops[0]['place_id'] if shops else None
-                result=GoogleAPI.get_shop_detail(place_id)
-                result_text=result.get('address', '查無地址')
-
+                for shop in shops:
+                    place_id = shop[0]['place_id'] if shops else None
+                    result = GoogleAPI.get_shop_detail(place_id)
+                    result_text = result.get('address', '查無地址')
 
             line_bot_api.reply_message_with_http_info(
                 ReplyMessageRequest(
