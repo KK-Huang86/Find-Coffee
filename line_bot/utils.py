@@ -1,10 +1,10 @@
 import logging
 import os
 import re
-
-from requests.exceptions import RequestException, Timeout
+from datetime import date
 
 import requests
+from requests.exceptions import RequestException, Timeout
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,6 @@ class GoogleAPI:
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
             return {}
-
 
         results = search_result['results'][:5]  # 若有多筆資料，僅取前五筆
 
@@ -97,7 +96,6 @@ class GoogleAPI:
         if details_result.get('status') != 'OK' or not details_result.get('result'):
             return {}
 
-
         result = details_result.get('result', {})
         location = result.get('geometry', {}).get('location', {})
 
@@ -118,6 +116,7 @@ class GoogleAPI:
             'website': result.get('website', '無提供')
         }
         return info
+
 
 class FlexMessageBuilder:
 
@@ -141,7 +140,7 @@ class FlexMessageBuilder:
                     'url': 'https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png'
                 })
 
-            # 添加半星（如果需要）
+            # 添加半星
             if has_half_star and full_stars < 5:
                 stars.append({
                     'type': 'icon',
@@ -167,11 +166,21 @@ class FlexMessageBuilder:
                 return '營業時間未提供'
 
             # 取今天和明天的營業時間（簡化顯示）
-            # 或者只顯示今天的
-            today = hours_list[0] if hours_list else '營業時間未提供'
+            """
+            'opening_hours': 
+            ['星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00']
+            """
+
+            weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
+            if weekday_index >= len(hours_list):
+                # 避免索引超出範圍
+                open_time = hours_list[0]  # 會有個問題，如果超出範圍回傳星期一的話，可能會導致營業時間不準
+            else:
+                open_time = hours_list[weekday_index]
+
             # 移除'星期X: '前綴
-            today = today.split(': ', 1)[1] if ': ' in today else today
-            return today
+            open_time = open_time.split(': ', 1)[1] if ': ' in open_time else open_time
+            return open_time
 
         # 建立星星評分區塊
         star_icons = _generate_star_icons(info.get('rating'))

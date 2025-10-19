@@ -163,7 +163,7 @@ def handle_message(event):
                         reply_token=event.reply_token,
                         messages=[
                             FlexMessage(
-                                alt_text='詳細說明',
+                                alt_text='找到咖啡店囉，快來看看吧！',
                                 contents=flex_container
                             )
                         ]
