@@ -171,16 +171,37 @@ def handle_message(event):
                 )
 
 
-            # 搜尋結果 介於2 ~3 筆
-            else:
+            # 搜尋結果 介於2 ~5 筆
+            elif 2 <= len(shops) <= 5:
+                flex_messages = []
                 for shop in shops:
-                    place_id = shop.get('place_id') if shops else None
-                    result = GoogleAPI.get_shop_detail(place_id)
-                    result_text = result.get('address', '查無地址')
+                    place_id = shop.get('place_id')
+                    info_d = GoogleAPI.get_shop_detail(place_id)
 
-                line_bot_api.reply_message_with_http_info(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=result_text)]
+                    if info_d:
+                        flex_content = FlexMessageBuilder.create_shop_flex_message(info_d)
+                        flex_messages.append(flex_content)
+
+                if flex_messages:
+                    carousel = {
+                        "type": "carousel",
+                        "contents": flex_messages
+                    }
+
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[FlexMessage(
+                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
+                                contents=FlexContainer.from_dict(carousel)
+                            )]
+                        )
                     )
-                )
+
+                else:
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="無法取得店家詳細資訊")]
+                        )
+                    )
