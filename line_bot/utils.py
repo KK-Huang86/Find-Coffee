@@ -121,7 +121,7 @@ class GoogleAPI:
 class FlexMessageBuilder:
 
     @staticmethod
-    def create_shop_flex_message(info):
+    def create_shop_flex_message(info, is_multiple=False):
 
         def _generate_star_icons(rating):
             """根據評分生成星星圖示"""
@@ -311,30 +311,52 @@ class FlexMessageBuilder:
                 'type': 'box',
                 'layout': 'horizontal',
                 'spacing': 'sm',
-                'contents': [
-                    {
-                        'type': 'button',
-                        'style': 'primary',
-                        'action': {
-                            'type': 'uri',
-                            'label': '看地圖',
-                            'uri': info.get('google_maps', 'https://maps.google.com/')
-                        }
-                    }
-                ]
+                'contents': []
             }
         }
 
-        # 如果有官網，加入官網按鈕
-        if info.get('website') and info.get('website') != '無提供':
+        if is_multiple:
+            # 多筆結果時：顯示「看地圖」與「選擇這間」
+            flex_message['footer']['contents'].extend([
+                {
+                    'type': 'button',
+                    'style': 'primary',
+                    'action': {
+                        'type': 'uri',
+                        'label': '看地圖 ',
+                        'uri': info.get('google_maps', 'https://maps.google.com/')
+                    }
+                },
+                {
+                    'type': 'button',
+                    'style': 'link',
+                    'action': {
+                        'type': 'postback',
+                        'label': '選擇這間',
+                        'data': f'select_place_id={info.get("place_id")}',
+                    }
+                }
+            ])
+        else:
+            # 單筆結果時：顯示「看地圖」與「官方網站」
             flex_message['footer']['contents'].append({
                 'type': 'button',
-                'style': 'link',
+                'style': 'primary',
                 'action': {
                     'type': 'uri',
-                    'label': '官方網站',
-                    'uri': info.get('website')
+                    'label': '看地圖',
+                    'uri': info.get('google_maps', 'https://maps.google.com/')
                 }
             })
+            if info.get('website') and info.get('website') != '無提供':
+                flex_message['footer']['contents'].append({
+                    'type': 'button',
+                    'style': 'link',
+                    'action': {
+                        'type': 'uri',
+                        'label': '官方網站',
+                        'uri': info.get('website')
+                    }
+                })
 
         return flex_message

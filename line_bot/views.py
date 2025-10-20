@@ -179,7 +179,7 @@ def handle_message(event):
                     info_d = GoogleAPI.get_shop_detail(place_id)
 
                     if info_d:
-                        flex_content = FlexMessageBuilder.create_shop_flex_message(info_d)
+                        flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
                         flex_messages.append(flex_content)
 
                 if flex_messages:
