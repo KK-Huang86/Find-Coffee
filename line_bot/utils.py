@@ -117,6 +117,34 @@ class GoogleAPI:
         }
         return info
 
+    @staticmethod
+    def _geocode_address(address):
+        """將地址轉換為經緯度"""
+
+        search_url = "https://maps.googleapis.com/maps/api/geocode/json"
+        params = {
+            'address': address,
+            'key': GoogleAPI.GOOGLE_API_KEY,
+            'language': 'zh-TW',
+            'region': 'tw'
+        }
+
+        try:
+            response = requests.get(search_url, params=params, timeout=5)
+            response.raise_for_status()
+            search_result = response.json()
+
+        except Timeout:
+            logger.warning('Google API 請求逾時')
+            return {}
+
+        except RequestException as e:
+            logger.error(f'Google API 請求失敗: {e}')
+            return {}
+
+        if search_result.get('status') != 'OK' or not search_result.get('results'):
+            return {}
+
 
 class FlexMessageBuilder:
 
