@@ -121,7 +121,7 @@ class GoogleAPI:
     def _geocode_address(address):
         """將地址轉換為經緯度"""
 
-        search_url = "https://maps.googleapis.com/maps/api/geocode/json"
+        search_url = 'https://maps.googleapis.com/maps/api/geocode/json'
         params = {
             'address': address,
             'key': GoogleAPI.GOOGLE_API_KEY,
@@ -144,6 +144,22 @@ class GoogleAPI:
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
             return {}
+
+        results = search_result.get('results')
+        result = results[0]
+        if not results:
+            logger.warning('Google API 未返回任何結果')
+            return {}
+
+        loction = result['geometry']['location']
+        lat = loction['lat']
+        lng = loction['lng']
+
+        if lat is None or lng is None:
+            logger.warning('Google API 結果缺少經緯度資料')
+            return {}
+
+        return {'lat': lat, 'lng': lng}
 
 
 class FlexMessageBuilder:
