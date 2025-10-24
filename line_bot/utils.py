@@ -161,6 +161,58 @@ class GoogleAPI:
 
         return {'lat': lat, 'lng': lng}
 
+    @staticmethod
+    def search_nearby_coffee_shops(address):
+        """根據地址搜尋附近咖啡店"""
+
+        coords = GoogleAPI._geocode_address(address)
+        if not coords:
+            return {}
+
+        lat = coords['lat']
+        lng = coords['lng']
+
+        search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
+        params = {
+            'location': f'{lat},{lng}',
+            'radius': 500,  # 搜尋半徑 500 公尺
+            'type': 'cafe',
+            'keyword': '咖啡店',
+            'key': GoogleAPI.GOOGLE_API_KEY,
+            'language': 'zh-TW',
+            'region': 'tw'
+        }
+
+        try:
+            response = requests.get(search_url, params=params, timeout=5)
+            response.raise_for_status()
+            search_result = response.json()
+
+        except Timeout:
+            logger.warning('Google API 請求逾時')
+            return {}
+
+        except RequestException as e:
+            logger.error(f'Google API 請求失敗: {e}')
+            return {}
+
+        if search_result.get('status') != 'OK' or not search_result.get('results'):
+            return {}
+
+        results = search_result['results']
+        rating_rank = []
+        for result in results:
+            cafe_place_id = result.get('place_id', '')
+            cafe_rating = result.get('rating', 'N/A')
+            cafe_rating_dict = {cafe_place_id: cafe_rating}
+            rating_rank.append(cafe_rating_dict)
+
+        pairs = [(list(d.keys())[0], list(d.values())[0]) for d in rating_rank]
+        sorted_pairs = sorted(pairs, key=lambda x: x[1], reverse=True)
+        target_cafes = sorted_pairs[:5]
+
+        return target_cafes
+
 
 class FlexMessageBuilder:
 
