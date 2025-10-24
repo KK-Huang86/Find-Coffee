@@ -145,6 +145,52 @@ def handle_message(event):
                 )
             )
 
+        # 251024 先寫死
+        if text.startswith('新北市板橋區'):
+            shops = GoogleAPI.search_nearby_coffee_shops(address=text)
+
+            if not shops:
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=f'抱歉，找不到{text}附近的咖啡店喔！')]
+                    )
+                )
+
+            else:
+                flex_messages = []
+                for shop in shops:
+                    place_id = shop[0]
+                    info_d = GoogleAPI.get_shop_detail(place_id)
+
+                    if info_d:
+                        flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
+                        flex_messages.append(flex_content)
+
+                if flex_messages:
+                    carousel = {
+                        "type": "carousel",
+                        "contents": flex_messages
+                    }
+
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[FlexMessage(
+                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
+                                contents=FlexContainer.from_dict(carousel)
+                            )]
+                        )
+                    )
+
+                else:
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text="無法取得店家詳細資訊")]
+                        )
+                    )
+
 
         else:
             shops = GoogleAPI.search_coffee_shops(text)
