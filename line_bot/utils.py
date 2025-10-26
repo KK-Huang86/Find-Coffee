@@ -162,15 +162,18 @@ class GoogleAPI:
         return {'lat': lat, 'lng': lng}
 
     @staticmethod
-    def search_nearby_coffee_shops(address):
+    def search_nearby_coffee_shops(address=None,lat=None,lng=None):
         """根據地址搜尋附近咖啡店"""
 
-        coords = GoogleAPI._geocode_address(address)
-        if not coords:
-            return {}
 
-        lat = coords['lat']
-        lng = coords['lng']
+        if lat is None and lng is None:
+
+            coords = GoogleAPI._geocode_address(address)
+            if not coords:
+                return []
+
+            lat = coords['lat']
+            lng = coords['lng']
 
         search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
         params = {
@@ -190,14 +193,15 @@ class GoogleAPI:
 
         except Timeout:
             logger.warning('Google API 請求逾時')
-            return {}
+            return []
 
         except RequestException as e:
             logger.error(f'Google API 請求失敗: {e}')
-            return {}
+            return []
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
-            return {}
+            logger.error(f'Google API 未返回有效結果，status: {search_result.get("status")}')
+            return []
 
         results = search_result['results']
         rating_rank = []

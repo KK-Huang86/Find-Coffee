@@ -27,6 +27,7 @@ from linebot.v3.messaging import (
     Emoji,
     VideoMessage,
     LocationMessage,
+    LocationAction,
     StickerMessage,
     ImageMessage,
     FlexBubble,
@@ -37,13 +38,19 @@ from linebot.v3.messaging import (
     FlexIcon,
     FlexButton,
     FlexSeparator,
-    FlexContainer
+    FlexContainer,
+    QuickReply,
+    QuickReplyItem,
+    LocationAction,
+
 )
 from linebot.v3.webhooks import (
     MessageEvent,
     FollowEvent,
     TextMessageContent,
-    PostbackEvent
+    PostbackEvent,
+    LocationMessageContent
+
 )
 
 logger = logging.getLogger(__name__)
@@ -142,6 +149,33 @@ def handle_message(event):
                     reply_token=event.reply_token,
                     messages=[LocationMessage(title='台北101', address='台北市信義路五段7號', latitude=25.033611,
                                               longitude=121.565000)]
+                )
+            )
+        # 251026 先寫死
+        if text.startswith('分享位置'):
+            quick_reply = QuickReply(
+                items=[
+                    QuickReplyItem(
+                        action=LocationAction(
+                            label='📍 分享目前位置'
+                        )
+                    )
+                ]
+            )
+
+            # 回覆訊息
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[
+                        TextMessage(
+                            text=(
+                                '請點擊下方按鈕分享您的位置\n'
+                                '我來幫您找附近的咖啡店 ☕️'
+                            ),
+                            quick_reply=quick_reply
+                        )
+                    ]
                 )
             )
 
@@ -251,3 +285,71 @@ def handle_message(event):
                             messages=[TextMessage(text="無法取得店家詳細資訊")]
                         )
                     )
+
+@handler.add(MessageEvent, message=LocationMessageContent)
+def handle_location_message(event):
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+
+        lat = event.message.latitude
+        lng = event.message.longitude
+        address = event.message.address  # 可能為 None
+
+        shops= GoogleAPI.search_nearby_coffee_shops(lat=lat,lng=lng)
+        logger.info(shops)
+
+        if not shops:
+            logger.warning('️沒有找到任何咖啡店')
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[
+                        TextMessage(
+                            text=(
+                                '附近 500 公尺內找不到咖啡店 😢\n\n'
+                                '試試看：\n'
+                                '1️⃣ 分享其他位置\n'
+                                '2️⃣ 輸入地址搜尋'
+                            )
+                        )
+                    ]
+                )
+            )
+            return
+
+        flex_messages = []
+        for shop in shops:
+            place_id = shop[0]
+            logger.info(place_id)
+            info_d = GoogleAPI.get_shop_detail(place_id)
+            logger.info(info_d)
+
+            if info_d:
+                flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
+                flex_messages.append(flex_content)
+
+
+        if flex_messages:
+            carousel = {
+                "type": "carousel",
+                "contents": flex_messages
+            }
+
+            line_bot_api.reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[FlexMessage(
+                        alt_text=f"找到 {len(flex_messages)} 間咖啡店",
+                        contents=FlexContainer.from_dict(carousel)
+                    )]
+                )
+            )
+
+        else:
+            line_bot_api.reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="無法取得店家詳細資訊")]
+                )
+            )
+
