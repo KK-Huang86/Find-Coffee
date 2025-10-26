@@ -286,6 +286,7 @@ def handle_message(event):
                         )
                     )
 
+
 @handler.add(MessageEvent, message=LocationMessageContent)
 def handle_location_message(event):
     with ApiClient(configuration) as api_client:
@@ -295,7 +296,7 @@ def handle_location_message(event):
         lng = event.message.longitude
         address = event.message.address  # 可能為 None
 
-        shops= GoogleAPI.search_nearby_coffee_shops(lat=lat,lng=lng)
+        shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
         logger.info(shops)
 
         if not shops:
@@ -328,7 +329,6 @@ def handle_location_message(event):
                 flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
                 flex_messages.append(flex_content)
 
-
         if flex_messages:
             carousel = {
                 "type": "carousel",
@@ -352,4 +352,3 @@ def handle_location_message(event):
                     messages=[TextMessage(text="無法取得店家詳細資訊")]
                 )
             )
-

@@ -162,9 +162,8 @@ class GoogleAPI:
         return {'lat': lat, 'lng': lng}
 
     @staticmethod
-    def search_nearby_coffee_shops(address=None,lat=None,lng=None):
+    def search_nearby_coffee_shops(address=None, lat=None, lng=None):
         """根據地址搜尋附近咖啡店"""
-
 
         if lat is None and lng is None:
 
