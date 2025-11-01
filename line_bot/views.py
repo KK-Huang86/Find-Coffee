@@ -42,6 +42,12 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyItem,
     LocationAction,
+    MessagingApiBlob,
+    RichMenuArea,
+    RichMenuBounds,
+    RichMenuSize,
+    RichMenuRequest,
+    MessageAction
 
 )
 from linebot.v3.webhooks import (
@@ -352,3 +358,110 @@ def handle_location_message(event):
                     messages=[TextMessage(text="無法取得店家詳細資訊")]
                 )
             )
+
+
+def rich_menu():
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_blob_aoi = MessagingApiBlob(api_client)
+
+        rich_menu_create = RichMenuRequest(
+            size=RichMenuSize(
+                width=2500,
+                height=1686
+            ),
+            selected=True,
+            name='Nice richmenu',
+            chat_bar_text='點我查看更多',
+            areas=[
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=0,
+                        y=0,
+                        width=833,
+                        height=843
+                    ),
+                    action=MessageAction(
+                        label='首頁',
+                        text='首頁'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=834,
+                        y=0,
+                        width=833,
+                        height=843
+                    ),
+                    action=MessageAction(
+                        label='產品介紹',
+                        text='產品介紹'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=1666,
+                        y=0,
+                        width=834,
+                        height=843
+                    ),
+                    action=MessageAction(
+                        label='最新消息',
+                        text='最新消息'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=0,
+                        y=844,
+                        width=833,
+                        height=842
+                    ),
+                    action=MessageAction(
+                        label='聯絡我們',
+                        text='聯絡我們'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=834,
+                        y=844,
+                        width=833,
+                        height=842
+                    ),
+                    action=MessageAction(
+                        label='關於我們',
+                        text='關於我們'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=1666,
+                        y=844,
+                        width=834,
+                        height=842
+                    ),
+                    action=MessageAction(
+                        label='常見問題',
+                        text='常見問題'
+                    )
+                )
+            ]
+        )
+
+        rich_menu_id = line_bot_api.create_rich_menu(
+            rich_menu_request=rich_menu_create
+        ).rich_menu_id
+
+        with open('static/images/rich_menu_image.jpg', 'rb') as image:
+            line_bot_blob_aoi.set_rich_menu_image(
+                rich_menu_id=rich_menu_id,
+                _headers={'Content-Type': 'image/jpeg'},
+                body=bytearray(image.read())
+            )
+
+        line_bot_api.set_default_rich_menu(
+            rich_menu_id=rich_menu_id
+        )
+        rich_menu_response = line_bot_api.create_rich_menu(rich_menu_request=rich_menu_create)
+        print("Rich menu ID:", rich_menu_response.rich_menu_id)
