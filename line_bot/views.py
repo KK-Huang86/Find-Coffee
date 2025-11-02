@@ -233,6 +233,7 @@ def handle_message(event):
 
 
         else:
+            print('不知道你輸入什麼，所以走這裡')
             shops = GoogleAPI.search_coffee_shops(text)
 
             if len(shops) == 1:
@@ -363,7 +364,7 @@ def handle_location_message(event):
 def rich_menu():
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        line_bot_blob_aoi = MessagingApiBlob(api_client)
+        line_bot_blob_api = MessagingApiBlob(api_client)
 
         rich_menu_create = RichMenuRequest(
             size=RichMenuSize(
@@ -394,8 +395,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='產品介紹',
-                        text='產品介紹'
+                        label='分享位置',
+                        text='分享位置'
                     )
                 ),
                 RichMenuArea(
@@ -453,8 +454,8 @@ def rich_menu():
             rich_menu_request=rich_menu_create
         ).rich_menu_id
 
-        with open('static/images/rich_menu_image.jpg', 'rb') as image:
-            line_bot_blob_aoi.set_rich_menu_image(
+        with open('static/rich_menu.png', 'rb') as image:
+            line_bot_blob_api.set_rich_menu_image(
                 rich_menu_id=rich_menu_id,
                 _headers={'Content-Type': 'image/jpeg'},
                 body=bytearray(image.read())
@@ -463,5 +464,6 @@ def rich_menu():
         line_bot_api.set_default_rich_menu(
             rich_menu_id=rich_menu_id
         )
-        rich_menu_response = line_bot_api.create_rich_menu(rich_menu_request=rich_menu_create)
-        print("Rich menu ID:", rich_menu_response.rich_menu_id)
+
+
+rich_menu()
