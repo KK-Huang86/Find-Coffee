@@ -42,6 +42,12 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyItem,
     LocationAction,
+    MessagingApiBlob,
+    RichMenuArea,
+    RichMenuBounds,
+    RichMenuSize,
+    RichMenuRequest,
+    MessageAction
 
 )
 from linebot.v3.webhooks import (
@@ -227,6 +233,7 @@ def handle_message(event):
 
 
         else:
+            print('不知道你輸入什麼，所以走這裡')
             shops = GoogleAPI.search_coffee_shops(text)
 
             if len(shops) == 1:
@@ -352,3 +359,111 @@ def handle_location_message(event):
                     messages=[TextMessage(text="無法取得店家詳細資訊")]
                 )
             )
+
+
+def rich_menu():
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_blob_api = MessagingApiBlob(api_client)
+
+        rich_menu_create = RichMenuRequest(
+            size=RichMenuSize(
+                width=2500,
+                height=1686
+            ),
+            selected=True,
+            name='Nice richmenu',
+            chat_bar_text='點我查看更多',
+            areas=[
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=0,
+                        y=0,
+                        width=833,
+                        height=843
+                    ),
+                    action=MessageAction(
+                        label='店名查詢',
+                        text='店名查詢'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=834,
+                        y=0,
+                        width=833,
+                        height=843
+                    ),
+                    action=MessageAction(
+                        label='路名查詢',
+                        text='路名查詢'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=1666,
+                        y=0,
+                        width=834,
+                        height=843
+                    ),
+                    action=MessageAction(
+                        label='分享位置查詢',
+                        text='分享位置查詢'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=0,
+                        y=844,
+                        width=833,
+                        height=842
+                    ),
+                    action=MessageAction(
+                        label='收藏的咖啡店',
+                        text='收藏的咖啡店'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=834,
+                        y=844,
+                        width=833,
+                        height=842
+                    ),
+                    action=MessageAction(
+                        label='最近查詢',
+                        text='最近查詢'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(
+                        x=1666,
+                        y=844,
+                        width=834,
+                        height=842
+                    ),
+                    action=MessageAction(
+                        label='更多資訊',
+                        text='更多資訊'
+                    )
+                )
+            ]
+        )
+
+        rich_menu_id = line_bot_api.create_rich_menu(
+            rich_menu_request=rich_menu_create
+        ).rich_menu_id
+
+        with open('static/rich_menu.png', 'rb') as image:
+            line_bot_blob_api.set_rich_menu_image(
+                rich_menu_id=rich_menu_id,
+                _headers={'Content-Type': 'image/jpeg'},
+                body=bytearray(image.read())
+            )
+
+        line_bot_api.set_default_rich_menu(
+            rich_menu_id=rich_menu_id
+        )
+
+
+rich_menu()
