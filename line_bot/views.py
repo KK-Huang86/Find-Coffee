@@ -383,8 +383,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='首頁',
-                        text='首頁'
+                        label='店名查詢',
+                        text='店名查詢'
                     )
                 ),
                 RichMenuArea(
@@ -395,8 +395,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='分享位置',
-                        text='分享位置'
+                        label='路名查詢',
+                        text='路名查詢'
                     )
                 ),
                 RichMenuArea(
@@ -407,8 +407,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='最新消息',
-                        text='最新消息'
+                        label='分享位置查詢',
+                        text='分享位置查詢'
                     )
                 ),
                 RichMenuArea(
@@ -419,8 +419,8 @@ def rich_menu():
                         height=842
                     ),
                     action=MessageAction(
-                        label='聯絡我們',
-                        text='聯絡我們'
+                        label='收藏的咖啡店',
+                        text='收藏的咖啡店'
                     )
                 ),
                 RichMenuArea(
@@ -431,8 +431,8 @@ def rich_menu():
                         height=842
                     ),
                     action=MessageAction(
-                        label='關於我們',
-                        text='關於我們'
+                        label='最近查詢',
+                        text='最近查詢'
                     )
                 ),
                 RichMenuArea(
@@ -443,8 +443,8 @@ def rich_menu():
                         height=842
                     ),
                     action=MessageAction(
-                        label='常見問題',
-                        text='常見問題'
+                        label='更多資訊',
+                        text='更多資訊'
                     )
                 )
             ]
