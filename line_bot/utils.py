@@ -1,9 +1,16 @@
+import json
 import logging
 import os
 import re
 from datetime import date
 
 import requests
+from linebot.v3.messaging import (
+    ReplyMessageRequest,
+    TextMessage,
+    FlexMessage,
+    FlexContainer,
+)
 from requests.exceptions import RequestException, Timeout
 
 logger = logging.getLogger(__name__)
@@ -213,8 +220,9 @@ class GoogleAPI:
         pairs = [(list(d.keys())[0], list(d.values())[0]) for d in rating_rank]
         sorted_pairs = sorted(pairs, key=lambda x: x[1], reverse=True)
         target_cafes = sorted_pairs[:5]
-
-        return target_cafes
+        # target_cafes 原本是 tuple 格式 ('XXXXXXXXXXX', 4.9)
+        shops = [{'place_id': pid, 'rating': rating} for pid, rating in target_cafes]
+        return shops
 
 
 class FlexMessageBuilder:
@@ -459,3 +467,94 @@ class FlexMessageBuilder:
                 })
 
         return flex_message
+
+
+class LineMessageBuilder:
+
+    @staticmethod
+    def send_shop_result(line_bot_api, reply_token, shops):
+
+        if not shops:
+            # 回傳找不到店家的訊息
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=reply_token,
+                    messages=[TextMessage(text="無法取得店家詳細資訊")]
+                )
+            )
+            return
+
+        if len(shops) == 1:
+            # 單筆結果
+            place_id = shops[0]['place_id']
+            info_d = GoogleAPI.get_shop_detail(place_id)
+            if info_d:
+
+                flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
+
+                # 轉成 JSON 給 FlexContainer
+                flex_container = FlexContainer.from_json(json.dumps(flex_data))
+
+                # 回覆
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[
+                            FlexMessage(
+                                alt_text='找到咖啡店囉，快來看看吧！',
+                                contents=flex_container
+                            )
+                        ]
+                    )
+                )
+
+            else:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text="無法取得店家詳細資訊")]
+                    )
+                )
+
+        if 2 <= len(shops) <= 5:
+            # 多筆結果
+            flex_messages = []
+            for shop in shops:
+                print(shop)
+                place_id = shop['place_id']
+                info_d = GoogleAPI.get_shop_detail(place_id)
+                logger.info(info_d)
+
+                if info_d:
+                    flex_data = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
+                    flex_messages.append(flex_data)
+
+                else:
+                    logger.warning(f'無法取得店家詳細資訊，place_id: {place_id}')
+                    continue
+
+            if flex_messages:
+                carousel = {
+                    "type": "carousel",
+                    "contents": flex_messages
+                }
+
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[
+                            FlexMessage(
+                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
+                                contents=FlexContainer.from_dict(carousel)
+                            )
+                        ]
+                    )
+                )
+
+            else:
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text="無法取得店家詳細資訊")]
+                    )
+                )
