@@ -1,5 +1,4 @@
 # Create your views here.
-import json
 import logging
 import os
 
@@ -7,7 +6,7 @@ import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 
-from line_bot.utils import GoogleAPI, FlexMessageBuilder
+from line_bot.utils import GoogleAPI, FlexMessageBuilder, LineMessageBuilder
 
 # 設定 SSL 憑證路徑
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -91,9 +90,9 @@ def callback(request):
     return HttpResponse('OK')
 
 
-@handler.add(FollowEvent)
-def handle_follow(event):
-    print('加入')
+# @handler.add(FollowEvent)
+# def handle_follow(event):
+#     print('加入')
 
 
 @handler.add(MessageEvent, message=TextMessageContent)
@@ -102,63 +101,8 @@ def handle_message(event):
         line_bot_api = MessagingApi(api_client)
         text = event.message.text
 
-        if text == 'postback':
-            button_template = ButtonsTemplate(
-                titile='嗨',
-                text='postback action',
-                actions=[
-                    PostbackAction(label='Postback action', text='postback action button clicked', data='postback')
-                ])
-            template_message = TemplateMessage(
-                alt_text='postback action',
-                template=button_template,
-            )
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[template_message]
-                )
-            )
-
-        elif text == '貼圖':
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[StickerMessage(package_id='446', sticker_id='1998')]
-                )
-            )
-
-        elif text == '表情符號':
-            emojis = [
-                Emoji(index=0, product_id='5ac1bfd5040ab15980c9b435', emoji_id='001'),
-                Emoji(index=6, product_id='5ac1bfd5040ab15980c9b435', emoji_id='002')
-            ]
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text='$LINE~$ 表情', emojis=emojis)]
-                )
-            )
-
-        elif text == '圖片':
-            url = os.getenv('image_url')
-            logger.info("Image URL: " + url)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[ImageMessage(original_content_url=url, preview_image_url=url)]
-                )
-            )
-        elif text == '位置':
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[LocationMessage(title='台北101', address='台北市信義路五段7號', latitude=25.033611,
-                                              longitude=121.565000)]
-                )
-            )
         # 251026 先寫死
-        if text.startswith('分享位置'):
+        if text == '分享位置查詢':
             quick_reply = QuickReply(
                 items=[
                     QuickReplyItem(
@@ -185,113 +129,15 @@ def handle_message(event):
                 )
             )
 
-        # 251024 先寫死
-        if text.startswith('新北市板橋區'):
+        elif text == '路名查詢':
             shops = GoogleAPI.search_nearby_coffee_shops(address=text)
+            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+            return
 
-            if not shops:
-                line_bot_api.reply_message_with_http_info(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=f'抱歉，找不到{text}附近的咖啡店喔！')]
-                    )
-                )
-
-            else:
-                flex_messages = []
-                for shop in shops:
-                    place_id = shop[0]
-                    info_d = GoogleAPI.get_shop_detail(place_id)
-
-                    if info_d:
-                        flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
-                        flex_messages.append(flex_content)
-
-                if flex_messages:
-                    carousel = {
-                        "type": "carousel",
-                        "contents": flex_messages
-                    }
-
-                    line_bot_api.reply_message_with_http_info(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[FlexMessage(
-                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
-                                contents=FlexContainer.from_dict(carousel)
-                            )]
-                        )
-                    )
-
-                else:
-                    line_bot_api.reply_message_with_http_info(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text="無法取得店家詳細資訊")]
-                        )
-                    )
-
-
-        else:
-            print('不知道你輸入什麼，所以走這裡')
+        elif text == '店名查詢':
             shops = GoogleAPI.search_coffee_shops(text)
-
-            if len(shops) == 1:
-                place_id = shops[0]['place_id']
-                info_d = GoogleAPI.get_shop_detail(place_id)
-                flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
-
-                # 轉成 JSON 給 FlexContainer
-                flex_container = FlexContainer.from_json(json.dumps(flex_data))
-
-                # 回覆
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            FlexMessage(
-                                alt_text='找到咖啡店囉，快來看看吧！',
-                                contents=flex_container
-                            )
-                        ]
-                    )
-                )
-
-
-            # 搜尋結果 介於2 ~5 筆
-            elif 2 <= len(shops) <= 5:
-                flex_messages = []
-                for shop in shops:
-                    place_id = shop.get('place_id')
-                    info_d = GoogleAPI.get_shop_detail(place_id)
-
-                    if info_d:
-                        flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
-                        flex_messages.append(flex_content)
-
-                if flex_messages:
-                    carousel = {
-                        "type": "carousel",
-                        "contents": flex_messages
-                    }
-
-                    line_bot_api.reply_message_with_http_info(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[FlexMessage(
-                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
-                                contents=FlexContainer.from_dict(carousel)
-                            )]
-                        )
-                    )
-
-                else:
-                    line_bot_api.reply_message_with_http_info(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text="無法取得店家詳細資訊")]
-                        )
-                    )
+            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+            return
 
 
 @handler.add(MessageEvent, message=LocationMessageContent)
@@ -325,40 +171,7 @@ def handle_location_message(event):
             )
             return
 
-        flex_messages = []
-        for shop in shops:
-            place_id = shop[0]
-            logger.info(place_id)
-            info_d = GoogleAPI.get_shop_detail(place_id)
-            logger.info(info_d)
-
-            if info_d:
-                flex_content = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
-                flex_messages.append(flex_content)
-
-        if flex_messages:
-            carousel = {
-                "type": "carousel",
-                "contents": flex_messages
-            }
-
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[FlexMessage(
-                        alt_text=f"找到 {len(flex_messages)} 間咖啡店",
-                        contents=FlexContainer.from_dict(carousel)
-                    )]
-                )
-            )
-
-        else:
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="無法取得店家詳細資訊")]
-                )
-            )
+        LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
 
 
 def rich_menu():
