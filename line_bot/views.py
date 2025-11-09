@@ -6,7 +6,7 @@ import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 
-from line_bot.utils import GoogleAPI, FlexMessageBuilder, LineMessageBuilder
+from line_bot.utils import GoogleAPI, LineMessageBuilder
 
 # 設定 SSL 憑證路徑
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -94,15 +94,40 @@ def callback(request):
 # def handle_follow(event):
 #     print('加入')
 
+user_states = {}
+
+
+class UserState:
+    NORMAL = 'normal'
+    WAITING_SHOP_NAME = 'waiting_shop_name'
+    WAITING_ADDRESS = 'waiting_address'
+
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
+        user_id = event.source.user_id
         text = event.message.text
+        state = user_states.get(user_id, UserState.NORMAL)
 
-        # 251026 先寫死
+        if state == UserState.NORMAL:
+            pass
+
+        if state == UserState.WAITING_SHOP_NAME:
+            shops = GoogleAPI.search_coffee_shops(text)
+            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+            user_states[user_id] = UserState.NORMAL
+            return
+
+        if state == UserState.WAITING_ADDRESS:
+            shops = GoogleAPI.search_nearby_coffee_shops(address=text)
+            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+            user_states[user_id] = UserState.NORMAL
+            return
+
         if text == '分享位置查詢':
+
             quick_reply = QuickReply(
                 items=[
                     QuickReplyItem(
@@ -130,13 +155,23 @@ def handle_message(event):
             )
 
         elif text == '路名查詢':
-            shops = GoogleAPI.search_nearby_coffee_shops(address=text)
-            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+            user_states[user_id] = UserState.WAITING_ADDRESS
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text='請輸入路名️（例如：台北市信義區松信路）')]
+                )
+            )
             return
 
         elif text == '店名查詢':
-            shops = GoogleAPI.search_coffee_shops(text)
-            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+            user_states[user_id] = UserState.WAITING_SHOP_NAME
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text='請輸入咖啡店名稱 ☕️')]
+                )
+            )
             return
 
 

@@ -520,7 +520,6 @@ class LineMessageBuilder:
             # 多筆結果
             flex_messages = []
             for shop in shops:
-                print(shop)
                 place_id = shop['place_id']
                 info_d = GoogleAPI.get_shop_detail(place_id)
                 logger.info(info_d)
