@@ -93,8 +93,9 @@ def callback(request):
 
 @handler.add(FollowEvent)
 def handle_follow(event):
-    user_id=event.source.user_id
-    User.objects.create(line_user_id=user_id)
+    user_id = event.source.user_id
+    User.objects.get_or_create(line_user_id=user_id)
+
 
 user_states = {}
 
