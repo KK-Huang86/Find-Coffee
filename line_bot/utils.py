@@ -14,6 +14,8 @@ from linebot.v3.messaging import (
 )
 from requests.exceptions import RequestException, Timeout
 
+from line_bot.models import Cafe, Favorite
+
 logger = logging.getLogger(__name__)
 
 
@@ -565,7 +567,6 @@ class FavoritesManager:
 
     @staticmethod
     def add_favorite(user, info):
-        from line_bot.models import Cafe, Favorite
 
         if not info.get('place_id') or not info.get('name'):
             return False, '咖啡店資訊不完整'
@@ -611,4 +612,36 @@ class FavoritesManager:
 
         except Exception as e:
             logger.error(f'收藏失敗: {e}')
+            return False, '系統錯誤，請稍後再試'
+
+    @staticmethod
+    def remove_favorite(user, info):
+
+        if not info.get('place_id') or not info.get('name'):
+            return False, '咖啡店資訊不完整'
+
+        try:
+            with transaction.atomic():
+                # 取得咖啡店
+                cafe = Cafe.objects.filter(place_id=info['place_id']).first()
+                if not cafe:
+                    return False, '找不到該咖啡店'
+
+                # 刪除收藏關聯
+                favorite = Favorite.objects.filter(user=user, cafe=cafe).first()
+                if favorite:
+                    favorite.delete()
+                    # 減少收藏數
+                    cafe.decrement_favorite_count()
+                    logger.info(f'使用者 {user.member_code} 取消收藏 {cafe.name}')
+                    return True, f'已取消收藏「{cafe.name}」'
+                else:
+                    return False, f'「{cafe.name}」不在您的收藏清單中'
+
+        except IntegrityError as e:
+            logger.error(f'取消收藏失敗 (IntegrityError): {e}')
+            return False, '取消收藏失敗，請稍後再試'
+
+        except Exception as e:
+            logger.error(f'取消收藏失敗: {e}')
             return False, '系統錯誤，請稍後再試'
