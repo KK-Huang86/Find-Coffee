@@ -35,13 +35,27 @@ class User(models.Model):
         return self.line_user_id
 
     def save(self, *args, **kwargs):
-        if not self.member_code:
-            while True:
-                code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-                if not User.objects.filter(member_code=code).exists():
-                    self.member_code = code
-                    break
-        super().save(*args, **kwargs)
+        if self.member_code:
+            super().save(*args, **kwargs)
+            return
+
+        from django.db import IntegrityError
+
+        last_error = None
+        for attempt in range(10):
+            self.member_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            try:
+                super().save(*args, **kwargs)
+                return
+            except IntegrityError as e:
+                if 'member_code' not in str(e):
+                    raise
+                last_error = e  # 保存原始錯誤
+
+        # 執行 10 次都失敗
+        raise IntegrityError(
+            f"Failed to generate a unique member_code after {attempt + 1} attempts."
+        ) from last_error
 
     class Meta:
         db_table = 'users'
