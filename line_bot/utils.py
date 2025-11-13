@@ -111,6 +111,7 @@ class GoogleAPI:
         clean_address = GoogleAPI._clean_taiwan_address(address)
 
         info = {
+            'place_id':result.get('place_id'),
             'name': result.get('name'),
             'address': clean_address,
             'phone': result.get('formatted_phone_number', '無提供'),
