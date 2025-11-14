@@ -1,7 +1,8 @@
 import random
 import string
 
-from django.db import models
+from django.db import models, IntegrityError
+from django.db.models import F
 
 
 class User(models.Model):
@@ -38,8 +39,6 @@ class User(models.Model):
         if self.member_code:
             super().save(*args, **kwargs)
             return
-
-        from django.db import IntegrityError
 
         last_error = None
         for attempt in range(10):
@@ -91,14 +90,28 @@ class Cafe(models.Model):
 
     def increment_favorite_count(self):
         """增加收藏數"""
-        self.favorite_count += 1
-        self.save(update_fields=['favorite_count'])
+        Cafe.objects.filter(
+            pk=self.pk
+        ).update(
+            favorite_count=F('favorite_count') + 1
+        )
+        self.refresh_from_db(fields=['favorite_count'])
+        # 避免 race condition
 
     def decrement_favorite_count(self):
         """減少收藏數"""
         if self.favorite_count > 0:
-            self.favorite_count -= 1
-            self.save(update_fields=['favorite_count'])
+            Cafe.objects.filter(
+                pk=self.pk, favorite_count__gt=0
+            ).update(
+                favorite_count=F('favorite_count') - 1
+            )
+            self.refresh_from_db(fields=['favorite_count'])
+            # 避免 race condition
+
+    @classmethod
+    def get_popular_cafes(cls):
+        return cls.objects.order_by('-favorite_count')[:10]
 
     def __str__(self):
         return self.name
@@ -119,6 +132,7 @@ class Favorite(models.Model):
     cafe = models.ForeignKey(Cafe, on_delete=models.CASCADE, related_name='favorited_by', verbose_name='咖啡店')
 
     note = models.TextField(blank=True, null=True, verbose_name='個人備註')
+    is_public = models.BooleanField(default=False, verbose_name='公開收藏')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
