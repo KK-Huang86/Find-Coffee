@@ -6,6 +6,7 @@ import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 
+from line_bot.models import User
 from line_bot.utils import GoogleAPI, LineMessageBuilder
 
 # 設定 SSL 憑證路徑
@@ -90,9 +91,11 @@ def callback(request):
     return HttpResponse('OK')
 
 
-# @handler.add(FollowEvent)
-# def handle_follow(event):
-#     print('加入')
+@handler.add(FollowEvent)
+def handle_follow(event):
+    user_id = event.source.user_id
+    User.objects.get_or_create(line_user_id=user_id)
+
 
 user_states = {}
 
