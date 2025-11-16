@@ -66,10 +66,10 @@ class GoogleAPI:
 
     @staticmethod
     def _clean_taiwan_address(address):
-        """
+        '''
         移除台灣地址的郵遞區號前綴
         例如：'10085台灣台北市中正區晉江街10號' -> '台北市中正區晉江街10號'
-        """
+        '''
         # 移除郵遞區號 (3-6位數字)
         address = re.sub(r'^\d{3,6}', '', address)
 
@@ -133,7 +133,7 @@ class GoogleAPI:
 
     @staticmethod
     def _geocode_address(address):
-        '''將地址轉換為經緯度'''
+        """將地址轉換為經緯度"""
 
         search_url = 'https://maps.googleapis.com/maps/api/geocode/json'
         params = {
@@ -654,7 +654,7 @@ class FavoritesManager:
             return False, '系統錯誤，請稍後再試'
 
     @staticmethod
-    def show_favorites_carousel(user_id, event):
+    def show_favorites_carousel(user_id):
         """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
 
         user = User.objects.filter(line_user_id=user_id).first()
@@ -668,74 +668,74 @@ class FavoritesManager:
         bubbles = []
         for fav in favorites[:5]:  # Carousel 最多 5 個
             bubble = {
-                "type": "bubble",
-                # "hero": {
-                #     "type": "image",
-                #     "url": "https://via.placeholder.com/800x400?text=Coffee",
-                #     "size": "full",
-                #     "aspectRatio": "20:13",
-                #     "aspectMode": "cover"
+                'type': 'bubble',
+                # 'hero': {
+                #     'type': 'image',
+                #     'url': 'https://via.placeholder.com/800x400?text=Coffee',
+                #     'size': 'full',
+                #     'aspectRatio': '20:13',
+                #     'aspectMode': 'cover'
                 # }, # 先不要放照片
-                "body": {
-                    "type": "box",
-                    "layout": "vertical",
-                    "contents": [
+                'body': {
+                    'type': 'box',
+                    'layout': 'vertical',
+                    'contents': [
                         {
-                            "type": "text",
-                            "text": fav.cafe.name,
-                            "weight": "bold",
-                            "size": "xl"
+                            'type': 'text',
+                            'text': fav.cafe.name,
+                            'weight': 'bold',
+                            'size': 'xl'
                         },
                         {
-                            "type": "box",
-                            "layout": "baseline",
-                            "margin": "md",
-                            "contents": [
+                            'type': 'box',
+                            'layout': 'baseline',
+                            'margin': 'md',
+                            'contents': [
                                 {
-                                    "type": "text",
-                                    "text": f"⭐ {fav.cafe.rating or 'N/A'}",
-                                    "size": "sm",
-                                    "color": "#999999"
+                                    'type': 'text',
+                                    'text': f'⭐ {fav.cafe.rating or 'N/A'}',
+                                    'size': 'sm',
+                                    'color': '#999999'
                                 },
                                 {
-                                    "type": "text",
-                                    "text": f"({fav.cafe.user_ratings_total} 則評論)",
-                                    "size": "sm",
-                                    "color": "#999999",
-                                    "margin": "md"
+                                    'type': 'text',
+                                    'text': f'({fav.cafe.user_ratings_total} 則評論)',
+                                    'size': 'sm',
+                                    'color': '#999999',
+                                    'margin': 'md'
                                 }
                             ]
                         },
                         {
-                            "type": "text",
-                            "text": fav.cafe.address[:40] + "..." if len(fav.cafe.address) > 40 else fav.cafe.address,
-                            "size": "xs",
-                            "color": "#aaaaaa",
-                            "margin": "md"
+                            'type': 'text',
+                            'text': fav.cafe.address[:40] + '...' if len(fav.cafe.address) > 40 else fav.cafe.address,
+                            'size': 'xs',
+                            'color': '#aaaaaa',
+                            'margin': 'md'
                         }
                     ]
                 },
-                "footer": {
-                    "type": "box",
-                    "layout": "vertical",
-                    "spacing": "sm",
-                    "contents": [
+                'footer': {
+                    'type': 'box',
+                    'layout': 'vertical',
+                    'spacing': 'sm',
+                    'contents': [
                         {
-                            "type": "button",
-                            "style": "primary",
-                            "action": {
-                                "type": "postback",
-                                "label": "查看詳情",
-                                "data": f"action=view_detail&place_id={fav.cafe.place_id}"
+                            'type': 'button',
+                            'style': 'primary',
+                            'action': {
+                                'type': 'postback',
+                                'label': '查看詳情',
+                                'data': f'action=view_detail&place_id={fav.cafe.place_id}'
                             }
                         },
                         {
-                            "type": "button",
-                            "style": "link",
-                            "action": {
-                                "type": "uri",
-                                "label": "看地圖",
-                                "uri": fav.cafe.google_maps
+                            'type': 'button',
+                            'style': 'link',
+                            'action': {
+                                'type': 'uri',
+                                'label': '看地圖',
+                                'uri': fav.cafe.google_maps
                             }
                         }
                     ]
@@ -744,13 +744,120 @@ class FavoritesManager:
             bubbles.append(FlexBubble.from_dict(bubble))
 
         carousel = FlexCarousel(contents=bubbles)
-        return FlexMessage(alt_text="我的收藏清單", contents=carousel)
+        return FlexMessage(alt_text='我的收藏清單', contents=carousel)
+
+    @staticmethod
+    def show_favorites_list(user_id):
+        """列表式顯示收藏"""
+        user = User.objects.get(line_user_id=user_id)
+        favorites = user.favorites.select_related('cafe').all()[:20]  # 最多 20 間
+
+        if not favorites:
+            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+
+        # 建立列表內容
+        contents = [
+            {
+                'type': 'text',
+                'text': '❤️ 我的收藏',
+                'weight': 'bold',
+                'size': 'xl',
+                'margin': 'md'
+            },
+            {
+                'type': 'separator',
+                'margin': 'xxl'
+            }
+        ]
+
+        for i, fav in enumerate(favorites, 1):
+            # 每間咖啡店
+            shop_box = {
+                'type': 'box',
+                'layout': 'vertical',
+                'margin': 'lg',
+                'spacing': 'sm',
+                'contents': [
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': f'{i}.',
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
+                            },
+                            {
+                                'type': 'text',
+                                'text': fav.cafe.name,
+                                'weight': 'bold',
+                                'size': 'md',
+                                'wrap': True,
+                                'flex': 1
+                            }
+                        ]
+                    },
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': '⭐',
+                                'size': 'sm',
+                                'flex': 0
+                            },
+                            {
+                                'type': 'text',
+                                'text': str(fav.cafe.rating or 'N/A'),
+                                'size': 'sm',
+                                'color': '#999999',
+                                'flex': 1
+                            }
+                        ]
+                    }
+                ],
+                'action': {
+                    'type': 'postback',
+                    'data': f'action=view_detail&place_id={fav.cafe.place_id}'
+                }
+            }
+            contents.append(shop_box)
+
+            # 分隔線
+            if i < len(favorites):
+                contents.append({
+                    'type': 'separator',
+                    'margin': 'md'
+                })
+
+        flex_message = {
+            'type': 'bubble',
+            'body': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': contents
+            }
+        }
+
+        return FlexMessage(
+            alt_text='我的收藏清單',
+            contents=FlexBubble.from_dict(flex_message)
+        )
 
 
 class PostbackBuilder:
 
     @staticmethod
     def create_cafe_action_postback(info_d):
+
+        """
+        統一的postback 格式為
+        """
         buttons_template = {
             'type': 'template',
             'altText': '操作選單',
@@ -761,22 +868,22 @@ class PostbackBuilder:
                     {
                         'type': 'postback',
                         'label': '⭐ 收藏',
-                        'data': f"favorite&pid={info_d['place_id']}"
+                        'data': f'favorite&pid={info_d['place_id']}'
                     },
                     {
                         'type': 'postback',
                         'label': '📞 撥打電話',
-                        'data': f"call&phone={info_d['phone']}"
+                        'data': f'call&phone={info_d['phone']}'
                     },
                     {
                         'type': 'postback',
                         'label': '🔗 分享',
-                        'data': f"share&pid={info_d['place_id']}"
+                        'data': f'share&pid={info_d['place_id']}'
                     },
                     {
                         'type': 'postback',
                         'label': '🔗 問問AI',
-                        'data': f"share&pid={info_d['place_id']}"
+                        'data': f'share&pid={info_d['place_id']}'
                     }
                 ]
             }

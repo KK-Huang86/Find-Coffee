@@ -169,7 +169,12 @@ def handle_message(event):
 
             elif favorite_count <= 5:
                 # 1-5 間 → Carousel
-                message = FavoritesManager.show_favorites_carousel(user_id, event)
+                message = FavoritesManager.show_favorites_carousel(user_id)
+
+
+            else:
+                # 超過 5 間 → 分多頁的 Carousel
+                message = FavoritesManager.show_favorites_list(user_id)
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
