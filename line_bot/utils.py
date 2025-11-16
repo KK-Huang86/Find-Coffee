@@ -11,6 +11,7 @@ from linebot.v3.messaging import (
     TextMessage,
     FlexMessage,
     FlexContainer,
+    TemplateMessage
 )
 from requests.exceptions import RequestException, Timeout
 
@@ -114,7 +115,7 @@ class GoogleAPI:
         clean_address = GoogleAPI._clean_taiwan_address(address)
 
         info = {
-            'place_id': result.get('place_id'),
+            'place_id': place_id,
             'name': result.get('name'),
             'address': clean_address,
             'phone': result.get('formatted_phone_number', '無提供'),
@@ -130,7 +131,7 @@ class GoogleAPI:
 
     @staticmethod
     def _geocode_address(address):
-        """將地址轉換為經緯度"""
+        '''將地址轉換為經緯度'''
 
         search_url = 'https://maps.googleapis.com/maps/api/geocode/json'
         params = {
@@ -210,7 +211,7 @@ class GoogleAPI:
             return []
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
-            logger.error(f'Google API 未返回有效結果，status: {search_result.get("status")}')
+            logger.error(f'Google API 未返回有效結果，status: {search_result.get('status')}')
             return []
 
         results = search_result['results']
@@ -277,10 +278,10 @@ class FlexMessageBuilder:
                 return '營業時間未提供'
 
             # 取今天和明天的營業時間（簡化顯示）
-            """
+            '''
             'opening_hours': 
             ['星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00']
-            """
+            '''
 
             weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
             if weekday_index >= len(hours_list):
@@ -444,7 +445,7 @@ class FlexMessageBuilder:
                     'action': {
                         'type': 'postback',
                         'label': '選擇這間',
-                        'data': f'select_place_id={info.get("place_id")}',
+                        'data': f'select_place_id={info.get('place_id')}',
                     }
                 }
             ])
@@ -483,7 +484,7 @@ class LineMessageBuilder:
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=reply_token,
-                    messages=[TextMessage(text="無法取得店家詳細資訊")]
+                    messages=[TextMessage(text='無法取得店家詳細資訊')]
                 )
             )
             return
@@ -499,6 +500,9 @@ class LineMessageBuilder:
                 # 轉成 JSON 給 FlexContainer
                 flex_container = FlexContainer.from_json(json.dumps(flex_data))
 
+                # postback
+                button_message = PostbackBuilder.create_cafe_action_postback(info_d)
+
                 # 回覆
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -507,7 +511,8 @@ class LineMessageBuilder:
                             FlexMessage(
                                 alt_text='找到咖啡店囉，快來看看吧！',
                                 contents=flex_container
-                            )
+                            ),
+                            button_message
                         ]
                     )
                 )
@@ -516,7 +521,7 @@ class LineMessageBuilder:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=reply_token,
-                        messages=[TextMessage(text="無法取得店家詳細資訊")]
+                        messages=[TextMessage(text='無法取得店家詳細資訊')]
                     )
                 )
 
@@ -538,8 +543,8 @@ class LineMessageBuilder:
 
             if flex_messages:
                 carousel = {
-                    "type": "carousel",
-                    "contents": flex_messages
+                    'type': 'carousel',
+                    'contents': flex_messages
                 }
 
                 line_bot_api.reply_message(
@@ -547,7 +552,7 @@ class LineMessageBuilder:
                         reply_token=reply_token,
                         messages=[
                             FlexMessage(
-                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
+                                alt_text=f'找到 {len(flex_messages)} 間咖啡店',
                                 contents=FlexContainer.from_dict(carousel)
                             )
                         ]
@@ -558,7 +563,7 @@ class LineMessageBuilder:
                 line_bot_api.reply_message_with_http_info(
                     ReplyMessageRequest(
                         reply_token=reply_token,
-                        messages=[TextMessage(text="無法取得店家詳細資訊")]
+                        messages=[TextMessage(text='無法取得店家詳細資訊')]
                     )
                 )
 
@@ -645,3 +650,43 @@ class FavoritesManager:
         except Exception as e:
             logger.error(f'取消收藏失敗: {e}')
             return False, '系統錯誤，請稍後再試'
+
+
+class PostbackBuilder:
+
+    @staticmethod
+    def create_cafe_action_postback(info_d):
+        buttons_template = {
+            'type': 'template',
+            'altText': '操作選單',
+            'template': {
+                'type': 'buttons',
+                'text': '想對這間咖啡店做什麼？',
+                'actions': [
+                    {
+                        'type': 'postback',
+                        'label': '⭐ 收藏',
+                        'data': f"favorite&pid={info_d['place_id']}"
+                    },
+                    {
+                        'type': 'postback',
+                        'label': '📞 撥打電話',
+                        'data': f"call&phone={info_d['phone']}"
+                    },
+                    {
+                        'type': 'postback',
+                        'label': '🔗 分享',
+                        'data': f"share&pid={info_d['place_id']}"
+                    },
+                    {
+                        'type': 'postback',
+                        'label': '🔗 問問AI',
+                        'data': f"share&pid={info_d['place_id']}"
+                    }
+                ]
+            }
+        }
+
+        button_message = TemplateMessage.from_dict(buttons_template)
+
+        return button_message
