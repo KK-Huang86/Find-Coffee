@@ -434,7 +434,7 @@ class FlexMessageBuilder:
             flex_message['footer']['contents'].extend([
                 {
                     'type': 'button',
-                    'style': 'primary',
+                    'style': 'link',
                     'action': {
                         'type': 'uri',
                         'label': '看地圖 ',
@@ -447,7 +447,7 @@ class FlexMessageBuilder:
                     'action': {
                         'type': 'postback',
                         'label': '選擇這間',
-                        'data': f"select_place_id={info.get('place_id')}",
+                        'data': f'action=view_detail&place_id={info.get("place_id")}',
                     }
                 }
             ])
@@ -494,6 +494,7 @@ class LineMessageBuilder:
         if len(shops) == 1:
             # 單筆結果
             place_id = shops[0]['place_id']
+
             info_d = GoogleAPI.get_shop_detail(place_id)
             if info_d:
 
@@ -788,10 +789,20 @@ class FavoritesManager:
 class PostbackBuilder:
 
     @staticmethod
-    def create_cafe_action_postback(info_d):
+    def create_cafe_action_postback(info_d,is_favorited=False):
         """
-        統一的postback 格式為
+        統一的postback 格式為 e.g. action=favorite&pid=XXXX
+        action=動作&place_id=XXX
         """
+
+        place_id = info_d['place_id']
+
+        favorite_action = {
+            'type': 'postback',
+            'label': '💔 取消收藏' if is_favorited else '⭐ 收藏',
+            'data': f'action=unfavorite&place_id={place_id}' if is_favorited else f'action=favorite&place_id={place_id}'
+        }
+
         buttons_template = {
             'type': 'template',
             'altText': '操作選單',
@@ -799,25 +810,21 @@ class PostbackBuilder:
                 'type': 'buttons',
                 'text': '想對這間咖啡店做什麼？',
                 'actions': [
-                    {
-                        'type': 'postback',
-                        'label': '⭐ 收藏',
-                        'data': f'favorite&pid={info_d['place_id']}'
-                    },
+                    favorite_action,
                     {
                         'type': 'postback',
                         'label': '📞 撥打電話',
-                        'data': f'call&phone={info_d['phone']}'
+                        'data': f'action=call&place_id={place_id}'
                     },
                     {
                         'type': 'postback',
                         'label': '🔗 分享',
-                        'data': f'share&pid={info_d['place_id']}'
+                        'data': f'action=share&place_id={place_id}'
                     },
                     {
                         'type': 'postback',
-                        'label': '🔗 問問AI',
-                        'data': f'share&pid={info_d['place_id']}'
+                        'label': '🤖 問問AI',
+                        'data': f'action=ask_ai&place_id={place_id}'
                     }
                 ]
             }

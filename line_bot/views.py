@@ -228,6 +228,9 @@ def handle_location_message(event):
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
+    """
+    postback 統一格式為 actionXXXXl(view_detail、favorite)&place_id={XXXXX}
+    """
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         data = event.postback.data  # ex: favorite&pid=xxxxx
