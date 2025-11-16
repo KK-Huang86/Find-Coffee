@@ -9,12 +9,15 @@ from django.db import transaction, IntegrityError
 from linebot.v3.messaging import (
     ReplyMessageRequest,
     TextMessage,
-    FlexMessage,
     FlexContainer,
+    TemplateMessage,
+    FlexMessage,
+    FlexCarousel,
+    FlexBubble
 )
 from requests.exceptions import RequestException, Timeout
 
-from line_bot.models import Cafe, Favorite
+from line_bot.models import Cafe, Favorite, User
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +117,7 @@ class GoogleAPI:
         clean_address = GoogleAPI._clean_taiwan_address(address)
 
         info = {
-            'place_id': result.get('place_id'),
+            'place_id': place_id,
             'name': result.get('name'),
             'address': clean_address,
             'phone': result.get('formatted_phone_number', '無提供'),
@@ -210,7 +213,7 @@ class GoogleAPI:
             return []
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
-            logger.error(f'Google API 未返回有效結果，status: {search_result.get("status")}')
+            logger.error(f"Google API 未返回有效結果，status: {search_result.get('status')}")
             return []
 
         results = search_result['results']
@@ -444,7 +447,7 @@ class FlexMessageBuilder:
                     'action': {
                         'type': 'postback',
                         'label': '選擇這間',
-                        'data': f'select_place_id={info.get("place_id")}',
+                        'data': f"select_place_id={info.get('place_id')}",
                     }
                 }
             ])
@@ -483,7 +486,7 @@ class LineMessageBuilder:
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=reply_token,
-                    messages=[TextMessage(text="無法取得店家詳細資訊")]
+                    messages=[TextMessage(text='無法取得店家詳細資訊')]
                 )
             )
             return
@@ -499,6 +502,9 @@ class LineMessageBuilder:
                 # 轉成 JSON 給 FlexContainer
                 flex_container = FlexContainer.from_json(json.dumps(flex_data))
 
+                # postback
+                button_message = PostbackBuilder.create_cafe_action_postback(info_d)
+
                 # 回覆
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -507,7 +513,8 @@ class LineMessageBuilder:
                             FlexMessage(
                                 alt_text='找到咖啡店囉，快來看看吧！',
                                 contents=flex_container
-                            )
+                            ),
+                            button_message
                         ]
                     )
                 )
@@ -516,7 +523,7 @@ class LineMessageBuilder:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=reply_token,
-                        messages=[TextMessage(text="無法取得店家詳細資訊")]
+                        messages=[TextMessage(text='無法取得店家詳細資訊')]
                     )
                 )
 
@@ -538,8 +545,8 @@ class LineMessageBuilder:
 
             if flex_messages:
                 carousel = {
-                    "type": "carousel",
-                    "contents": flex_messages
+                    'type': 'carousel',
+                    'contents': flex_messages
                 }
 
                 line_bot_api.reply_message(
@@ -547,7 +554,7 @@ class LineMessageBuilder:
                         reply_token=reply_token,
                         messages=[
                             FlexMessage(
-                                alt_text=f"找到 {len(flex_messages)} 間咖啡店",
+                                alt_text=f'找到 {len(flex_messages)} 間咖啡店',
                                 contents=FlexContainer.from_dict(carousel)
                             )
                         ]
@@ -558,7 +565,7 @@ class LineMessageBuilder:
                 line_bot_api.reply_message_with_http_info(
                     ReplyMessageRequest(
                         reply_token=reply_token,
-                        messages=[TextMessage(text="無法取得店家詳細資訊")]
+                        messages=[TextMessage(text='無法取得店家詳細資訊')]
                     )
                 )
 
@@ -645,3 +652,242 @@ class FavoritesManager:
         except Exception as e:
             logger.error(f'取消收藏失敗: {e}')
             return False, '系統錯誤，請稍後再試'
+
+    @staticmethod
+    def show_favorites_carousel(user_id):
+        """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
+
+        user = User.objects.filter(line_user_id=user_id).first()
+        if not user:
+            return TextMessage(text='找不到會員，請重新操作')
+
+        favorites = user.favorites.select_related('cafe').all()
+        if not favorites:
+            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+
+        bubbles = []
+        for fav in favorites[:5]:  # Carousel 最多 5 個
+            bubble = {
+                'type': 'bubble',
+                # 'hero': {
+                #     'type': 'image',
+                #     'url': 'https://via.placeholder.com/800x400?text=Coffee',
+                #     'size': 'full',
+                #     'aspectRatio': '20:13',
+                #     'aspectMode': 'cover'
+                # }, # 先不要放照片
+                'body': {
+                    'type': 'box',
+                    'layout': 'vertical',
+                    'contents': [
+                        {
+                            'type': 'text',
+                            'text': fav.cafe.name,
+                            'weight': 'bold',
+                            'size': 'xl'
+                        },
+                        {
+                            'type': 'box',
+                            'layout': 'baseline',
+                            'margin': 'md',
+                            'contents': [
+                                {
+                                    'type': 'text',
+                                    'text': f'⭐ {fav.cafe.rating or 'N/A'}',
+                                    'size': 'sm',
+                                    'color': '#999999'
+                                },
+                                {
+                                    'type': 'text',
+                                    'text': f'({fav.cafe.user_ratings_total} 則評論)',
+                                    'size': 'sm',
+                                    'color': '#999999',
+                                    'margin': 'md'
+                                }
+                            ]
+                        },
+                        {
+                            'type': 'text',
+                            'text': fav.cafe.address[:40] + '...' if len(fav.cafe.address) > 40 else fav.cafe.address,
+                            'size': 'xs',
+                            'color': '#aaaaaa',
+                            'margin': 'md'
+                        }
+                    ]
+                },
+                'footer': {
+                    'type': 'box',
+                    'layout': 'vertical',
+                    'spacing': 'sm',
+                    'contents': [
+                        {
+                            'type': 'button',
+                            'style': 'primary',
+                            'action': {
+                                'type': 'postback',
+                                'label': '查看詳情',
+                                'data': f'action=view_detail&place_id={fav.cafe.place_id}'
+                            }
+                        },
+                        {
+                            'type': 'button',
+                            'style': 'link',
+                            'action': {
+                                'type': 'uri',
+                                'label': '看地圖',
+                                'uri': fav.cafe.google_maps
+                            }
+                        }
+                    ]
+                }
+            }
+            bubbles.append(FlexBubble.from_dict(bubble))
+
+        carousel = FlexCarousel(contents=bubbles)
+        return FlexMessage(alt_text='我的收藏清單', contents=carousel)
+
+    @staticmethod
+    def show_favorites_list(user_id):
+        """列表式顯示收藏"""
+        user = User.objects.get(line_user_id=user_id)
+        favorites = user.favorites.select_related('cafe').all()[:20]  # 最多 20 間
+
+        if not favorites:
+            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+
+        # 建立列表內容
+        contents = [
+            {
+                'type': 'text',
+                'text': '❤️ 我的收藏',
+                'weight': 'bold',
+                'size': 'xl',
+                'margin': 'md'
+            },
+            {
+                'type': 'separator',
+                'margin': 'xxl'
+            }
+        ]
+
+        for i, fav in enumerate(favorites, 1):
+            # 每間咖啡店
+            shop_box = {
+                'type': 'box',
+                'layout': 'vertical',
+                'margin': 'lg',
+                'spacing': 'sm',
+                'contents': [
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': f'{i}.',
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
+                            },
+                            {
+                                'type': 'text',
+                                'text': fav.cafe.name,
+                                'weight': 'bold',
+                                'size': 'md',
+                                'wrap': True,
+                                'flex': 1
+                            }
+                        ]
+                    },
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': '⭐',
+                                'size': 'sm',
+                                'flex': 0
+                            },
+                            {
+                                'type': 'text',
+                                'text': str(fav.cafe.rating or 'N/A'),
+                                'size': 'sm',
+                                'color': '#999999',
+                                'flex': 1
+                            }
+                        ]
+                    }
+                ],
+                'action': {
+                    'type': 'postback',
+                    'data': f'action=view_detail&place_id={fav.cafe.place_id}'
+                }
+            }
+            contents.append(shop_box)
+
+            # 分隔線
+            if i < len(favorites):
+                contents.append({
+                    'type': 'separator',
+                    'margin': 'md'
+                })
+
+        flex_message = {
+            'type': 'bubble',
+            'body': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': contents
+            }
+        }
+
+        return FlexMessage(
+            alt_text='我的收藏清單',
+            contents=FlexBubble.from_dict(flex_message)
+        )
+
+
+class PostbackBuilder:
+
+    @staticmethod
+    def create_cafe_action_postback(info_d):
+        """
+        統一的postback 格式為
+        """
+        buttons_template = {
+            'type': 'template',
+            'altText': '操作選單',
+            'template': {
+                'type': 'buttons',
+                'text': '想對這間咖啡店做什麼？',
+                'actions': [
+                    {
+                        'type': 'postback',
+                        'label': '⭐ 收藏',
+                        'data': f'favorite&pid={info_d['place_id']}'
+                    },
+                    {
+                        'type': 'postback',
+                        'label': '📞 撥打電話',
+                        'data': f'call&phone={info_d['phone']}'
+                    },
+                    {
+                        'type': 'postback',
+                        'label': '🔗 分享',
+                        'data': f'share&pid={info_d['place_id']}'
+                    },
+                    {
+                        'type': 'postback',
+                        'label': '🔗 問問AI',
+                        'data': f'share&pid={info_d['place_id']}'
+                    }
+                ]
+            }
+        }
+
+        button_message = TemplateMessage.from_dict(buttons_template)
+
+        return button_message

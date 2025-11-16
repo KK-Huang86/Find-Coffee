@@ -7,7 +7,7 @@ from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 
 from line_bot.models import User
-from line_bot.utils import GoogleAPI, LineMessageBuilder
+from line_bot.utils import GoogleAPI, LineMessageBuilder, FavoritesManager
 
 # 設定 SSL 憑證路徑
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -21,24 +21,6 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
-    ButtonsTemplate,
-    PostbackAction,
-    TemplateMessage,
-    Emoji,
-    VideoMessage,
-    LocationMessage,
-    LocationAction,
-    StickerMessage,
-    ImageMessage,
-    FlexBubble,
-    FlexMessage,
-    FlexImage,
-    FlexBox,
-    FlexText,
-    FlexIcon,
-    FlexButton,
-    FlexSeparator,
-    FlexContainer,
     QuickReply,
     QuickReplyItem,
     LocationAction,
@@ -47,15 +29,15 @@ from linebot.v3.messaging import (
     RichMenuBounds,
     RichMenuSize,
     RichMenuRequest,
-    MessageAction
+    MessageAction,
 
 )
 from linebot.v3.webhooks import (
     MessageEvent,
     FollowEvent,
     TextMessageContent,
-    PostbackEvent,
-    LocationMessageContent
+    LocationMessageContent,
+    PostbackEvent
 
 )
 
@@ -177,6 +159,38 @@ def handle_message(event):
             )
             return
 
+        elif text =='收藏的咖啡店':
+            user = User.objects.get(line_user_id=user_id)
+            favorite_count = user.favorites.count()
+
+            if favorite_count == 0:
+                # 沒有收藏
+                message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
+
+            elif favorite_count <= 5:
+                # 1-5 間 → Carousel
+                message = FavoritesManager.show_favorites_carousel(user_id)
+
+
+            else:
+                # 超過 5 間 → 分多頁的 Carousel
+                message = FavoritesManager.show_favorites_list(user_id)
+
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[message]
+                )
+            )
+
+        else: # 待改
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text='請使用選單功能來查詢咖啡店 ☕️')]
+                )
+            )
+
 
 @handler.add(MessageEvent, message=LocationMessageContent)
 def handle_location_message(event):
@@ -210,6 +224,37 @@ def handle_location_message(event):
             return
 
         LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops)
+
+
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        data = event.postback.data  # ex: favorite&pid=xxxxx
+
+        params = dict(
+            item.split("=") for item in data.split("&")
+            if "=" in item
+        )
+
+
+        user_id = event.source.user_id
+        user = User.objects.filter(line_user_id=user_id).first()
+
+        # ⭐ 收藏
+        if data.startswith('favorite'):
+            place_id = params.get('pid')
+            info = GoogleAPI.get_shop_detail(place_id)
+            ok, msg = FavoritesManager.add_favorite(user, info)
+
+            reply = TextMessage(text=msg)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[reply]
+                )
+            )
+            return
 
 
 def rich_menu():
