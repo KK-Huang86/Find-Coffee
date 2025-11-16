@@ -66,10 +66,10 @@ class GoogleAPI:
 
     @staticmethod
     def _clean_taiwan_address(address):
-        '''
+        """
         移除台灣地址的郵遞區號前綴
         例如：'10085台灣台北市中正區晉江街10號' -> '台北市中正區晉江街10號'
-        '''
+        """
         # 移除郵遞區號 (3-6位數字)
         address = re.sub(r'^\d{3,6}', '', address)
 
@@ -280,10 +280,10 @@ class FlexMessageBuilder:
                 return '營業時間未提供'
 
             # 取今天和明天的營業時間（簡化顯示）
-            '''
+            """
             'opening_hours': 
             ['星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00']
-            '''
+            """
 
             weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
             if weekday_index >= len(hours_list):
