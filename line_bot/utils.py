@@ -667,81 +667,16 @@ class FavoritesManager:
 
         bubbles = []
         for fav in favorites[:5]:  # Carousel 最多 5 個
-            bubble = {
-                'type': 'bubble',
-                # 'hero': {
-                #     'type': 'image',
-                #     'url': 'https://via.placeholder.com/800x400?text=Coffee',
-                #     'size': 'full',
-                #     'aspectRatio': '20:13',
-                #     'aspectMode': 'cover'
-                # }, # 先不要放照片
-                'body': {
-                    'type': 'box',
-                    'layout': 'vertical',
-                    'contents': [
-                        {
-                            'type': 'text',
-                            'text': fav.cafe.name,
-                            'weight': 'bold',
-                            'size': 'xl'
-                        },
-                        {
-                            'type': 'box',
-                            'layout': 'baseline',
-                            'margin': 'md',
-                            'contents': [
-                                {
-                                    'type': 'text',
-                                    'text': f'⭐ {fav.cafe.rating or 'N/A'}',
-                                    'size': 'sm',
-                                    'color': '#999999'
-                                },
-                                {
-                                    'type': 'text',
-                                    'text': f'({fav.cafe.user_ratings_total} 則評論)',
-                                    'size': 'sm',
-                                    'color': '#999999',
-                                    'margin': 'md'
-                                }
-                            ]
-                        },
-                        {
-                            'type': 'text',
-                            'text': fav.cafe.address[:40] + '...' if len(fav.cafe.address) > 40 else fav.cafe.address,
-                            'size': 'xs',
-                            'color': '#aaaaaa',
-                            'margin': 'md'
-                        }
-                    ]
-                },
-                'footer': {
-                    'type': 'box',
-                    'layout': 'vertical',
-                    'spacing': 'sm',
-                    'contents': [
-                        {
-                            'type': 'button',
-                            'style': 'primary',
-                            'action': {
-                                'type': 'postback',
-                                'label': '查看詳情',
-                                'data': f'action=view_detail&place_id={fav.cafe.place_id}'
-                            }
-                        },
-                        {
-                            'type': 'button',
-                            'style': 'link',
-                            'action': {
-                                'type': 'uri',
-                                'label': '看地圖',
-                                'uri': fav.cafe.google_maps
-                            }
-                        }
-                    ]
-                }
-            }
-            bubbles.append(FlexBubble.from_dict(bubble))
+
+            # 轉換成 info_d 格式
+            info_d = fav.cafe.to_dict()
+
+            flex_data = FlexMessageBuilder.create_shop_flex_message(
+                info_d,
+                is_multiple=True
+            )
+
+            bubbles.append(FlexBubble.from_dict(flex_data))
 
         carousel = FlexCarousel(contents=bubbles)
         return FlexMessage(alt_text='我的收藏清單', contents=carousel)
