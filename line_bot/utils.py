@@ -479,7 +479,7 @@ class FlexMessageBuilder:
 class LineMessageBuilder:
 
     @staticmethod
-    def send_shop_result(line_bot_api, reply_token, shops):
+    def send_shop_result(line_bot_api, reply_token, shops, user):
 
         if not shops:
             # 回傳找不到店家的訊息
@@ -495,38 +495,61 @@ class LineMessageBuilder:
             # 單筆結果
             place_id = shops[0]['place_id']
 
-            info_d = GoogleAPI.get_shop_detail(place_id)
-            if info_d:
+            cafe = Cafe.objects.filter(place_id=place_id).first()
+            if not cafe:
+                info_d = GoogleAPI.get_shop_detail(place_id)
 
-                flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
-
-                # 轉成 JSON 給 FlexContainer
-                flex_container = FlexContainer.from_json(json.dumps(flex_data))
-
-                # postback
-                button_message = PostbackBuilder.create_cafe_action_postback(info_d)
-
-                # 回覆
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[
-                            FlexMessage(
-                                alt_text='找到咖啡店囉，快來看看吧！',
-                                contents=flex_container
-                            ),
-                            button_message
-                        ]
+                if not info_d:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=reply_token,
+                            messages=[TextMessage(text='無法取得店家詳細資訊')]
+                        )
                     )
-                )
+                    return
 
+                cafe = Cafe.objects.create(
+                    place_id=info_d['place_id'],
+                    name=info_d['name'],
+                    address=info_d['address'],
+                    phone=info_d.get('phone', ''),
+                    rating=info_d.get('rating'),
+                    user_ratings_total=info_d.get('user_ratings_total', 0),
+                    google_maps=info_d.get('google_maps', ''),
+                    website=info_d.get('website', ''),
+                    lat=info_d.get('lat'),
+                    lng=info_d.get('lng')
+                )
             else:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[TextMessage(text='無法取得店家詳細資訊')]
-                    )
+                # 資料庫有 → 直接轉換
+                info_d = cafe.to_dict()
+
+            is_favorited = user.favorites.filter(cafe=cafe).exists()
+
+            flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
+
+            # 轉成 JSON 給 FlexContainer
+            flex_container = FlexContainer.from_json(json.dumps(flex_data))
+
+            # postback
+            button_message = PostbackBuilder.create_cafe_action_postback(
+                info_d,
+                is_favorited=is_favorited
+            )
+
+            # 回覆
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=reply_token,
+                    messages=[
+                        FlexMessage(
+                            alt_text='找到咖啡店囉，快來看看吧！',
+                            contents=flex_container
+                        ),
+                        button_message
+                    ]
                 )
+            )
 
         if 2 <= len(shops) <= 5:
             # 多筆結果
@@ -686,7 +709,7 @@ class FavoritesManager:
     def show_favorites_list(user_id):
         """列表式顯示收藏"""
         user = User.objects.get(line_user_id=user_id)
-        favorites = user.favorites.select_related('cafe').all()[:20]  # 最多 20 間
+        favorites = user.favorites.select_related('cafe').all()
 
         if not favorites:
             return TextMessage(text='您還沒有收藏任何咖啡店喔～')
@@ -789,7 +812,7 @@ class FavoritesManager:
 class PostbackBuilder:
 
     @staticmethod
-    def create_cafe_action_postback(info_d,is_favorited=False):
+    def create_cafe_action_postback(info_d, is_favorited=False):
         """
         統一的postback 格式為 e.g. action=favorite&pid=XXXX
         action=動作&place_id=XXX
