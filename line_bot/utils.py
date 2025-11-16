@@ -759,6 +759,22 @@ class FavoritesManager:
                             }
                         ]
                     },
+
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': fav.cafe.address,
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
+                            }
+                        ]
+                    },
+
                     {
                         'type': 'box',
                         'layout': 'baseline',
