@@ -213,7 +213,7 @@ class GoogleAPI:
             return []
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
-            logger.error(f'Google API 未返回有效結果，status: {search_result.get('status')}')
+            logger.error(f"Google API 未返回有效結果，status: {search_result.get('status')}")
             return []
 
         results = search_result['results']
@@ -447,7 +447,7 @@ class FlexMessageBuilder:
                     'action': {
                         'type': 'postback',
                         'label': '選擇這間',
-                        'data': f'select_place_id={info.get('place_id')}',
+                        'data': f"select_place_id={info.get('place_id')}",
                     }
                 }
             ])
@@ -854,7 +854,6 @@ class PostbackBuilder:
 
     @staticmethod
     def create_cafe_action_postback(info_d):
-
         """
         統一的postback 格式為
         """
