@@ -313,21 +313,22 @@ def handle_postback(event):
         if action == 'view_detail':
             cafe = Cafe.objects.filter(place_id=place_id).first()
             if not cafe:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text='找不到此咖啡店')]
+                info_d = GoogleAPI.get_shop_detail(place_id)
+                if not info_d:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text='找不到此咖啡店')]
+                        )
                     )
-                )
-                return
+            else:
+                # 檢查是否已收藏
+                is_favorited = user.favorites.filter(cafe=cafe).exists()
 
-            # 檢查是否已收藏
-            is_favorited = user.favorites.filter(cafe=cafe).exists()
-
-            # 顯示詳細資訊
-            info_d = cafe.to_dict()
-            flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
-            flex_container = FlexContainer.from_json(json.dumps(flex_data))
+                # 顯示詳細資訊
+                info_d = cafe.to_dict()
+                flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
+                flex_container = FlexContainer.from_json(json.dumps(flex_data))
 
             # 操作按鈕
             button_message = PostbackBuilder.create_cafe_action_postback(
