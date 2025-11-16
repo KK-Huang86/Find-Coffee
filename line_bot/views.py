@@ -160,7 +160,23 @@ def handle_message(event):
             return
 
         elif text =='收藏的咖啡店':
-            pass
+            user = User.objects.get(line_user_id=user_id)
+            favorite_count = user.favorites.count()
+
+            if favorite_count == 0:
+                # 沒有收藏
+                message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
+
+            elif favorite_count <= 5:
+                # 1-5 間 → Carousel
+                message = FavoritesManager.show_favorites_carousel(user_id, event)
+
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[message]
+                )
+            )
 
         else: # 待改
             line_bot_api.reply_message(

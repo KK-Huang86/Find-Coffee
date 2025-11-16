@@ -9,13 +9,15 @@ from django.db import transaction, IntegrityError
 from linebot.v3.messaging import (
     ReplyMessageRequest,
     TextMessage,
-    FlexMessage,
     FlexContainer,
-    TemplateMessage
+    TemplateMessage,
+    FlexMessage,
+    FlexCarousel,
+    FlexBubble
 )
 from requests.exceptions import RequestException, Timeout
 
-from line_bot.models import Cafe, Favorite
+from line_bot.models import Cafe, Favorite, User
 
 logger = logging.getLogger(__name__)
 
@@ -650,6 +652,99 @@ class FavoritesManager:
         except Exception as e:
             logger.error(f'取消收藏失敗: {e}')
             return False, '系統錯誤，請稍後再試'
+
+    @staticmethod
+    def show_favorites_carousel(user_id, event):
+        """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
+
+        user = User.objects.filter(line_user_id=user_id).first()
+        if not user:
+            return TextMessage(text='找不到會員，請重新操作')
+
+        favorites = user.favorites.select_related('cafe').all()
+        if not favorites:
+            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+
+        bubbles = []
+        for fav in favorites[:5]:  # Carousel 最多 5 個
+            bubble = {
+                "type": "bubble",
+                # "hero": {
+                #     "type": "image",
+                #     "url": "https://via.placeholder.com/800x400?text=Coffee",
+                #     "size": "full",
+                #     "aspectRatio": "20:13",
+                #     "aspectMode": "cover"
+                # }, # 先不要放照片
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": fav.cafe.name,
+                            "weight": "bold",
+                            "size": "xl"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "margin": "md",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": f"⭐ {fav.cafe.rating or 'N/A'}",
+                                    "size": "sm",
+                                    "color": "#999999"
+                                },
+                                {
+                                    "type": "text",
+                                    "text": f"({fav.cafe.user_ratings_total} 則評論)",
+                                    "size": "sm",
+                                    "color": "#999999",
+                                    "margin": "md"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "text",
+                            "text": fav.cafe.address[:40] + "..." if len(fav.cafe.address) > 40 else fav.cafe.address,
+                            "size": "xs",
+                            "color": "#aaaaaa",
+                            "margin": "md"
+                        }
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "action": {
+                                "type": "postback",
+                                "label": "查看詳情",
+                                "data": f"action=view_detail&place_id={fav.cafe.place_id}"
+                            }
+                        },
+                        {
+                            "type": "button",
+                            "style": "link",
+                            "action": {
+                                "type": "uri",
+                                "label": "看地圖",
+                                "uri": fav.cafe.google_maps
+                            }
+                        }
+                    ]
+                }
+            }
+            bubbles.append(FlexBubble.from_dict(bubble))
+
+        carousel = FlexCarousel(contents=bubbles)
+        return FlexMessage(alt_text="我的收藏清單", contents=carousel)
 
 
 class PostbackBuilder:
