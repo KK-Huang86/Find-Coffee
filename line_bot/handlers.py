@@ -25,10 +25,10 @@ from linebot.v3.webhooks import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder
+from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder,PostbackBuilder,FavoritesMessageBuilder
 from line_bot.models import User, Cafe
-from line_bot.utils import FavoritesManager, PostbackBuilder, \
-    FlexContainer
+from line_bot.utils import FlexContainer
+from users.views import FavoritesManager
 
 logger = logging.getLogger(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
@@ -136,12 +136,12 @@ def handle_message(event):
 
             elif favorite_count <= 5:
                 # 1-5 間 → Carousel
-                message = FavoritesManager.show_favorites_carousel(user_id)
+                message = FavoritesMessageBuilder.show_favorites_carousel(user_id)
 
 
             else:
                 # 超過 5 間 → 分多頁的 Carousel
-                message = FavoritesManager.show_favorites_list(user_id)
+                message = FavoritesMessageBuilder.show_favorites_list(user_id)
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -276,8 +276,14 @@ def handle_postback(event):
             return
 
         if action == 'view_detail':
+            is_favorited = False
             cafe = Cafe.objects.filter(place_id=place_id).first()
-            if not cafe:
+
+            # 1. 取得店家資訊
+            if cafe:
+                info_d = cafe.to_dict()
+                is_favorited = user.favorites.filter(cafe=cafe).exists()
+            else:
                 info_d = GoogleAPI.get_shop_detail(place_id)
                 if not info_d:
                     line_bot_api.reply_message(
@@ -286,21 +292,19 @@ def handle_postback(event):
                             messages=[TextMessage(text='找不到此咖啡店')]
                         )
                     )
-            else:
-                # 檢查是否已收藏
-                is_favorited = user.favorites.filter(cafe=cafe).exists()
+                    return
 
-                # 顯示詳細資訊
-                info_d = cafe.to_dict()
-                flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
-                flex_container = FlexContainer.from_json(json.dumps(flex_data))
+            # 2. 建立 Flex Message（統一在這裡）
+            flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
+            flex_container = FlexContainer.from_json(json.dumps(flex_data))
 
-            # 操作按鈕
+            # 3. 建立按鈕
             button_message = PostbackBuilder.create_cafe_action_postback(
                 info_d=info_d,
                 is_favorited=is_favorited
             )
 
+            # 4. 回覆
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,

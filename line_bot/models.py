@@ -53,7 +53,7 @@ class User(models.Model):
 
         # 執行 10 次都失敗
         raise IntegrityError(
-            f"Failed to generate a unique member_code after {attempt + 1} attempts."
+            f'Failed to generate a unique member_code after {attempt + 1} attempts.'
         ) from last_error
 
     class Meta:

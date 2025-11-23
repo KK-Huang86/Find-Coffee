@@ -596,235 +596,235 @@ logger = logging.getLogger(__name__)
 #                 )
 
 
-class FavoritesManager:
+# class FavoritesManager:
+#
+#     @staticmethod
+#     def add_favorite(user, info):
+#
+#         if not info.get('place_id') or not info.get('name'):
+#             return False, '咖啡店資訊不完整'
+#
+#         try:
+#             with transaction.atomic():
+#                 # 取得或建立咖啡店
+#                 cafe, cafe_created = Cafe.objects.get_or_create(
+#                     place_id=info['place_id'],
+#                     defaults={
+#                         'name': info.get('name', '未命名咖啡店'),
+#                         'address': info.get('address', ''),
+#                         'phone': info.get('phone', ''),
+#                         'lat': info.get('lat'),
+#                         'lng': info.get('lng'),
+#                         'rating': info.get('rating'),
+#                         'user_ratings_total': info.get('user_ratings_total', 0),
+#                         'google_maps': info.get('google_maps', ''),
+#                         'website': info.get('website', '')
+#                     }
+#                 )
+#
+#                 if cafe_created:
+#                     logger.info(f'建立新咖啡店: {cafe.name} ({cafe.place_id})')
+#
+#                 # 建立收藏關聯
+#                 favorite, created = Favorite.objects.get_or_create(
+#                     user=user,
+#                     cafe=cafe
+#                 )
+#
+#                 if created:
+#                     # 增加收藏數
+#                     cafe.increment_favorite_count()
+#                     logger.info(f'使用者 {user.member_code} 收藏 {cafe.name}')
+#                     return True, f'✅ 已收藏「{cafe.name}」'
+#                 else:
+#                     return False, f'⚠️ 「{cafe.name}」已在您的收藏清單中'
+#
+#         except IntegrityError as e:
+#             logger.error(f'收藏失敗 (IntegrityError): {e}')
+#             return False, '收藏失敗，請稍後再試'
+#
+#         except Exception as e:
+#             logger.error(f'收藏失敗: {e}')
+#             return False, '系統錯誤，請稍後再試'
+#
+#     @staticmethod
+#     def remove_favorite(user, info):
+#
+#         if not info.get('place_id') or not info.get('name'):
+#             return False, '咖啡店資訊不完整'
+#
+#         try:
+#             with transaction.atomic():
+#                 # 取得咖啡店
+#                 cafe = Cafe.objects.filter(place_id=info['place_id']).first()
+#                 if not cafe:
+#                     return False, '找不到該咖啡店'
+#
+#                 # 刪除收藏關聯
+#                 favorite = Favorite.objects.filter(user=user, cafe=cafe).first()
+#                 if favorite:
+#                     favorite.delete()
+#                     # 減少收藏數
+#                     cafe.decrement_favorite_count()
+#                     logger.info(f'使用者 {user.member_code} 取消收藏 {cafe.name}')
+#                     return True, f'已取消收藏「{cafe.name}」'
+#                 else:
+#                     return False, f'「{cafe.name}」不在您的收藏清單中'
+#
+#         except IntegrityError as e:
+#             logger.error(f'取消收藏失敗 (IntegrityError): {e}')
+#             return False, '取消收藏失敗，請稍後再試'
+#
+#         except Exception as e:
+#             logger.error(f'取消收藏失敗: {e}')
+#             return False, '系統錯誤，請稍後再試'
 
-    @staticmethod
-    def add_favorite(user, info):
-
-        if not info.get('place_id') or not info.get('name'):
-            return False, '咖啡店資訊不完整'
-
-        try:
-            with transaction.atomic():
-                # 取得或建立咖啡店
-                cafe, cafe_created = Cafe.objects.get_or_create(
-                    place_id=info['place_id'],
-                    defaults={
-                        'name': info.get('name', '未命名咖啡店'),
-                        'address': info.get('address', ''),
-                        'phone': info.get('phone', ''),
-                        'lat': info.get('lat'),
-                        'lng': info.get('lng'),
-                        'rating': info.get('rating'),
-                        'user_ratings_total': info.get('user_ratings_total', 0),
-                        'google_maps': info.get('google_maps', ''),
-                        'website': info.get('website', '')
-                    }
-                )
-
-                if cafe_created:
-                    logger.info(f'建立新咖啡店: {cafe.name} ({cafe.place_id})')
-
-                # 建立收藏關聯
-                favorite, created = Favorite.objects.get_or_create(
-                    user=user,
-                    cafe=cafe
-                )
-
-                if created:
-                    # 增加收藏數
-                    cafe.increment_favorite_count()
-                    logger.info(f'使用者 {user.member_code} 收藏 {cafe.name}')
-                    return True, f'✅ 已收藏「{cafe.name}」'
-                else:
-                    return False, f'⚠️ 「{cafe.name}」已在您的收藏清單中'
-
-        except IntegrityError as e:
-            logger.error(f'收藏失敗 (IntegrityError): {e}')
-            return False, '收藏失敗，請稍後再試'
-
-        except Exception as e:
-            logger.error(f'收藏失敗: {e}')
-            return False, '系統錯誤，請稍後再試'
-
-    @staticmethod
-    def remove_favorite(user, info):
-
-        if not info.get('place_id') or not info.get('name'):
-            return False, '咖啡店資訊不完整'
-
-        try:
-            with transaction.atomic():
-                # 取得咖啡店
-                cafe = Cafe.objects.filter(place_id=info['place_id']).first()
-                if not cafe:
-                    return False, '找不到該咖啡店'
-
-                # 刪除收藏關聯
-                favorite = Favorite.objects.filter(user=user, cafe=cafe).first()
-                if favorite:
-                    favorite.delete()
-                    # 減少收藏數
-                    cafe.decrement_favorite_count()
-                    logger.info(f'使用者 {user.member_code} 取消收藏 {cafe.name}')
-                    return True, f'已取消收藏「{cafe.name}」'
-                else:
-                    return False, f'「{cafe.name}」不在您的收藏清單中'
-
-        except IntegrityError as e:
-            logger.error(f'取消收藏失敗 (IntegrityError): {e}')
-            return False, '取消收藏失敗，請稍後再試'
-
-        except Exception as e:
-            logger.error(f'取消收藏失敗: {e}')
-            return False, '系統錯誤，請稍後再試'
-
-    @staticmethod
-    def show_favorites_carousel(user_id):
-        """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
-
-        user = User.objects.filter(line_user_id=user_id).first()
-        if not user:
-            return TextMessage(text='找不到會員，請重新操作')
-
-        favorites = user.favorites.select_related('cafe').all()
-        if not favorites:
-            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
-
-        bubbles = []
-        for fav in favorites[:5]:  # Carousel 最多 5 個
-
-            # 轉換成 info_d 格式
-            info_d = fav.cafe.to_dict()
-
-            flex_data = FlexMessageBuilder.create_shop_flex_message(
-                info_d,
-                is_multiple=True
-            )
-
-            bubbles.append(FlexBubble.from_dict(flex_data))
-
-        carousel = FlexCarousel(contents=bubbles)
-        return FlexMessage(alt_text='我的收藏清單', contents=carousel)
-
-    @staticmethod
-    def show_favorites_list(user_id):
-        """列表式顯示收藏"""
-        user = User.objects.get(line_user_id=user_id)
-        favorites = user.favorites.select_related('cafe').all()
-
-        if not favorites:
-            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
-
-        # 建立列表內容
-        contents = [
-            {
-                'type': 'text',
-                'text': '❤️ 我的收藏',
-                'weight': 'bold',
-                'size': 'xl',
-                'margin': 'md'
-            },
-            {
-                'type': 'separator',
-                'margin': 'xxl'
-            }
-        ]
-
-        for i, fav in enumerate(favorites, 1):
-            # 每間咖啡店
-            shop_box = {
-                'type': 'box',
-                'layout': 'vertical',
-                'margin': 'lg',
-                'spacing': 'sm',
-                'contents': [
-                    {
-                        'type': 'box',
-                        'layout': 'baseline',
-                        'spacing': 'sm',
-                        'contents': [
-                            {
-                                'type': 'text',
-                                'text': f'{i}.',
-                                'size': 'sm',
-                                'color': '#aaaaaa',
-                                'flex': 0
-                            },
-                            {
-                                'type': 'text',
-                                'text': fav.cafe.name,
-                                'weight': 'bold',
-                                'size': 'md',
-                                'wrap': True,
-                                'flex': 1
-                            }
-                        ]
-                    },
-
-                    {
-                        'type': 'box',
-                        'layout': 'baseline',
-                        'spacing': 'sm',
-                        'contents': [
-                            {
-                                'type': 'text',
-                                'text': fav.cafe.address,
-                                'size': 'sm',
-                                'color': '#aaaaaa',
-                                'flex': 0
-                            }
-                        ]
-                    },
-
-                    {
-                        'type': 'box',
-                        'layout': 'baseline',
-                        'spacing': 'sm',
-                        'contents': [
-                            {
-                                'type': 'text',
-                                'text': '⭐',
-                                'size': 'sm',
-                                'flex': 0
-                            },
-                            {
-                                'type': 'text',
-                                'text': str(fav.cafe.rating or 'N/A'),
-                                'size': 'sm',
-                                'color': '#999999',
-                                'flex': 1
-                            }
-                        ]
-                    }
-                ],
-                'action': {
-                    'type': 'postback',
-                    'data': f'action=view_detail&place_id={fav.cafe.place_id}'
-                }
-            }
-            contents.append(shop_box)
-
-            # 分隔線
-            if i < len(favorites):
-                contents.append({
-                    'type': 'separator',
-                    'margin': 'md'
-                })
-
-        flex_message = {
-            'type': 'bubble',
-            'body': {
-                'type': 'box',
-                'layout': 'vertical',
-                'contents': contents
-            }
-        }
-
-        return FlexMessage(
-            alt_text='我的收藏清單',
-            contents=FlexBubble.from_dict(flex_message)
-        )
+    # @staticmethod
+    # def show_favorites_carousel(user_id):
+    #     """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
+    #
+    #     user = User.objects.filter(line_user_id=user_id).first()
+    #     if not user:
+    #         return TextMessage(text='找不到會員，請重新操作')
+    #
+    #     favorites = user.favorites.select_related('cafe').all()
+    #     if not favorites:
+    #         return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+    #
+    #     bubbles = []
+    #     for fav in favorites[:5]:  # Carousel 最多 5 個
+    #
+    #         # 轉換成 info_d 格式
+    #         info_d = fav.cafe.to_dict()
+    #
+    #         flex_data = FlexMessageBuilder.create_shop_flex_message(
+    #             info_d,
+    #             is_multiple=True
+    #         )
+    #
+    #         bubbles.append(FlexBubble.from_dict(flex_data))
+    #
+    #     carousel = FlexCarousel(contents=bubbles)
+    #     return FlexMessage(alt_text='我的收藏清單', contents=carousel)
+    #
+    # @staticmethod
+    # def show_favorites_list(user_id):
+    #     """列表式顯示收藏"""
+    #     user = User.objects.get(line_user_id=user_id)
+    #     favorites = user.favorites.select_related('cafe').all()
+    #
+    #     if not favorites:
+    #         return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+    #
+    #     # 建立列表內容
+    #     contents = [
+    #         {
+    #             'type': 'text',
+    #             'text': '❤️ 我的收藏',
+    #             'weight': 'bold',
+    #             'size': 'xl',
+    #             'margin': 'md'
+    #         },
+    #         {
+    #             'type': 'separator',
+    #             'margin': 'xxl'
+    #         }
+    #     ]
+    #
+    #     for i, fav in enumerate(favorites, 1):
+    #         # 每間咖啡店
+    #         shop_box = {
+    #             'type': 'box',
+    #             'layout': 'vertical',
+    #             'margin': 'lg',
+    #             'spacing': 'sm',
+    #             'contents': [
+    #                 {
+    #                     'type': 'box',
+    #                     'layout': 'baseline',
+    #                     'spacing': 'sm',
+    #                     'contents': [
+    #                         {
+    #                             'type': 'text',
+    #                             'text': f'{i}.',
+    #                             'size': 'sm',
+    #                             'color': '#aaaaaa',
+    #                             'flex': 0
+    #                         },
+    #                         {
+    #                             'type': 'text',
+    #                             'text': fav.cafe.name,
+    #                             'weight': 'bold',
+    #                             'size': 'md',
+    #                             'wrap': True,
+    #                             'flex': 1
+    #                         }
+    #                     ]
+    #                 },
+    #
+    #                 {
+    #                     'type': 'box',
+    #                     'layout': 'baseline',
+    #                     'spacing': 'sm',
+    #                     'contents': [
+    #                         {
+    #                             'type': 'text',
+    #                             'text': fav.cafe.address,
+    #                             'size': 'sm',
+    #                             'color': '#aaaaaa',
+    #                             'flex': 0
+    #                         }
+    #                     ]
+    #                 },
+    #
+    #                 {
+    #                     'type': 'box',
+    #                     'layout': 'baseline',
+    #                     'spacing': 'sm',
+    #                     'contents': [
+    #                         {
+    #                             'type': 'text',
+    #                             'text': '⭐',
+    #                             'size': 'sm',
+    #                             'flex': 0
+    #                         },
+    #                         {
+    #                             'type': 'text',
+    #                             'text': str(fav.cafe.rating or 'N/A'),
+    #                             'size': 'sm',
+    #                             'color': '#999999',
+    #                             'flex': 1
+    #                         }
+    #                     ]
+    #                 }
+    #             ],
+    #             'action': {
+    #                 'type': 'postback',
+    #                 'data': f'action=view_detail&place_id={fav.cafe.place_id}'
+    #             }
+    #         }
+    #         contents.append(shop_box)
+    #
+    #         # 分隔線
+    #         if i < len(favorites):
+    #             contents.append({
+    #                 'type': 'separator',
+    #                 'margin': 'md'
+    #             })
+    #
+    #     flex_message = {
+    #         'type': 'bubble',
+    #         'body': {
+    #             'type': 'box',
+    #             'layout': 'vertical',
+    #             'contents': contents
+    #         }
+    #     }
+    #
+    #     return FlexMessage(
+    #         alt_text='我的收藏清單',
+    #         contents=FlexBubble.from_dict(flex_message)
+    #     )
 
 
 # class PostbackBuilder:

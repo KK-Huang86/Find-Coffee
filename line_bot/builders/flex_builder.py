@@ -7,11 +7,14 @@ from linebot.v3.messaging import (
     TextMessage,
     FlexContainer,
     TemplateMessage,
-    FlexMessage
+    FlexMessage,
+    FlexCarousel,
+    FlexBubble
 )
 
 from integrations.google.api import GoogleAPI
 from line_bot.models import Cafe
+from line_bot.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -425,3 +428,152 @@ class PostbackBuilder:
         button_message = TemplateMessage.from_dict(buttons_template)
 
         return button_message
+
+
+class FavoritesMessageBuilder:
+
+    def show_favorites_carousel(user_id):
+        """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
+
+        user = User.objects.filter(line_user_id=user_id).first()
+        if not user:
+            return TextMessage(text='找不到會員，請重新操作')
+
+        favorites = user.favorites.select_related('cafe').all()
+        if not favorites:
+            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+
+        bubbles = []
+        for fav in favorites[:5]:  # Carousel 最多 5 個
+
+            # 轉換成 info_d 格式
+            info_d = fav.cafe.to_dict()
+
+            flex_data = FlexMessageBuilder.create_shop_flex_message(
+                info_d,
+                is_multiple=True
+            )
+
+            bubbles.append(FlexBubble.from_dict(flex_data))
+
+        carousel = FlexCarousel(contents=bubbles)
+        return FlexMessage(alt_text='我的收藏清單', contents=carousel)
+
+    @staticmethod
+    def show_favorites_list(user_id):
+        """列表式顯示收藏"""
+        user = User.objects.get(line_user_id=user_id)
+        favorites = user.favorites.select_related('cafe').all()
+
+        if not favorites:
+            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
+
+        # 建立列表內容
+        contents = [
+            {
+                'type': 'text',
+                'text': '❤️ 我的收藏',
+                'weight': 'bold',
+                'size': 'xl',
+                'margin': 'md'
+            },
+            {
+                'type': 'separator',
+                'margin': 'xxl'
+            }
+        ]
+
+        for i, fav in enumerate(favorites, 1):
+            # 每間咖啡店
+            shop_box = {
+                'type': 'box',
+                'layout': 'vertical',
+                'margin': 'lg',
+                'spacing': 'sm',
+                'contents': [
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': f'{i}.',
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
+                            },
+                            {
+                                'type': 'text',
+                                'text': fav.cafe.name,
+                                'weight': 'bold',
+                                'size': 'md',
+                                'wrap': True,
+                                'flex': 1
+                            }
+                        ]
+                    },
+
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': fav.cafe.address,
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
+                            }
+                        ]
+                    },
+
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': '⭐',
+                                'size': 'sm',
+                                'flex': 0
+                            },
+                            {
+                                'type': 'text',
+                                'text': str(fav.cafe.rating or 'N/A'),
+                                'size': 'sm',
+                                'color': '#999999',
+                                'flex': 1
+                            }
+                        ]
+                    }
+                ],
+                'action': {
+                    'type': 'postback',
+                    'data': f'action=view_detail&place_id={fav.cafe.place_id}'
+                }
+            }
+            contents.append(shop_box)
+
+            # 分隔線
+            if i < len(favorites):
+                contents.append({
+                    'type': 'separator',
+                    'margin': 'md'
+                })
+
+        flex_message = {
+            'type': 'bubble',
+            'body': {
+                'type': 'box',
+                'layout': 'vertical',
+                'contents': contents
+            }
+        }
+
+        return FlexMessage(
+            alt_text='我的收藏清單',
+            contents=FlexBubble.from_dict(flex_message)
+        )
