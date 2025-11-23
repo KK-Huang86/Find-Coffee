@@ -2,11 +2,6 @@ import json
 import logging
 import os
 
-from line_bot.models import User, Cafe
-from line_bot.utils import GoogleAPI, LineMessageBuilder, FavoritesManager, FlexMessageBuilder, PostbackBuilder, \
-    FlexContainer
-
-
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
     Configuration,
@@ -28,6 +23,12 @@ from linebot.v3.webhooks import (
     PostbackEvent
 
 )
+
+from integrations.google.api import GoogleAPI
+from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder
+from line_bot.models import User, Cafe
+from line_bot.utils import FavoritesManager, PostbackBuilder, \
+    FlexContainer
 
 logger = logging.getLogger(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
