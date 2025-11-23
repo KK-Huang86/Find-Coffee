@@ -53,7 +53,7 @@ class User(models.Model):
 
         # 執行 10 次都失敗
         raise IntegrityError(
-            f"Failed to generate a unique member_code after {attempt + 1} attempts."
+            f'Failed to generate a unique member_code after {attempt + 1} attempts.'
         ) from last_error
 
     class Meta:
@@ -108,6 +108,22 @@ class Cafe(models.Model):
             )
             self.refresh_from_db(fields=['favorite_count'])
             # 避免 race condition
+
+    def to_dict(self):
+        """轉換成 Flex Message 需要的格式"""
+        return {
+            'name': self.name,
+            'address': self.address,
+            'phone': self.phone,
+            'rating': self.rating,
+            'user_ratings_total': self.user_ratings_total,
+            'place_id': self.place_id,
+            'google_maps': self.google_maps,
+            'website': self.website,
+            'lat': self.lat,
+            'lng': self.lng,
+            'opening_hours': []  # 如果有存的話再加
+        }
 
     @classmethod
     def get_popular_cafes(cls):
