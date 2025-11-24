@@ -29,6 +29,7 @@ from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilde
 from line_bot.models import User, Cafe
 from line_bot.utils import FlexContainer
 from users.views import FavoritesManager
+from utils.utils import LockService
 
 logger = logging.getLogger(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
@@ -62,6 +63,10 @@ def handle_message(event):
         text = event.message.text
         state = user_states.get(user_id, UserState.NORMAL)
         user = User.objects.get(line_user_id=user_id)
+
+
+        if not LockService.acquire(user_id, 'message'):
+            return
 
         if state == UserState.NORMAL:
             pass
@@ -172,6 +177,9 @@ def handle_location_message(event):
         user_id = event.source.user_id
         user = User.objects.filter(line_user_id=user_id)
 
+        if not LockService.acquire(user_id, 'location'):
+            return
+
         shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
         logger.info(shops)
 
@@ -215,6 +223,9 @@ def handle_postback(event):
 
         user_id = event.source.user_id
         user = User.objects.filter(line_user_id=user_id).first()
+
+        if not LockService.acquire(user_id, 'postback'):
+            return
 
         if not user:
             line_bot_api.reply_message(
