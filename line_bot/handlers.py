@@ -210,10 +210,11 @@ def handle_location_message(event):
 def handle_postback(event):
     """
     postback 統一格式為 action=XXXXl(view_detail、favorite)&place_id={XXXXX}
+    action=view_detail&place_id=ChIJuwVavhQdaDQRZM3VMp8O79Y
     """
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        data = event.postback.data  # ex: favorite&pid=xxxxx
+        data = event.postback.data# ex: favorite&pid=xxxxx
 
         # e.g {'action': 'view_detail', 'place_id': 'ChIJXdYuc5qpQjQReM1zieXbGeA'}
         params = dict(
@@ -260,7 +261,7 @@ def handle_postback(event):
             )
             return
 
-        if action == 'unfavorite':
+        elif action == 'unfavorite':
             cafe = Cafe.objects.filter(place_id=place_id).first()
             if cafe:
                 info_d = cafe.to_dict()
@@ -286,7 +287,7 @@ def handle_postback(event):
             )
             return
 
-        if action == 'view_detail':
+        elif action == 'view_detail':
             is_favorited = False
             cafe = Cafe.objects.filter(place_id=place_id).first()
 

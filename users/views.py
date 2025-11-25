@@ -9,8 +9,8 @@ from line_bot.models import Cafe, Favorite
 logger = logging.getLogger(__name__)
 
 
-# 一個人可以使用幾次
-# 好友
+#TODO:好友、每一個使用的次數
+
 
 
 class FavoritesManager:
