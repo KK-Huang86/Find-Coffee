@@ -295,6 +295,12 @@ class LineMessageBuilder:
                     )
                     return
 
+                opening_hours = info_d['opening_hours']
+                opening_hours_d = {}
+                for opening_hour in opening_hours:
+                    day, time = opening_hour.split(': ', 1)
+                    opening_hours_d[day.strip()] = time.strip()
+
                 cafe = Cafe.objects.create(
                     place_id=info_d['place_id'],
                     name=info_d['name'],
@@ -305,7 +311,8 @@ class LineMessageBuilder:
                     google_maps=info_d.get('google_maps', ''),
                     website=info_d.get('website', ''),
                     lat=info_d.get('lat'),
-                    lng=info_d.get('lng')
+                    lng=info_d.get('lng'),
+                    opening_hours=opening_hours_d
                 )
             else:
                 # 資料庫有 → 直接轉換

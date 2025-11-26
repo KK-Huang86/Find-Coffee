@@ -21,6 +21,14 @@ class FavoritesManager:
         if not info.get('place_id') or not info.get('name'):
             return False, '咖啡店資訊不完整'
 
+        open_hours=info.get('opening_hours')
+        open_hour_d={}
+        for open_hour in open_hours:
+            # 處理成{'星期一': '休息'}
+            day,time=open_hour.split(':',1)
+            open_hour_d[day.strip()]=time.strip()
+
+
         try:
             with transaction.atomic():
                 # 取得或建立咖啡店
@@ -35,7 +43,8 @@ class FavoritesManager:
                         'rating': info.get('rating'),
                         'user_ratings_total': info.get('user_ratings_total', 0),
                         'google_maps': info.get('google_maps', ''),
-                        'website': info.get('website', '')
+                        'website': info.get('website', ''),
+                        'opening_hours': open_hour_d
                     }
                 )
 

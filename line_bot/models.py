@@ -79,7 +79,7 @@ class Cafe(models.Model):
     user_ratings_total = models.IntegerField(default=0, verbose_name='評論數量')
 
     # 營業資訊
-    opening_hours = models.JSONField(default=list, blank=True, verbose_name='營業時間')
+    opening_hours = models.TextField(default=list, blank=True, verbose_name='營業時間')
     website = models.URLField(blank=True, null=True, verbose_name='官方網站')
     google_maps = models.URLField(blank=True, null=True, verbose_name='Google Maps 連結')
 
