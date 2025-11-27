@@ -13,8 +13,8 @@ from linebot.v3.messaging import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.models import Cafe
-from line_bot.models import User
+from line_bot.models import Cafe, User
+from line_bot.utils import parse_opening_hours
 
 logger = logging.getLogger(__name__)
 
@@ -295,11 +295,9 @@ class LineMessageBuilder:
                     )
                     return
 
-                opening_hours = info_d['opening_hours']
-                opening_hours_d = {}
-                for opening_hour in opening_hours:
-                    day, time = opening_hour.split(': ', 1)
-                    opening_hours_d[day.strip()] = time.strip()
+                opening_hours_l = info_d['opening_hours']
+
+                opening_hours_d = parse_opening_hours(opening_hours_l)
 
                 cafe = Cafe.objects.create(
                     place_id=info_d['place_id'],
@@ -317,6 +315,7 @@ class LineMessageBuilder:
             else:
                 # 資料庫有 → 直接轉換
                 info_d = cafe.to_dict()
+                print(info_d)
 
             is_favorited = user.favorites.filter(cafe=cafe).exists()
 
