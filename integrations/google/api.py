@@ -177,7 +177,7 @@ class GoogleAPI:
         search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
         params = {
             'location': f'{lat},{lng}',
-            'radius': 100,  # 搜尋半徑 500 公尺
+            'radius': 100,  # 搜尋半徑 100 公尺
             'type': 'cafe',
             'keyword': '咖啡店',
             'key': GoogleAPI.GOOGLE_API_KEY,
