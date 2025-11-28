@@ -19,7 +19,8 @@ from linebot.v3.messaging import (
 from integrations.google.api import GoogleAPI
 from requests.exceptions import RequestException, Timeout
 
-from line_bot.models import Cafe, Favorite, User
+from cafe.models import Cafe, Favorite
+from users.models import User
 
 logger = logging.getLogger(__name__)
 

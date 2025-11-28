@@ -13,8 +13,8 @@ from linebot.v3.messaging import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.models import Cafe
-from line_bot.models import User
+from cafe.models import Cafe
+from users.models import User
 
 logger = logging.getLogger(__name__)
 

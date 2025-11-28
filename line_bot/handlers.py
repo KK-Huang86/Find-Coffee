@@ -26,7 +26,8 @@ from linebot.v3.webhooks import (
 
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder,PostbackBuilder,FavoritesMessageBuilder
-from line_bot.models import User, Cafe
+from users.models import User
+from cafe.models import Cafe
 from line_bot.utils import FlexContainer
 from users.views import FavoritesManager
 
