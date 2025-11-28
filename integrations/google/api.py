@@ -177,7 +177,7 @@ class GoogleAPI:
         search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
         params = {
             'location': f'{lat},{lng}',
-            'radius': 500,  # 搜尋半徑 500 公尺
+            'radius': 100,  # 搜尋半徑 500 公尺
             'type': 'cafe',
             'keyword': '咖啡店',
             'key': GoogleAPI.GOOGLE_API_KEY,
@@ -203,7 +203,7 @@ class GoogleAPI:
             return []
 
         # 貝葉斯平均所需參數
-        VOTE_THRESHOLD = 20  # C: 最小必須評分人數
+        VOTE_THRESHOLD = 50  # C: 最小必須評分人數
         AVERAGE_RATING = 4.0  # m: 假設的整體平均評分
 
         results = search_result['results']
@@ -241,7 +241,6 @@ class GoogleAPI:
         # 根據加權評分進行排序
         sorted_places = sorted(weighted_rank, key=lambda x: x['weighted_rating'], reverse=True)
 
-        print(sorted_places)
         target_cafes = sorted_places[:5]
 
         shops = [
@@ -250,5 +249,4 @@ class GoogleAPI:
             for shop in target_cafes
         ]
 
-        print(shops)
         return shops

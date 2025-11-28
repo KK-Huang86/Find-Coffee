@@ -282,6 +282,77 @@ class FlexMessageBuilder:
 class LineMessageBuilder:
 
     @staticmethod
+    def _get_or_create_shop_info(place_id):
+        """
+        嘗試從資料庫取得店家資訊，若無，則從 Google API 取得資料並寫入資料庫。
+
+        Args:
+            place_id (str): Google Places ID.
+
+        Returns:
+            tuple: (info_d, cafe_obj)
+                   info_d (dict): 包含店家詳細資訊的字典。
+                   cafe_obj (Cafe): 相關的 Cafe Model 實例。
+                   若失敗，則回傳 (None, None)。
+        """
+        cafe = Cafe.objects.filter(place_id=place_id).first()
+
+        if cafe:
+            # 1. 資料庫有 → 直接轉換
+            info_d = cafe.to_dict()
+            return info_d, cafe
+
+        # 2. 資料庫無 → 呼叫 Google API
+        info_d = GoogleAPI.get_shop_detail(place_id)
+
+        """
+        {
+             'name': '點二咖啡(公休日請看ig 精選限動，不接待超過四人、無插座、禁帶寵物）',
+             'address': '台北市中山区民族东路208號2樓', 
+             'phone': '無提供', 
+             'rating': Decimal('4.4'),
+             'user_ratings_total': 657, 
+             'place_id': 'ChIJl9JYfaupQjQR8E80com/?cid=17207212494665568240',
+             'website': 'https://www.facebook.com/point2coffee/', 
+             'lat': 25.0681271, 'lng': 121.5311919,
+             'opening_hours': {'星期一': '12:00 – 18:00',
+              '星期二': '12:00 – 18:00', 
+              '星期三': '12:00 – 18:00',
+              '星期四': '12:00 - 18:00', 
+              '星期五': '12:00 – 18:00', 
+              '星期六': '12:00 – 18:00',
+              '星期日': '12:00 – 18:00'}
+        }
+        """
+
+        if not info_d:
+            return None, None
+
+        # 3. 解析並寫入資料庫
+        try:
+            opening_hours_l = info_d.get('opening_hours', [])
+            opening_hours_d = parse_opening_hours(opening_hours_l)
+
+            cafe = Cafe.objects.create(
+                place_id=info_d['place_id'],
+                name=info_d['name'],
+                address=info_d['address'],
+                phone=info_d.get('phone', ''),
+                rating=info_d.get('rating'),
+                user_ratings_total=info_d.get('user_ratings_total', 0),
+                google_maps=info_d.get('google_maps', ''),
+                website=info_d.get('website', ''),
+                lat=info_d.get('lat'),
+                lng=info_d.get('lng'),
+                opening_hours=opening_hours_d
+            )
+            return cafe.to_dict(), cafe  # 使用新建立的 cafe 物件的 to_dict
+
+        except Exception as e:
+            logger.error(f'儲存或解析店家資料時發生錯誤: {e}', exc_info=True)
+            return None, None
+
+    @staticmethod
     def send_shop_result(line_bot_api, reply_token, shops, user):
 
         if not shops:
@@ -298,60 +369,18 @@ class LineMessageBuilder:
             # 單筆結果
             place_id = shops[0]['place_id']
 
-            cafe = Cafe.objects.filter(place_id=place_id).first()
-            if not cafe:
-                info_d = GoogleAPI.get_shop_detail(place_id)
+            info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id)
 
-                if not info_d:
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=reply_token,
-                            messages=[TextMessage(text='無法取得店家詳細資訊')]
-                        )
+            if not info_d:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text='無法取得店家詳細資訊')]
                     )
-                    return
-
-                opening_hours_l = info_d['opening_hours']
-
-                opening_hours_d = parse_opening_hours(opening_hours_l)
-
-                cafe = Cafe.objects.create(
-                    place_id=info_d['place_id'],
-                    name=info_d['name'],
-                    address=info_d['address'],
-                    phone=info_d.get('phone', ''),
-                    rating=info_d.get('rating'),
-                    user_ratings_total=info_d.get('user_ratings_total', 0),
-                    google_maps=info_d.get('google_maps', ''),
-                    website=info_d.get('website', ''),
-                    lat=info_d.get('lat'),
-                    lng=info_d.get('lng'),
-                    opening_hours=opening_hours_d
                 )
-            else:
-                # 資料庫有 → 直接轉換
-                info_d = cafe.to_dict()
-                '''
-                 {
-                 'name': '點二咖啡(公休日請看ig 精選限動，不接待超過四人、無插座、禁帶寵物）',
-                 'address': '台北市中山区民族东路208號2樓', 
-                 'phone': '無提供', 
-                 'rating': Decimal('4.4'),
-                 'user_ratings_total': 657, 
-                 'place_id': 'ChIJl9JYfaupQjQR8E80com/?cid=17207212494665568240',
-                 'website': 'https://www.facebook.com/point2coffee/', 
-                 'lat': 25.0681271, 'lng': 121.5311919,
-                 'opening_hours': {'星期一': '12:00 – 18:00',
-                  '星期二': '12:00 – 18:00', 
-                  '星期三': '12:00 – 18:00',
-                  '星期四': '12:00 - 18:00', 
-                  '星期五': '12:00 – 18:00', 
-                  '星期六': '12:00 – 18:00',
-                  '星期日': '12:00 – 18:00'}
-                  }
-                '''
+                return
 
-                is_favorited = user.favorites.filter(cafe=cafe).exists()
+            is_favorited = user.favorites.filter(cafe=cafe).exists()
 
             flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
 
@@ -377,14 +406,15 @@ class LineMessageBuilder:
                     ]
                 )
             )
+            return
 
         if 2 <= len(shops) <= 5:
             # 多筆結果
             flex_messages = []
             for shop in shops:
                 place_id = shop['place_id']
-                info_d = GoogleAPI.get_shop_detail(place_id)
-                logger.info(info_d)
+
+                info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id)
 
                 if info_d:
                     flex_data = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
