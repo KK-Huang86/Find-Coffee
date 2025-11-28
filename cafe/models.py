@@ -1,6 +1,8 @@
 from django.db import models
 from django.db.models import F
+
 from users.models import User
+
 
 # Create your models here.
 
@@ -20,12 +22,18 @@ class Cafe(models.Model):
     rating = models.DecimalField(max_digits=2, decimal_places=1, blank=True, null=True, verbose_name='Google 評分')
     user_ratings_total = models.IntegerField(default=0, verbose_name='評論數量')
 
+    has_plug = models.BooleanField(null=True, blank=True, verbose_name='是否有插座')
+    is_time_unlimited = models.BooleanField(null=True, blank=True, verbose_name='是否不限時')
+
     # 營業資訊
     opening_hours = models.JSONField(default=list, blank=True, verbose_name='營業時間')
     website = models.URLField(blank=True, null=True, verbose_name='官方網站')
     google_maps = models.URLField(blank=True, null=True, verbose_name='Google Maps 連結')
 
     favorite_count = models.IntegerField(default=0, verbose_name='收藏數')
+
+    # 查詢資料是否有定期更新，每30天會更新資料（使用者若有查詢該筆資料）
+    last_refreshed = models.DateTimeField(null=True, blank=True, verbose_name='資料最後更新時間')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -64,7 +72,7 @@ class Cafe(models.Model):
             'website': self.website,
             'lat': self.lat,
             'lng': self.lng,
-            'opening_hours': []  # 如果有存的話再加
+            'opening_hours': self.opening_hours
         }
 
     @classmethod
@@ -98,5 +106,3 @@ class Favorite(models.Model):
         verbose_name = '收藏'
         verbose_name_plural = '收藏列表'
         unique_together = ('user', 'cafe')
-
-
