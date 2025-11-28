@@ -15,11 +15,13 @@ from linebot.v3.messaging import (
 from integrations.google.api import GoogleAPI
 from cafe.models import Cafe
 from users.models import User
+from line_bot.utils import parse_opening_hours
 
 logger = logging.getLogger(__name__)
 
 
 class FlexMessageBuilder:
+    WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
 
     @staticmethod
     def create_shop_flex_message(info, is_multiple=False):
@@ -61,27 +63,42 @@ class FlexMessageBuilder:
             return stars
 
         # 處理營業時間格式
-        def _format_opening_hours(hours_list):
+        def _format_opening_hours(open_hours: dict):
             """將營業時間列表格式化為簡潔字串"""
-            if not hours_list:
+
+            if not open_hours:
                 return '營業時間未提供'
 
-            # 取今天和明天的營業時間（簡化顯示）
             """
+            1. 從資料庫拉出來的營業時間範例：-> dict
             'opening_hours': 
-            ['星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00']
+            {'星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00'}
+            
+            2. 從 Google API 拉出來的營業時間範例： -> list
+            ['星期一: 12:00 – 20:00', '星期二: 12:00 – 20:00', '星期三: 12:00 – 20:00', '星期四: 12:00 – 20:00', '星期五: 12:00 – 20:00', '星期六: 12:00 – 20:00', '星期日: 12:00 – 20:00']
             """
 
-            weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
-            if weekday_index >= len(hours_list):
-                # 避免索引超出範圍
-                open_time = hours_list[0]  # 會有個問題，如果超出範圍回傳星期一的話，可能會導致營業時間不準
-            else:
-                open_time = hours_list[weekday_index]
+            if isinstance(open_hours, dict):
+                hours_d = open_hours
 
-            # 移除'星期X: '前綴
-            open_time = open_time.split(': ', 1)[1] if ': ' in open_time else open_time
-            return open_time
+            else:
+                # 處理從 Google API 拉出來的 list 格式
+                hours_d = {}
+                for day_info in open_hours:
+                    if ': ' in day_info:
+                        day, time_str = day_info.split(': ', 1)
+                        hours_d[day] = time_str
+
+            # 星期對應表
+            weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
+            today = FlexMessageBuilder.WEEKDAYS[weekday_index]
+
+            if today in hours_d:
+                time_str = hours_d[today]
+                # 如果是「休息」或「公休」，明確顯示
+                if time_str in ['休息', '公休', 'Closed']:
+                    return f'今日休息'
+                return time_str
 
         # 建立星星評分區塊
         star_icons = _generate_star_icons(info.get('rating'))
@@ -196,7 +213,7 @@ class FlexMessageBuilder:
                                     },
                                     {
                                         'type': 'text',
-                                        'text': _format_opening_hours(info.get('opening_hours', [])),
+                                        'text': _format_opening_hours(info.get('opening_hours', {})),
                                         'wrap': True,
                                         'color': '#666666',
                                         'size': 'sm',
@@ -295,6 +312,10 @@ class LineMessageBuilder:
                     )
                     return
 
+                opening_hours_l = info_d['opening_hours']
+
+                opening_hours_d = parse_opening_hours(opening_hours_l)
+
                 cafe = Cafe.objects.create(
                     place_id=info_d['place_id'],
                     name=info_d['name'],
@@ -305,13 +326,33 @@ class LineMessageBuilder:
                     google_maps=info_d.get('google_maps', ''),
                     website=info_d.get('website', ''),
                     lat=info_d.get('lat'),
-                    lng=info_d.get('lng')
+                    lng=info_d.get('lng'),
+                    opening_hours=opening_hours_d
                 )
             else:
                 # 資料庫有 → 直接轉換
                 info_d = cafe.to_dict()
+                '''
+                 {
+                 'name': '點二咖啡(公休日請看ig 精選限動，不接待超過四人、無插座、禁帶寵物）',
+                 'address': '台北市中山区民族东路208號2樓', 
+                 'phone': '無提供', 
+                 'rating': Decimal('4.4'),
+                 'user_ratings_total': 657, 
+                 'place_id': 'ChIJl9JYfaupQjQR8E80com/?cid=17207212494665568240',
+                 'website': 'https://www.facebook.com/point2coffee/', 
+                 'lat': 25.0681271, 'lng': 121.5311919,
+                 'opening_hours': {'星期一': '12:00 – 18:00',
+                  '星期二': '12:00 – 18:00', 
+                  '星期三': '12:00 – 18:00',
+                  '星期四': '12:00 - 18:00', 
+                  '星期五': '12:00 – 18:00', 
+                  '星期六': '12:00 – 18:00',
+                  '星期日': '12:00 – 18:00'}
+                  }
+                '''
 
-            is_favorited = user.favorites.filter(cafe=cafe).exists()
+                is_favorited = user.favorites.filter(cafe=cafe).exists()
 
             flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
 
