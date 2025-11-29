@@ -1,6 +1,7 @@
 import random
 import string
 
+from django.core.exceptions import ValidationError
 from django.db import models, IntegrityError
 
 
@@ -72,6 +73,21 @@ class Friendship(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def clean(self):
+        if self.user == self.friend:
+            raise ValidationError('使用者不能加自己為好友')
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
     class Meta:
         db_table = 'friendships'
         unique_together = [['user', 'friend']]
+
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(user=models.F('friend')),  # 驗證user是否!=friend
+                name='prevent_self_friendship'
+            )
+        ]
