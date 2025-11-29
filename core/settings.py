@@ -51,7 +51,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'line_bot',
     'users',
-    'cafe'
+    'cafe',
+    'integrations'
+
 ]
 
 MIDDLEWARE = [

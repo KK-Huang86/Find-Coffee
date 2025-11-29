@@ -13,7 +13,8 @@ from linebot.v3.messaging import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.models import Cafe, User
+from cafe.models import Cafe
+from users.models import User
 from line_bot.utils import parse_opening_hours
 
 logger = logging.getLogger(__name__)
