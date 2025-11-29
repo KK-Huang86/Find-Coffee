@@ -16,8 +16,8 @@ from linebot.v3.messaging import (
     LocationAction
 )
 
-from integrations.google.api import GoogleAPI
 from cafe.models import Cafe
+from integrations.google.api import GoogleAPI
 from users.models import User
 from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText
@@ -27,6 +27,45 @@ logger = logging.getLogger(__name__)
 
 class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+
+    # 處理營業時間格式
+    @staticmethod
+    def format_opening_hours(open_hours: dict):
+        """將營業時間列表格式化為簡潔字串"""
+
+        if not open_hours:
+            return '營業時間未提供'
+
+        """
+        1. 從資料庫拉出來的營業時間範例：-> dict
+        'opening_hours': 
+        {'星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00'}
+
+        2. 從 Google API 拉出來的營業時間範例： -> list
+        ['星期一: 12:00 – 20:00', '星期二: 12:00 – 20:00', '星期三: 12:00 – 20:00', '星期四: 12:00 – 20:00', '星期五: 12:00 – 20:00', '星期六: 12:00 – 20:00', '星期日: 12:00 – 20:00']
+        """
+
+        if isinstance(open_hours, dict):
+            hours_d = open_hours
+
+        else:
+            # 處理從 Google API 拉出來的 list 格式
+            hours_d = {}
+            for day_info in open_hours:
+                if ': ' in day_info:
+                    day, time_str = day_info.split(': ', 1)
+                    hours_d[day] = time_str
+
+        # 星期對應表
+        weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
+        today = FlexMessageBuilder.WEEKDAYS[weekday_index]
+
+        if today in hours_d:
+            time_str = hours_d[today]
+            # 如果是「休息」或「公休」，明確顯示
+            if time_str in ['休息', '公休', 'Closed']:
+                return f'今日休息'
+            return time_str
 
     @staticmethod
     def create_shop_flex_message(info, is_multiple=False):
@@ -66,44 +105,6 @@ class FlexMessageBuilder:
                 })
 
             return stars
-
-        # 處理營業時間格式
-        def _format_opening_hours(open_hours):
-            """將營業時間列表格式化為簡潔字串"""
-
-            if not open_hours:
-                return '營業時間未提供'
-
-            """
-            1. 從資料庫拉出來的營業時間範例：-> dict
-            'opening_hours': 
-            {'星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00'}
-            
-            2. 從 Google API 拉出來的營業時間範例： -> list
-            ['星期一: 12:00 – 20:00', '星期二: 12:00 – 20:00', '星期三: 12:00 – 20:00', '星期四: 12:00 – 20:00', '星期五: 12:00 – 20:00', '星期六: 12:00 – 20:00', '星期日: 12:00 – 20:00']
-            """
-
-            if isinstance(open_hours, dict):
-                hours_d = open_hours
-
-            else:
-                # 處理從 Google API 拉出來的 list 格式
-                hours_d = {}
-                for day_info in open_hours:
-                    if ': ' in day_info:
-                        day, time_str = day_info.split(': ', 1)
-                        hours_d[day] = time_str
-
-            # 星期對應表
-            weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
-            today = FlexMessageBuilder.WEEKDAYS[weekday_index]
-
-            if today in hours_d:
-                time_str = hours_d[today]
-                # 如果是「休息」或「公休」，明確顯示
-                if time_str in ['休息', '公休', 'Closed']:
-                    return f'今日休息'
-                return time_str
 
         # 建立星星評分區塊
         star_icons = _generate_star_icons(info.get('rating'))
@@ -218,7 +219,7 @@ class FlexMessageBuilder:
                                     },
                                     {
                                         'type': 'text',
-                                        'text': _format_opening_hours(info.get('opening_hours', {})),
+                                        'text': FlexMessageBuilder.format_opening_hours(info.get('opening_hours', {})),
                                         'wrap': True,
                                         'color': '#666666',
                                         'size': 'sm',
@@ -630,9 +631,32 @@ class FavoritesMessageBuilder:
                                 'size': 'sm',
                                 'color': '#999999',
                                 'flex': 1
+                            },
+                        ]
+                    },
+
+                    {
+                        'type': 'box',
+                        'layout': 'baseline',
+                        'spacing': 'sm',
+                        'contents': [
+                            {
+                                'type': 'text',
+                                'text': f'今日營業時間:',
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
+                            },
+
+                            {
+                                'type': 'text',
+                                'text': FlexMessageBuilder.format_opening_hours(fav.cafe.opening_hours),
+                                'size': 'sm',
+                                'color': '#aaaaaa',
+                                'flex': 0
                             }
                         ]
-                    }
+                    },
                 ],
                 'action': {
                     'type': 'postback',
