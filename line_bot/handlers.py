@@ -28,7 +28,8 @@ from linebot.v3.webhooks import (
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
     FavoritesMessageBuilder
-from line_bot.models import User, Cafe
+from users.models import User
+from cafe.models import Cafe
 from users.views import FavoritesManager
 
 logger = logging.getLogger(__name__)

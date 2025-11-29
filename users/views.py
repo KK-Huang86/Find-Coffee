@@ -4,8 +4,8 @@ import logging
 
 from django.db import transaction, IntegrityError
 
-from line_bot.models import Cafe, Favorite
 from line_bot.utils import parse_opening_hours
+from cafe.models import Cafe, Favorite
 
 logger = logging.getLogger(__name__)
 
