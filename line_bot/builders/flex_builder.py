@@ -328,6 +328,10 @@ class LineMessageBuilder:
         if not info_d:
             return None, None
 
+        if not info_d.get('place_id'):
+            logger.error('缺少 place_id,無法建立店家資料')
+            return None, None
+
         # 3. 解析並寫入資料庫
         try:
             opening_hours_l = info_d.get('opening_hours', [])
@@ -335,15 +339,15 @@ class LineMessageBuilder:
 
             cafe = Cafe.objects.create(
                 place_id=info_d['place_id'],
-                name=info_d['name'],
-                address=info_d['address'],
-                phone=info_d.get('phone', ''),
+                name=info_d.get('name') or '未提供名稱',
+                address=info_d.get('address') or '未提供地址',
+                phone=info_d.get('phone') or '未提供電話',
                 rating=info_d.get('rating'),
                 user_ratings_total=info_d.get('user_ratings_total', 0),
-                google_maps=info_d.get('google_maps', ''),
-                website=info_d.get('website', ''),
-                lat=info_d.get('lat'),
-                lng=info_d.get('lng'),
+                google_maps=info_d.get('google_maps') or '未提供地圖連結',
+                website=info_d.get('website') or '未提供網站',
+                lat=info_d.get('lat') or 0.0,
+                lng=info_d.get('lng') or 0.0,
                 opening_hours=opening_hours_d
             )
             return cafe.to_dict(), cafe  # 使用新建立的 cafe 物件的 to_dict

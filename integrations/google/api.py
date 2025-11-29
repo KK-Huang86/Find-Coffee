@@ -215,7 +215,7 @@ class GoogleAPI:
 
             # 計算加權評分 (weighted_rating)
             # weighted_rating =
-            # (VOTE_THRESHOLD(最少需要多少人評分) * AVERAGE_RATING(假設的整體平均評分數) + rating(實際評分) * N(實際評分人數)) / (VOTE_THRESHOLD(最少需要多少人評分) + AVERAGE_RATING(假設的整體平均評分數))
+            # (VOTE_THRESHOLD(最少需要多少人評分) * AVERAGE_RATING(假設的整體平均評分數) + rating(實際評分) * N(實際評分人數)) / (VOTE_THRESHOLD(最少需要多少人評分) + N(實際評分人數)
 
             if n > 0:
                 weighted_rating = (VOTE_THRESHOLD * AVERAGE_RATING + rating * n) / (VOTE_THRESHOLD + n)
