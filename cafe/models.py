@@ -87,7 +87,6 @@ class Cafe(models.Model):
         verbose_name = '咖啡店'
         verbose_name_plural = '咖啡店列表'
         indexes = [
-            models.Index(fields=['place_id']),
             models.Index(fields=['-favorite_count']),
             models.Index(fields=['lat', 'lng']),  # 地理位置搜尋
         ]
