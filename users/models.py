@@ -62,3 +62,16 @@ class User(models.Model):
         db_table = 'users'
         verbose_name = '使用者'
         verbose_name_plural = '使用者列表'
+
+
+class Friendship(models.Model):
+    """好友關係"""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='friendships')
+    friend = models.ForeignKey(User, on_delete=models.CASCADE, related_name='friend_of')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'friendships'
+        unique_together = [['user', 'friend']]
