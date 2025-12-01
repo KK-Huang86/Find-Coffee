@@ -56,6 +56,17 @@ class UserState:
     WAITING_ADDRESS = 'waiting_address'
 
 
+class MenuText:
+    SHARE_LOCATION = '分享位置查詢'
+    SEARCH_SHOP_NAME = '店名查詢'
+    SEARCH_ADDRESS = '路名查詢'
+    FAVORITES = '收藏的咖啡店'
+    RECENT_SEARCH = '最近查詢'
+    MORE_INFO = '更多資訊'
+
+
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     with ApiClient(configuration) as api_client:
@@ -86,7 +97,7 @@ def handle_message(event):
             user_states[user_id] = UserState.NORMAL
             return
 
-        if text == '分享位置查詢':
+        if text == MenuText.SHARE_LOCATION:
 
             quick_reply = QuickReply(
                 items=[
@@ -114,7 +125,7 @@ def handle_message(event):
                 )
             )
 
-        elif text == '路名查詢':
+        elif text == MenuText.SEARCH_ADDRESS:
             user_states[user_id] = UserState.WAITING_ADDRESS
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -124,7 +135,7 @@ def handle_message(event):
             )
             return
 
-        elif text == '店名查詢':
+        elif text == MenuText.SEARCH_SHOP_NAME:
             user_states[user_id] = UserState.WAITING_SHOP_NAME
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -134,7 +145,7 @@ def handle_message(event):
             )
             return
 
-        elif text == '收藏的咖啡店':
+        elif text == MenuText.FAVORITES:
             user = User.objects.get(line_user_id=user_id)
             favorite_count = user.favorites.count()
 
