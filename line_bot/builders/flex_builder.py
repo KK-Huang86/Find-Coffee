@@ -442,15 +442,17 @@ class LineMessageBuilder:
                     'contents': flex_messages
                 }
 
+                flex_message = FlexMessage(
+                    alt_text=f'找到 {len(flex_messages)} 間咖啡店',
+                    contents=FlexContainer.from_dict(carousel)
+                )
+
+                flex_message.quick_reply = quick_reply
+
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=reply_token,
-                        messages=[
-                            FlexMessage(
-                                alt_text=f'找到 {len(flex_messages)} 間咖啡店',
-                                contents=FlexContainer.from_dict(carousel)
-                            )
-                        ]
+                        messages=[flex_message]
                     )
                 )
 
@@ -702,8 +704,14 @@ class QuickReplyBuilder:
             items=[
                 QuickReplyItem(
                     action=MessageAction(
-                        label='🔍 再找一間',
+                        label='🔍 再用路名查一次',
                         text=MenuText.SEARCH_ADDRESS
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='🔍 店名查詢',
+                        text=MenuText.SEARCH_SHOP_NAME
                     )
                 ),
                 QuickReplyItem(
@@ -730,7 +738,8 @@ class QuickReplyBuilder:
             items=[
                 QuickReplyItem(
                     action=LocationAction(
-                        label='📍 分享目前位置'
+                        label='📍 分享目前位置',
+                        text=MenuText.SHARE_LOCATION
                     )
                 )
             ]

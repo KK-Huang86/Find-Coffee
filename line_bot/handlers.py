@@ -64,7 +64,7 @@ def handle_message(event):
             pass
 
         # 使用者查詢單一咖啡店，回傳結果
-        elif state == UserState.WAITING_SHOP_NAME:
+        if state == UserState.WAITING_SHOP_NAME:
             shops = GoogleAPI.search_coffee_shops(text)
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
@@ -77,9 +77,15 @@ def handle_message(event):
             return
 
         # 使用者查詢某一路名的咖啡店，回傳結果
-        elif state == UserState.WAITING_ADDRESS:
+        if state == UserState.WAITING_ADDRESS:
             shops = GoogleAPI.search_nearby_coffee_shops(address=text)
-            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops, user)
+            LineMessageBuilder.send_shop_result(
+                line_bot_api,
+                event.reply_token,
+                shops,
+                user,
+                quick_reply=QuickReplyBuilder.create_carousel_pagination_actions()
+            )
             user_states[user_id] = UserState.NORMAL
             return
 
