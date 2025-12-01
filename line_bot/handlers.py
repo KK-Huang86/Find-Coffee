@@ -27,7 +27,7 @@ from linebot.v3.webhooks import (
 
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
-    FavoritesMessageBuilder
+    FavoritesMessageBuilder, QuickReplyBuilder
 from users.models import User
 from cafe.models import Cafe
 from users.views import FavoritesManager
@@ -70,7 +70,13 @@ def handle_message(event):
 
         if state == UserState.WAITING_SHOP_NAME:
             shops = GoogleAPI.search_coffee_shops(text)
-            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops, user)
+            LineMessageBuilder.send_shop_result(
+                line_bot_api,
+                event.reply_token,
+                shops,
+                user,
+                quick_reply=QuickReplyBuilder.create_search_again_actions()
+            )
             user_states[user_id] = UserState.NORMAL
             return
 

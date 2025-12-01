@@ -9,7 +9,10 @@ from linebot.v3.messaging import (
     TemplateMessage,
     FlexMessage,
     FlexCarousel,
-    FlexBubble
+    FlexBubble,
+    QuickReply,
+    QuickReplyItem,
+    MessageAction
 )
 
 from integrations.google.api import GoogleAPI
@@ -63,7 +66,7 @@ class FlexMessageBuilder:
             return stars
 
         # 處理營業時間格式
-        def _format_opening_hours(open_hours: dict):
+        def _format_opening_hours(open_hours):
             """將營業時間列表格式化為簡潔字串"""
 
             if not open_hours:
@@ -358,7 +361,7 @@ class LineMessageBuilder:
             return None, None
 
     @staticmethod
-    def send_shop_result(line_bot_api, reply_token, shops, user):
+    def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
 
         if not shops:
             # 回傳找不到店家的訊息
@@ -397,6 +400,8 @@ class LineMessageBuilder:
                 info_d,
                 is_favorited=is_favorited
             )
+
+            button_message.quick_reply = quick_reply
 
             # 回覆
             line_bot_api.reply_message(
@@ -651,4 +656,36 @@ class FavoritesMessageBuilder:
         return FlexMessage(
             alt_text='我的收藏清單',
             contents=FlexBubble.from_dict(flex_message)
+        )
+
+
+class QuickReplyBuilder:
+
+    @staticmethod
+    def create_search_again_actions():
+        """
+        搜尋後的通用快速回覆
+        適用情境: 單一咖啡店、多間咖啡店(2-4間)
+        """
+        return QuickReply(
+            items=[
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='🔍 再找一間',
+                        text='店名查詢'
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='📍 附近搜尋',
+                        text='分享位置查詢'
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='❤️ 我的收藏',
+                        text='收藏的咖啡店'
+                    )
+                )
+            ]
         )
