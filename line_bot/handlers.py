@@ -26,13 +26,12 @@ from linebot.v3.webhooks import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.constants import UserState,MenuText
+from line_bot.constants import UserState, MenuText
 from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
     FavoritesMessageBuilder, QuickReplyBuilder
 from users.models import User
 from cafe.models import Cafe
 from users.views import FavoritesManager
-
 
 logger = logging.getLogger(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
@@ -50,6 +49,7 @@ def handle_follow(event):
 
 
 user_states = {}
+
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
@@ -83,15 +83,7 @@ def handle_message(event):
 
         if text == MenuText.SHARE_LOCATION:
 
-            quick_reply = QuickReply(
-                items=[
-                    QuickReplyItem(
-                        action=LocationAction(
-                            label='📍 分享目前位置'
-                        )
-                    )
-                ]
-            )
+            quick_reply = QuickReplyBuilder.create_location_request()
 
             # 回覆訊息
             line_bot_api.reply_message(

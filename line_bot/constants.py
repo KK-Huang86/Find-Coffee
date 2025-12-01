@@ -1,7 +1,7 @@
 class UserState:
-    NORMAL = 'normal'
-    WAITING_SHOP_NAME = 'waiting_shop_name'
-    WAITING_ADDRESS = 'waiting_address'
+    NORMAL = '初始'
+    WAITING_SHOP_NAME = '等待查詢店名'
+    WAITING_ADDRESS = '等待查詢路名'
 
 
 class MenuText:

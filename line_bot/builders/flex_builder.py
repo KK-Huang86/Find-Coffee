@@ -12,7 +12,8 @@ from linebot.v3.messaging import (
     FlexBubble,
     QuickReply,
     QuickReplyItem,
-    MessageAction
+    MessageAction,
+    LocationAction
 )
 
 from integrations.google.api import GoogleAPI
@@ -715,6 +716,21 @@ class QuickReplyBuilder:
                     action=MessageAction(
                         label='❤️ 我的收藏',
                         text=MenuText.FAVORITES
+                    )
+                )
+            ]
+        )
+
+    @staticmethod
+    def create_location_request():
+        """
+        請求使用者分享位置的快速回覆
+        """
+        return QuickReply(
+            items=[
+                QuickReplyItem(
+                    action=LocationAction(
+                        label='📍 分享目前位置'
                     )
                 )
             ]
