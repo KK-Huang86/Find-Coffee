@@ -24,7 +24,8 @@ from linebot.v3.messaging import (
 
 )
 
-from .handlers import handler, MenuText
+from .handlers import handler
+from .constants import MenuText
 
 logger = logging.getLogger(__name__)
 

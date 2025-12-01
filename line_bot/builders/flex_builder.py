@@ -19,6 +19,7 @@ from integrations.google.api import GoogleAPI
 from cafe.models import Cafe
 from users.models import User
 from line_bot.utils import parse_opening_hours
+from line_bot.constants import MenuText
 
 logger = logging.getLogger(__name__)
 
@@ -672,19 +673,48 @@ class QuickReplyBuilder:
                 QuickReplyItem(
                     action=MessageAction(
                         label='🔍 再找一間',
-                        text='店名查詢'
+                        text=MenuText.SEARCH_SHOP_NAME
                     )
                 ),
                 QuickReplyItem(
                     action=MessageAction(
                         label='📍 附近搜尋',
-                        text='分享位置查詢'
+                        text=MenuText.SHARE_LOCATION
                     )
                 ),
                 QuickReplyItem(
                     action=MessageAction(
                         label='❤️ 我的收藏',
-                        text='收藏的咖啡店'
+                        text=MenuText.FAVORITES
+                    )
+                )
+            ]
+        )
+
+    @staticmethod
+    def create_carousel_pagination_actions(has_more=False):
+        """
+        搜尋後的通用快速回覆
+        適用情境: 搜尋地名、分享位置（5間以上）
+        """
+        return QuickReply(
+            items=[
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='🔍 再找一間',
+                        text=MenuText.SEARCH_ADDRESS
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='📍 附近搜尋',
+                        text=MenuText.SHARE_LOCATION
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='❤️ 我的收藏',
+                        text=MenuText.FAVORITES
                     )
                 )
             ]
