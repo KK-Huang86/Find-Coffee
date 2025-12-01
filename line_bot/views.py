@@ -24,7 +24,7 @@ from linebot.v3.messaging import (
 
 )
 
-from .handlers import handler
+from .handlers import handler, MenuText
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +343,7 @@ def rich_menu():
                 height=1686
             ),
             selected=True,
-            name='Nice richmenu',
+            name='richmenu',
             chat_bar_text='點我查看更多',
             areas=[
                 RichMenuArea(
@@ -354,8 +354,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='店名查詢',
-                        text='店名查詢'
+                        label=MenuText.SEARCH_SHOP_NAME,
+                        text=MenuText.SEARCH_SHOP_NAME
                     )
                 ),
                 RichMenuArea(
@@ -366,8 +366,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='路名查詢',
-                        text='路名查詢'
+                        label=MenuText.SEARCH_ADDRESS,
+                        text=MenuText.SEARCH_ADDRESS
                     )
                 ),
                 RichMenuArea(
@@ -378,8 +378,8 @@ def rich_menu():
                         height=843
                     ),
                     action=MessageAction(
-                        label='分享位置查詢',
-                        text='分享位置查詢'
+                        label=MenuText.SHARE_LOCATION,
+                        text=MenuText.SHARE_LOCATION
                     )
                 ),
                 RichMenuArea(
@@ -390,8 +390,8 @@ def rich_menu():
                         height=842
                     ),
                     action=MessageAction(
-                        label='收藏的咖啡店',
-                        text='收藏的咖啡店'
+                        label=MenuText.FAVORITES,
+                        text=MenuText.FAVORITES
                     )
                 ),
                 RichMenuArea(
