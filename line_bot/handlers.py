@@ -63,7 +63,8 @@ def handle_message(event):
         if state == UserState.NORMAL:
             pass
 
-        if state == UserState.WAITING_SHOP_NAME:
+        # 使用者查詢單一咖啡店，回傳結果
+        elif state == UserState.WAITING_SHOP_NAME:
             shops = GoogleAPI.search_coffee_shops(text)
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
@@ -75,13 +76,15 @@ def handle_message(event):
             user_states[user_id] = UserState.NORMAL
             return
 
-        if state == UserState.WAITING_ADDRESS:
+        # 使用者查詢某一路名的咖啡店，回傳結果
+        elif state == UserState.WAITING_ADDRESS:
             shops = GoogleAPI.search_nearby_coffee_shops(address=text)
             LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops, user)
             user_states[user_id] = UserState.NORMAL
             return
 
-        if text == MenuText.SHARE_LOCATION:
+        # 使用者開始定位分享查詢咖啡店
+        elif text == MenuText.SHARE_LOCATION:
 
             quick_reply = QuickReplyBuilder.create_location_request()
 
@@ -101,6 +104,7 @@ def handle_message(event):
                 )
             )
 
+        # 使用者點選查詢路名
         elif text == MenuText.SEARCH_ADDRESS:
             user_states[user_id] = UserState.WAITING_ADDRESS
             line_bot_api.reply_message(
@@ -111,6 +115,7 @@ def handle_message(event):
             )
             return
 
+        # 使用者點選查詢咖啡店
         elif text == MenuText.SEARCH_SHOP_NAME:
             user_states[user_id] = UserState.WAITING_SHOP_NAME
             line_bot_api.reply_message(
@@ -121,6 +126,7 @@ def handle_message(event):
             )
             return
 
+        # 使用者點選查詢收藏名單
         elif text == MenuText.FAVORITES:
             user = User.objects.get(line_user_id=user_id)
             favorite_count = user.favorites.count()
@@ -133,7 +139,6 @@ def handle_message(event):
                 # 1-5 間 → Carousel
                 message = FavoritesMessageBuilder.show_favorites_carousel(user_id)
 
-
             else:
                 # 超過 5 間 → 分多頁的 Carousel
                 message = FavoritesMessageBuilder.show_favorites_list(user_id)
@@ -145,6 +150,7 @@ def handle_message(event):
                 )
             )
 
+        # 使用者並沒有先點 RichMenu而輸入文字
         else:  # 待改
             line_bot_api.reply_message(
                 ReplyMessageRequest(
