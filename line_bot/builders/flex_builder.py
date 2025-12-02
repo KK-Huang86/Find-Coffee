@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date
+from typing import Union
 
 from linebot.v3.messaging import (
     ReplyMessageRequest,
@@ -30,7 +31,7 @@ class FlexMessageBuilder:
 
     # 處理營業時間格式
     @staticmethod
-    def format_opening_hours(open_hours: dict):
+    def format_opening_hours(open_hours: 'Union[dict, list]'):
         """將營業時間列表格式化為簡潔字串"""
 
         if not open_hours:
@@ -64,7 +65,7 @@ class FlexMessageBuilder:
             time_str = hours_d[today]
             # 如果是「休息」或「公休」，明確顯示
             if time_str in ['休息', '公休', 'Closed']:
-                return f'今日休息'
+                return '今日休息'
             return time_str
 
     @staticmethod
@@ -642,19 +643,11 @@ class FavoritesMessageBuilder:
                         'contents': [
                             {
                                 'type': 'text',
-                                'text': f'今日營業時間:',
+                                'text': f'今日營業時間: {FlexMessageBuilder.format_opening_hours(fav.cafe.opening_hours)}',
+                                'wrap': True,
                                 'size': 'sm',
-                                'color': '#aaaaaa',
-                                'flex': 0
+                                'color': '#aaaaaa'
                             },
-
-                            {
-                                'type': 'text',
-                                'text': FlexMessageBuilder.format_opening_hours(fav.cafe.opening_hours),
-                                'size': 'sm',
-                                'color': '#aaaaaa',
-                                'flex': 0
-                            }
                         ]
                     },
                 ],
