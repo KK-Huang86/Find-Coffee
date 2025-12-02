@@ -19,9 +19,9 @@ from linebot.v3.messaging import (
 
 from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
-from users.models import User
-from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText
+from line_bot.utils import parse_opening_hours
+from users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +561,8 @@ class FavoritesMessageBuilder:
                 'text': '❤️ 我的收藏',
                 'weight': 'bold',
                 'size': 'xl',
-                'margin': 'md'
+                'margin': 'md',
+                'align': 'center',
             },
             {
                 'type': 'separator',
@@ -761,4 +762,3 @@ class QuickReplyBuilder:
                 )
             ]
         )
-
