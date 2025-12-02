@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+    CLOSED_TEXTS = {'休息', '公休', 'Closed'}  # 沒有順序，使用 set 更快
 
     # 處理營業時間格式
     @staticmethod
@@ -64,9 +65,10 @@ class FlexMessageBuilder:
         if today in hours_d:
             time_str = hours_d[today]
             # 如果是「休息」或「公休」，明確顯示
-            if time_str in ['休息', '公休', 'Closed']:
+            if time_str in FlexMessageBuilder.CLOSED_TEXTS:
                 return '今日休息'
             return time_str
+        return '今日未營業'
 
     @staticmethod
     def create_shop_flex_message(info, is_multiple=False):
