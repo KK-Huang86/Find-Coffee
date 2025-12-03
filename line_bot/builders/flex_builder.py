@@ -32,7 +32,7 @@ class FlexMessageBuilder:
 
     # 處理營業時間格式
     @staticmethod
-    def format_opening_hours(open_hours: 'Union[dict, list]'):
+    def format_opening_hours(open_hours: Union[dict, list]):
         """將營業時間列表格式化為簡潔字串"""
 
         if not open_hours:
@@ -52,11 +52,7 @@ class FlexMessageBuilder:
 
         else:
             # 處理從 Google API 拉出來的 list 格式
-            hours_d = {}
-            for day_info in open_hours:
-                if ': ' in day_info:
-                    day, time_str = day_info.split(': ', 1)
-                    hours_d[day] = time_str
+            hours_d = parse_opening_hours(open_hours)
 
         # 星期對應表
         weekday_index = date.today().isoweekday() - 1  # 轉成 0～6
