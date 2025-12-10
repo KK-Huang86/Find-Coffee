@@ -4,7 +4,8 @@ import logging
 
 from django.db import transaction, IntegrityError
 
-from line_bot.models import Cafe, Favorite
+from line_bot.utils import parse_opening_hours
+from cafe.models import Cafe, Favorite
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ class FavoritesManager:
         if not info.get('place_id') or not info.get('name'):
             return False, '咖啡店資訊不完整'
 
+        opening_hours_d = parse_opening_hours(info.get('opening_hours', []))
+
         try:
             with transaction.atomic():
                 # 取得或建立咖啡店
@@ -35,7 +38,8 @@ class FavoritesManager:
                         'rating': info.get('rating'),
                         'user_ratings_total': info.get('user_ratings_total', 0),
                         'google_maps': info.get('google_maps', ''),
-                        'website': info.get('website', '')
+                        'website': info.get('website', ''),
+                        'opening_hours': opening_hours_d
                     }
                 )
 

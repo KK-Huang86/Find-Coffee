@@ -12,7 +12,8 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyItem,
     LocationAction,
-    FlexMessage
+    FlexMessage,
+    FlexContainer
 
 )
 from linebot.v3.webhooks import (
@@ -25,9 +26,11 @@ from linebot.v3.webhooks import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder,PostbackBuilder,FavoritesMessageBuilder
-from line_bot.models import User, Cafe
-from line_bot.utils import FlexContainer
+from line_bot.constants import UserState, MenuText
+from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
+    FavoritesMessageBuilder, QuickReplyBuilder
+from users.models import User
+from cafe.models import Cafe
 from users.views import FavoritesManager
 from utils.utils import LockService
 
@@ -49,12 +52,6 @@ def handle_follow(event):
 user_states = {}
 
 
-class UserState:
-    NORMAL = 'normal'
-    WAITING_SHOP_NAME = 'waiting_shop_name'
-    WAITING_ADDRESS = 'waiting_address'
-
-
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     with ApiClient(configuration) as api_client:
@@ -71,29 +68,36 @@ def handle_message(event):
         if state == UserState.NORMAL:
             pass
 
+        # 使用者查詢單一咖啡店，回傳結果
         if state == UserState.WAITING_SHOP_NAME:
             shops = GoogleAPI.search_coffee_shops(text)
-            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops, user)
+            LineMessageBuilder.send_shop_result(
+                line_bot_api,
+                event.reply_token,
+                shops,
+                user,
+                quick_reply=QuickReplyBuilder.create_search_again_actions()
+            )
             user_states[user_id] = UserState.NORMAL
             return
 
+        # 使用者查詢某一路名的咖啡店，回傳結果
         if state == UserState.WAITING_ADDRESS:
             shops = GoogleAPI.search_nearby_coffee_shops(address=text)
-            LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops, user)
+            LineMessageBuilder.send_shop_result(
+                line_bot_api,
+                event.reply_token,
+                shops,
+                user,
+                quick_reply=QuickReplyBuilder.create_carousel_pagination_actions()
+            )
             user_states[user_id] = UserState.NORMAL
             return
 
-        if text == '分享位置查詢':
+        # 使用者開始定位分享查詢咖啡店
+        elif text == MenuText.SHARE_LOCATION:
 
-            quick_reply = QuickReply(
-                items=[
-                    QuickReplyItem(
-                        action=LocationAction(
-                            label='📍 分享目前位置'
-                        )
-                    )
-                ]
-            )
+            quick_reply = QuickReplyBuilder.create_location_request()
 
             # 回覆訊息
             line_bot_api.reply_message(
@@ -111,7 +115,8 @@ def handle_message(event):
                 )
             )
 
-        elif text == '路名查詢':
+        # 使用者點選查詢路名
+        elif text == MenuText.SEARCH_ADDRESS:
             user_states[user_id] = UserState.WAITING_ADDRESS
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -121,7 +126,8 @@ def handle_message(event):
             )
             return
 
-        elif text == '店名查詢':
+        # 使用者點選查詢咖啡店
+        elif text == MenuText.SEARCH_SHOP_NAME:
             user_states[user_id] = UserState.WAITING_SHOP_NAME
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -131,7 +137,8 @@ def handle_message(event):
             )
             return
 
-        elif text == '收藏的咖啡店':
+        # 使用者點選查詢收藏名單
+        elif text == MenuText.FAVORITES:
             user = User.objects.get(line_user_id=user_id)
             favorite_count = user.favorites.count()
 
@@ -142,7 +149,6 @@ def handle_message(event):
             elif favorite_count <= 5:
                 # 1-5 間 → Carousel
                 message = FavoritesMessageBuilder.show_favorites_carousel(user_id)
-
 
             else:
                 # 超過 5 間 → 分多頁的 Carousel
@@ -155,6 +161,7 @@ def handle_message(event):
                 )
             )
 
+        # 使用者並沒有先點 RichMenu而輸入文字
         else:  # 待改
             line_bot_api.reply_message(
                 ReplyMessageRequest(

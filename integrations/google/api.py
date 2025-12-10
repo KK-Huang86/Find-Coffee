@@ -177,7 +177,7 @@ class GoogleAPI:
         search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
         params = {
             'location': f'{lat},{lng}',
-            'radius': 500,  # 搜尋半徑 500 公尺
+            'radius': 100,  # 搜尋半徑 100 公尺
             'type': 'cafe',
             'keyword': '咖啡店',
             'key': GoogleAPI.GOOGLE_API_KEY,
@@ -202,17 +202,51 @@ class GoogleAPI:
             logger.error(f"Google API 未返回有效結果，status: {search_result.get('status')}")
             return []
 
-        results = search_result['results']
-        rating_rank = []
-        for result in results:
-            cafe_place_id = result.get('place_id', '')
-            cafe_rating = result.get('rating', 'N/A')
-            cafe_rating_dict = {cafe_place_id: cafe_rating}
-            rating_rank.append(cafe_rating_dict)
+        # 貝葉斯平均所需參數
+        VOTE_THRESHOLD = 50  # C: 最小必須評分人數
+        AVERAGE_RATING = 4.0  # m: 假設的整體平均評分
 
-        pairs = [(list(d.keys())[0], list(d.values())[0]) for d in rating_rank]
-        sorted_pairs = sorted(pairs, key=lambda x: x[1], reverse=True)
-        target_cafes = sorted_pairs[:5]
-        # target_cafes 原本是 tuple 格式 ('XXXXXXXXXXX', 4.9)
-        shops = [{'place_id': pid, 'rating': rating} for pid, rating in target_cafes]
+        results = search_result['results']
+        weighted_rank = []
+
+        for result in results:
+            rating = result.get('rating', AVERAGE_RATING)  # 無評分時設為平均
+            n = result.get('user_ratings_total', 0)  # 實際評分人數
+
+            # 計算加權評分 (weighted_rating)
+            # weighted_rating =
+            # (VOTE_THRESHOLD(最少需要多少人評分) * AVERAGE_RATING(假設的整體平均評分數) + rating(實際評分) * N(實際評分人數)) / (VOTE_THRESHOLD(最少需要多少人評分) + N(實際評分人數)
+
+            if n > 0:
+                weighted_rating = (VOTE_THRESHOLD * AVERAGE_RATING + rating * n) / (VOTE_THRESHOLD + n)
+            else:
+                # 如果沒有評分數據，直接使用平均評分
+                weighted_rating = AVERAGE_RATING
+
+            """
+            [{'place_id': 'ChIJrxF31rCrQjQRCIU4tfV7qbQ',
+            'name': '輝葉放空站',
+            'original_rating': 4.9,
+            'rating_total': 447,
+            'weighted_rating': 4.861456102783726},
+            """
+            weighted_rank.append({
+                'place_id': result.get('place_id'),
+                'name': result.get('name'),  # 加上 name 方便除錯
+                'original_rating': rating,
+                'rating_total': n,
+                'weighted_rating': weighted_rating  # 使用這個欄位進行排序
+            })
+
+        # 根據加權評分進行排序
+        sorted_places = sorted(weighted_rank, key=lambda x: x['weighted_rating'], reverse=True)
+
+        target_cafes = sorted_places[:5]
+
+        shops = [
+            {'place_id': shop['place_id'], 'rating': shop['original_rating'],
+             'weighted_rating': shop['weighted_rating']}
+            for shop in target_cafes
+        ]
+
         return shops
