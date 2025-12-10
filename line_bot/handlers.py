@@ -63,6 +63,7 @@ def handle_message(event):
 
 
         if not LockService.acquire(user_id, 'message'):
+            logger.info(f'User {user_id} throttled, skip processing')
             return
 
         if state == UserState.NORMAL:
@@ -185,6 +186,7 @@ def handle_location_message(event):
         user = User.objects.filter(line_user_id=user_id)
 
         if not LockService.acquire(user_id, 'location'):
+            logger.info(f'User {user_id} throttled, skip processing')
             return
 
         shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
@@ -233,6 +235,7 @@ def handle_postback(event):
         user = User.objects.filter(line_user_id=user_id).first()
 
         if not LockService.acquire(user_id, 'postback'):
+            logger.info(f'User {user_id} throttled, skip processing')
             return
 
         if not user:
