@@ -142,22 +142,16 @@ def handle_message(event):
                 message = TextMessage(
                     text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️',
                 )
-                quick_reply = QuickReplyBuilder.create_favorites_actions()
-
-
 
             elif favorite_count <= 5:
                 # 1-5 間 → Carousel
                 message = FavoritesMessageBuilder.show_favorites_carousel(user_id)
-                quick_reply = QuickReplyBuilder.create_favorites_actions()
-
 
             else:
                 # 超過 5 間 → 分多頁的 Carousel
                 message = FavoritesMessageBuilder.show_favorites_list(user_id)
-                quick_reply = QuickReplyBuilder.create_favorites_actions()
 
-            message.quick_reply = quick_reply
+            message.quick_reply =  QuickReplyBuilder.create_favorites_actions()
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
