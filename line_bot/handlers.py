@@ -168,7 +168,28 @@ def handle_message(event):
                 )
             )
         elif text == MenuText.RECENT_SEARCH:
-            QuickReplyBuilder.create_recent_search_quick_reply(user_id)
+            quick_reply = QuickReplyBuilder.create_recent_search_quick_reply(user_id)
+
+            if quick_reply:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            TextMessage(
+                                text='請選擇最近搜尋的關鍵字：',
+                                quick_reply=quick_reply
+                            )
+                        ]
+                    )
+                )
+            else:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text='目前還沒有搜尋紀錄喔～')]
+                    )
+                )
+            return
 
         # 使用者並沒有先點 RichMenu而輸入文字
         else:  # 待改

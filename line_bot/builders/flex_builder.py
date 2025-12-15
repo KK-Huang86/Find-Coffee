@@ -13,7 +13,8 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyItem,
     MessageAction,
-    LocationAction
+    LocationAction,
+    PostbackAction,
 )
 
 from integrations.google.api import GoogleAPI
@@ -746,30 +747,32 @@ class QuickReplyBuilder:
             ]
         )
 
-
     @staticmethod
     def create_recent_search_quick_reply(user_id):
         """產生最近搜尋的 Quick Reply"""
-        history = SearchHistoryService.get_history(user_id)
+        history = SearchHistoryService.get_search_history(user_id)
 
         if not history:
             return None
 
         items = []
-        for record in history[:3]:  # 只顯示最近 3 筆
+        for record in history[:5]:
             keyword = record['keyword']
             search_type = record['type']
 
-            # 根據類型設定不同 icon
-            icon = '🏪' if search_type == 'shop_name' else '📍'
+            icon = '☕️' if search_type == "shop_name" else '📍'
+
+            label = f'{icon} {keyword}'
+            label = label[:18]  # 保守限制
 
             items.append(
                 QuickReplyItem(
-                    action=MessageAction(
-                        label=f"{icon} {keyword[:10]}",  # 限制長度
-                        text=keyword
+                    action=PostbackAction(
+                        label=label,
+                        data=f'action=recent_search&type={search_type}&keyword={keyword}',
+                        display_text=keyword  # 用戶點擊後顯示的文字
                     )
                 )
             )
 
-        return QuickReply(items=items) if items else None
+        return QuickReply(items=items)
