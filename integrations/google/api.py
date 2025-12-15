@@ -1,6 +1,7 @@
 import logging
-import os
 import re
+from decouple import config
+
 
 import requests
 from requests.exceptions import RequestException, Timeout
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class GoogleAPI:
-    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+    GOOGLE_API_KEY = config('GOOGLE_API_KEY')
     BASE_URL = 'https://maps.googleapis.com/maps/api/place'
 
     @staticmethod
