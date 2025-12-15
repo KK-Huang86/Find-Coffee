@@ -29,6 +29,7 @@ from integrations.google.api import GoogleAPI
 from line_bot.constants import UserState, MenuText
 from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
     FavoritesMessageBuilder, QuickReplyBuilder
+from line_bot.services.search_cache import SearchHistoryService
 from users.models import User
 from cafe.models import Cafe
 from users.views import FavoritesManager
@@ -61,7 +62,6 @@ def handle_message(event):
         state = user_states.get(user_id, UserState.NORMAL)
         user = User.objects.get(line_user_id=user_id)
 
-
         if not LockService.acquire(user_id, 'message'):
             logger.info(f'User {user_id} throttled, skip processing')
             return
@@ -71,6 +71,8 @@ def handle_message(event):
 
         # 使用者查詢單一咖啡店，回傳結果
         if state == UserState.WAITING_SHOP_NAME:
+            # 紀錄 Cache
+            SearchHistoryService.add_search(user_id, text, search_type='shop_name')
             shops = GoogleAPI.search_coffee_shops(text)
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
@@ -84,6 +86,10 @@ def handle_message(event):
 
         # 使用者查詢某一路名的咖啡店，回傳結果
         if state == UserState.WAITING_ADDRESS:
+
+            # 紀錄 Cache
+            SearchHistoryService.add_search(user_id, text, search_type='address')
+
             shops = GoogleAPI.search_nearby_coffee_shops(address=text)
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
@@ -223,7 +229,7 @@ def handle_postback(event):
     """
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        data = event.postback.data# ex: favorite&pid=xxxxx
+        data = event.postback.data  # ex: favorite&pid=xxxxx
 
         # e.g {'action': 'view_detail', 'place_id': 'ChIJXdYuc5qpQjQReM1zieXbGeA'}
         params = dict(
