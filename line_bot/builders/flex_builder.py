@@ -21,6 +21,7 @@ from cafe.models import Cafe
 from users.models import User
 from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText
+from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +77,9 @@ class FlexMessageBuilder:
 
             """
             1. 從資料庫拉出來的營業時間範例：-> dict
-            'opening_hours': 
+            'opening_hours':
             {'星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00'}
-            
+
             2. 從 Google API 拉出來的營業時間範例： -> list
             ['星期一: 12:00 – 20:00', '星期二: 12:00 – 20:00', '星期三: 12:00 – 20:00', '星期四: 12:00 – 20:00', '星期五: 12:00 – 20:00', '星期六: 12:00 – 20:00', '星期日: 12:00 – 20:00']
             """
@@ -314,18 +315,18 @@ class LineMessageBuilder:
         """
         {
              'name': '點二咖啡(公休日請看ig 精選限動，不接待超過四人、無插座、禁帶寵物）',
-             'address': '台北市中山区民族东路208號2樓', 
-             'phone': '無提供', 
+             'address': '台北市中山区民族东路208號2樓',
+             'phone': '無提供',
              'rating': Decimal('4.4'),
-             'user_ratings_total': 657, 
+             'user_ratings_total': 657,
              'place_id': 'ChIJl9JYfaupQjQR8E80com/?cid=17207212494665568240',
-             'website': 'https://www.facebook.com/point2coffee/', 
+             'website': 'https://www.facebook.com/point2coffee/',
              'lat': 25.0681271, 'lng': 121.5311919,
              'opening_hours': {'星期一': '12:00 – 18:00',
-              '星期二': '12:00 – 18:00', 
+              '星期二': '12:00 – 18:00',
               '星期三': '12:00 – 18:00',
-              '星期四': '12:00 - 18:00', 
-              '星期五': '12:00 – 18:00', 
+              '星期四': '12:00 - 18:00',
+              '星期五': '12:00 – 18:00',
               '星期六': '12:00 – 18:00',
               '星期日': '12:00 – 18:00'}
         }
@@ -745,3 +746,30 @@ class QuickReplyBuilder:
             ]
         )
 
+
+    @staticmethod
+    def create_recent_search_quick_reply(user_id):
+        """產生最近搜尋的 Quick Reply"""
+        history = SearchHistoryService.get_history(user_id)
+
+        if not history:
+            return None
+
+        items = []
+        for record in history[:3]:  # 只顯示最近 3 筆
+            keyword = record['keyword']
+            search_type = record['type']
+
+            # 根據類型設定不同 icon
+            icon = '🏪' if search_type == 'shop_name' else '📍'
+
+            items.append(
+                QuickReplyItem(
+                    action=MessageAction(
+                        label=f"{icon} {keyword[:10]}",  # 限制長度
+                        text=keyword
+                    )
+                )
+            )
+
+        return QuickReply(items=items) if items else None

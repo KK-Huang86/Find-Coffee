@@ -167,6 +167,8 @@ def handle_message(event):
                     messages=[message]
                 )
             )
+        elif text == MenuText.RECENT_SEARCH:
+            QuickReplyBuilder.create_recent_search_quick_reply(user_id)
 
         # 使用者並沒有先點 RichMenu而輸入文字
         else:  # 待改

@@ -100,10 +100,7 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'linebot',  # 加上前綴避免衝突
+        'KEY_PREFIX': 'linebot',
         'TIMEOUT': 3600 * 24,  # 預設 24 小時
     }
 }

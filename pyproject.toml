@@ -17,6 +17,10 @@ python-decouple = "^3.8"
 redis = "^7.1.0"
 
 
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^4.5.0"
+ruff = "^0.14.9"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
