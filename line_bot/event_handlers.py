@@ -29,6 +29,8 @@ from integrations.google.api import GoogleAPI
 from line_bot.constants import UserState, MenuText
 from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
     FavoritesMessageBuilder, QuickReplyBuilder
+from line_bot.handlers.postback_actions import ACTION_HANDLERS
+from line_bot.handlers.helpers import reply_text
 from line_bot.services.search_cache import SearchHistoryService
 from users.models import User
 from cafe.models import Cafe
@@ -66,14 +68,22 @@ def handle_message(event):
             logger.info(f'User {user_id} throttled, skip processing')
             return
 
-        if state == UserState.NORMAL:
-            pass
-
         # 使用者查詢單一咖啡店，回傳結果
         if state == UserState.WAITING_SHOP_NAME:
-            # 紀錄 Cache
+            # 1. 先查本地 DB
+            cached_cafes = Cafe.objects.filter(name__icontains=text)[:5]
+
+            if cached_cafes.exists():
+                # 本地有資料，直接使用
+                # TODO 後續會加異步檢查 last_refreshed
+                shops = [{'place_id': cafe.place_id} for cafe in cached_cafes]
+            else:
+                # 本地沒有，打 Google API
+                shops = GoogleAPI.search_coffee_shops(text)
+
+            # 紀錄搜尋歷史
             SearchHistoryService.add_search(user_id, text, search_type='shop_name')
-            shops = GoogleAPI.search_coffee_shops(text)
+
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
                 event.reply_token,
@@ -85,7 +95,7 @@ def handle_message(event):
             return
 
         # 使用者查詢某一路名的咖啡店，回傳結果
-        if state == UserState.WAITING_ADDRESS:
+        elif state == UserState.WAITING_ADDRESS:
 
             # 紀錄 Cache
             SearchHistoryService.add_search(user_id, text, search_type='address')
@@ -247,16 +257,16 @@ def handle_location_message(event):
 @handler.add(PostbackEvent)
 def handle_postback(event):
     """
-    postback 統一格式為 action=XXXXl(view_detail、favorite)&place_id={XXXXX}
-    action=view_detail&place_id=ChIJuwVavhQdaDQRZM3VMp8O79Y
+    postback 統一格式為 action=XXX&param1=XXX&param2=XXX
+    使用 ACTION_HANDLERS dispatch table 路由到對應的 handler
     """
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        data = event.postback.data  # ex: favorite&pid=xxxxx
+        data = event.postback.data
 
-        # e.g {'action': 'view_detail', 'place_id': 'ChIJXdYuc5qpQjQReM1zieXbGeA'}
+        # 解析 postback data
         params = dict(
-            item.split('=') for item in data.split('&')
+            item.split('=', 1) for item in data.split('&')
             if '=' in item
         )
 
@@ -268,104 +278,13 @@ def handle_postback(event):
             return
 
         if not user:
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text='找不到會員資料，請重新操作')]
-                )
-            )
+            reply_text(line_bot_api, event.reply_token, '找不到會員資料，請重新操作')
             return
 
         action = params.get('action')
-        place_id = params.get('place_id')
+        handler_func = ACTION_HANDLERS.get(action)
 
-        # ⭐ 收藏
-        if action == 'favorite':
-
-            cafe = Cafe.objects.filter(place_id=place_id).first()
-            if cafe:
-
-                info_d = cafe.to_dict()
-            else:
-                info_d = GoogleAPI.get_shop_detail(place_id)
-
-            ok, msg = FavoritesManager.add_favorite(user, info_d)
-
-            reply = TextMessage(text=msg)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[reply]
-                )
-            )
-            return
-
-        elif action == 'unfavorite':
-            cafe = Cafe.objects.filter(place_id=place_id).first()
-            if cafe:
-                info_d = cafe.to_dict()
-
-            else:
-                reply = TextMessage(text='找不到該咖啡店，無法取消收藏')
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[reply]
-                    )
-                )
-                return
-
-            ok, msg = FavoritesManager.remove_favorite(user, info_d)
-
-            reply = TextMessage(text=msg)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[reply]
-                )
-            )
-            return
-
-        elif action == 'view_detail':
-            is_favorited = False
-            cafe = Cafe.objects.filter(place_id=place_id).first()
-
-            # 1. 取得店家資訊
-            if cafe:
-                info_d = cafe.to_dict()
-                is_favorited = user.favorites.filter(cafe=cafe).exists()
-            else:
-                info_d = GoogleAPI.get_shop_detail(place_id)
-                if not info_d:
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[TextMessage(text='找不到此咖啡店')]
-                        )
-                    )
-                    return
-
-            # 2. 建立 Flex Message（統一在這裡）
-            flex_data = FlexMessageBuilder.create_shop_flex_message(info_d)
-            flex_container = FlexContainer.from_json(json.dumps(flex_data))
-
-            # 3. 建立按鈕
-            button_message = PostbackBuilder.create_cafe_action_postback(
-                info_d=info_d,
-                is_favorited=is_favorited
-            )
-
-            # 4. 回覆
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[
-                        FlexMessage(
-                            alt_text='咖啡店詳細資訊',
-                            contents=flex_container
-                        ),
-                        button_message
-                    ]
-                )
-            )
-            return
+        if handler_func:
+            handler_func(line_bot_api, event.reply_token, user, params)
+        else:
+            logger.warning(f'Unknown postback action: {action}')
