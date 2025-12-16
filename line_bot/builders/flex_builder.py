@@ -745,3 +745,31 @@ class QuickReplyBuilder:
             ]
         )
 
+    @staticmethod
+    @staticmethod
+    def create_favorites_actions():
+        """
+        我的收藏頁面的快速回覆
+        """
+        return QuickReply(
+            items=[
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='🔍 搜尋咖啡店',
+                        text=MenuText.SEARCH_ADDRESS
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='🔍 路名搜尋',
+                        text=MenuText.SEARCH_ADDRESS
+                    )
+                ),
+                QuickReplyItem(
+                    action=MessageAction(
+                        label='📍 附近搜尋',
+                        text=MenuText.SHARE_LOCATION
+                    )
+                )
+            ]
+        )

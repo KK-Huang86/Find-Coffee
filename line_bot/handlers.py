@@ -139,7 +139,9 @@ def handle_message(event):
 
             if favorite_count == 0:
                 # 沒有收藏
-                message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
+                message = TextMessage(
+                    text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️',
+                )
 
             elif favorite_count <= 5:
                 # 1-5 間 → Carousel
@@ -148,6 +150,8 @@ def handle_message(event):
             else:
                 # 超過 5 間 → 分多頁的 Carousel
                 message = FavoritesMessageBuilder.show_favorites_list(user_id)
+
+            message.quick_reply =  QuickReplyBuilder.create_favorites_actions()
 
             line_bot_api.reply_message(
                 ReplyMessageRequest(
