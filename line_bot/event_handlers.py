@@ -1,6 +1,8 @@
 import json
 import logging
 from decouple import config
+from urllib.parse import parse_qs
+
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
@@ -253,6 +255,10 @@ def handle_location_message(event):
         LineMessageBuilder.send_shop_result(line_bot_api, event.reply_token, shops, user)
 
 
+def _parse_postback_data(data: str) -> dict:
+    parsed = parse_qs(data)
+    return {k: v[0] for k, v in parsed.items()}
+
 # postback 處理
 @handler.add(PostbackEvent)
 def handle_postback(event):
@@ -265,10 +271,7 @@ def handle_postback(event):
         data = event.postback.data
 
         # 解析 postback data
-        params = dict(
-            item.split('=', 1) for item in data.split('&')
-            if '=' in item
-        )
+        params = _parse_postback_data(data)
 
         user_id = event.source.user_id
         user = User.objects.filter(line_user_id=user_id).first()

@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date
+from urllib.parse import urlencode
 
 from linebot.v3.messaging import (
     ReplyMessageRequest,
@@ -478,6 +479,9 @@ class PostbackBuilder:
 
         place_id = info_d['place_id']
 
+
+        #TODO: data use urlencode(payload)
+
         favorite_action = {
             'type': 'postback',
             'label': '💔 取消收藏' if is_favorited else '⭐ 收藏',
@@ -765,11 +769,19 @@ class QuickReplyBuilder:
             label = f'{icon} {keyword}'
             label = label[:18]  # 保守限制
 
+            payload = {
+                'action': 'recent_search',
+                'type': search_type,
+                'keyword': keyword,
+            }
+
+            data = urlencode(payload)
+
             items.append(
                 QuickReplyItem(
                     action=PostbackAction(
                         label=label,
-                        data=f'action=recent_search&type={search_type}&keyword={keyword}',
+                        data=data,
                         display_text=keyword  # 用戶點擊後顯示的文字
                     )
                 )
