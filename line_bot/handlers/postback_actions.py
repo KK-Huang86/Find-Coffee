@@ -76,7 +76,7 @@ def handle_recent_search(line_bot_api, reply_token, user, params):
 def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword):
     """處理店名搜尋"""
     # 先檢查 DB 是否有此店家
-    cafe = Cafe.objects.filter(name=keyword).first()
+    cafe = Cafe.objects.filter(name__icontains=keyword).first()
 
     if cafe:
         # DB 有資料，直接顯示詳情

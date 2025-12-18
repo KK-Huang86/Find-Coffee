@@ -50,7 +50,7 @@ class SearchHistoryService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to save search history: {e}")
+            logger.error(f'Failed to save search history for user {user_id}: {e}', exc_info=True)
             return False
 
     @staticmethod
