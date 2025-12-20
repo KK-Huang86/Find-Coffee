@@ -75,28 +75,27 @@ def handle_recent_search(line_bot_api, reply_token, user, params):
 
 def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword):
     """處理店名搜尋"""
-    # 先檢查 DB 是否有此店家
-    cafe = Cafe.objects.filter(name__icontains=keyword).first()
+    # 先檢查 DB 是否有此店家，搜尋的時候可能不只有一間
+    cafes = Cafe.objects.filter(name__icontains=keyword)[:5]
 
-    if cafe:
-        # DB 有資料，直接顯示詳情
+    if len(cafes) == 1:
+        # 只有一筆結果，直接顯示詳情，postback
+        cafe = cafes[0]
         info_d = cafe.to_dict()
         is_favorited = user.favorites.filter(cafe=cafe).exists()
         reply_cafe_detail(line_bot_api, reply_token, info_d, is_favorited)
         return
 
-    # DB 沒有，呼叫 Google API 搜尋
-    shops = GoogleAPI.search_coffee_shops(keyword)
-    SearchHistoryService.add_search(user_id, keyword, 'shop_name')
-
-    LineMessageBuilder.send_shop_result(
-        line_bot_api,
-        reply_token,
-        shops,
-        user,
-        quick_reply=QuickReplyBuilder.create_search_again_actions()
-    )
-
+    elif cafes.exists():
+        # DB 有多筆資料，顯示 carousel 讓使用者選擇
+        shops = [{'place_id': cafe.place_id} for cafe in cafes]
+        LineMessageBuilder.send_shop_result(
+            line_bot_api,
+            reply_token,
+            shops,
+            user,
+            quick_reply=QuickReplyBuilder.create_search_again_actions()
+        )
 
 def _handle_address_search(line_bot_api, reply_token, user, user_id, keyword):
     """處理地址搜尋"""
