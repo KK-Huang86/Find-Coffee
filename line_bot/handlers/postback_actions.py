@@ -75,6 +75,7 @@ def handle_recent_search(line_bot_api, reply_token, user, params):
 
 def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword):
     """處理店名搜尋"""
+    SearchHistoryService.add_search(user_id, keyword, 'shop_name')
     # 先檢查 DB 是否有此店家，搜尋的時候可能不只有一間
     cafes = Cafe.objects.filter(name__icontains=keyword)[:5]
 
