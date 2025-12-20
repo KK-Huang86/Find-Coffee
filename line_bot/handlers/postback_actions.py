@@ -6,7 +6,7 @@ import logging
 from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder
-from line_bot.handlers.helpers import get_cafe_info, reply_text, reply_cafe_detail
+from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.services.search_cache import SearchHistoryService
 from users.views import FavoritesManager
 
@@ -17,7 +17,7 @@ def handle_favorite(line_bot_api, reply_token, user, params):
     """處理收藏動作"""
     place_id = params.get('place_id')
 
-    info_d, _ = get_cafe_info(place_id)
+    info_d, _ = get_or_create_cafe_info(place_id)
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
@@ -44,7 +44,7 @@ def handle_view_detail(line_bot_api, reply_token, user, params):
     """處理查看詳情動作"""
     place_id = params.get('place_id')
 
-    info_d, cafe = get_cafe_info(place_id)
+    info_d, cafe = get_or_create_cafe_info(place_id)
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到此咖啡店')
         return
