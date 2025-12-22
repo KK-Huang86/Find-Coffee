@@ -224,7 +224,7 @@ def handle_location_message(event):
         address = event.message.address  # 可能為 None
 
         user_id = event.source.user_id
-        user = User.objects.filter(line_user_id=user_id)
+        user = User.objects.filter(line_user_id=user_id).first()
 
         if not LockService.acquire(user_id, 'location'):
             logger.info(f'User {user_id} throttled, skip processing')
