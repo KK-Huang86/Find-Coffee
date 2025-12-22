@@ -11,3 +11,12 @@ class MenuText:
     FAVORITES = '收藏的咖啡店'
     RECENT_SEARCH = '最近查詢'
     MORE_INFO = '更多資訊'
+
+
+class MenuAction:
+    SHARE_LOCATION = 'share_location'
+    SEARCH_SHOP_NAME = 'search_shop_name'
+    SEARCH_ADDRESS = 'search_address'
+    FAVORITES = 'favorites'
+    RECENT_SEARCH = 'recent_search'
+    MORE_INFO = 'more_info'

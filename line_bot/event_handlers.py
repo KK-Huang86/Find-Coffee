@@ -1,8 +1,6 @@
-import json
 import logging
 from decouple import config
 from urllib.parse import parse_qs
-
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
@@ -11,12 +9,6 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
-    QuickReply,
-    QuickReplyItem,
-    LocationAction,
-    FlexMessage,
-    FlexContainer
-
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -28,15 +20,14 @@ from linebot.v3.webhooks import (
 )
 
 from integrations.google.api import GoogleAPI
-from line_bot.constants import UserState, MenuText
-from line_bot.builders.flex_builder import LineMessageBuilder, FlexMessageBuilder, PostbackBuilder, \
-    FavoritesMessageBuilder, QuickReplyBuilder
+from line_bot.constants import UserState
+from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder
 from line_bot.handlers.postback_actions import ACTION_HANDLERS
 from line_bot.handlers.helpers import reply_text
 from line_bot.services.search_cache import SearchHistoryService
+from line_bot.state import get_state, reset_state
 from users.models import User
 from cafe.models import Cafe
-from users.views import FavoritesManager
 from utils.utils import LockService
 
 logger = logging.getLogger(__name__)
@@ -47,14 +38,10 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
-# 使用者追蹤機器人時，建立使用者資料
 @handler.add(FollowEvent)
 def handle_follow(event):
     user_id = event.source.user_id
     User.objects.get_or_create(line_user_id=user_id)
-
-
-user_states = {}
 
 
 @handler.add(MessageEvent, message=TextMessageContent)
@@ -63,7 +50,7 @@ def handle_message(event):
         line_bot_api = MessagingApi(api_client)
         user_id = event.source.user_id
         text = event.message.text
-        state = user_states.get(user_id, UserState.NORMAL)
+        state = get_state(user_id)
         user = User.objects.get(line_user_id=user_id)
 
         if not LockService.acquire(user_id, 'message'):
@@ -93,7 +80,7 @@ def handle_message(event):
                 user,
                 quick_reply=QuickReplyBuilder.create_search_again_actions()
             )
-            user_states[user_id] = UserState.NORMAL
+            reset_state(user_id)
             return
 
         # 使用者查詢某一路名的咖啡店，回傳結果
@@ -110,101 +97,11 @@ def handle_message(event):
                 user,
                 quick_reply=QuickReplyBuilder.create_carousel_pagination_actions()
             )
-            user_states[user_id] = UserState.NORMAL
+            reset_state(user_id)
             return
 
-        # 使用者開始定位分享查詢咖啡店
-        elif text == MenuText.SHARE_LOCATION:
-
-            quick_reply = QuickReplyBuilder.create_location_request()
-
-            # 回覆訊息
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[
-                        TextMessage(
-                            text=(
-                                '請點擊下方按鈕分享您的位置\n'
-                                '我來幫您找附近的咖啡店 ☕️'
-                            ),
-                            quick_reply=quick_reply
-                        )
-                    ]
-                )
-            )
-
-        # 使用者點選查詢路名
-        elif text == MenuText.SEARCH_ADDRESS:
-            user_states[user_id] = UserState.WAITING_ADDRESS
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text='請輸入路名️（例如：台北市信義區松信路）')]
-                )
-            )
-            return
-
-        # 使用者點選查詢咖啡店
-        elif text == MenuText.SEARCH_SHOP_NAME:
-            user_states[user_id] = UserState.WAITING_SHOP_NAME
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text='請輸入咖啡店名稱 ☕️')]
-                )
-            )
-            return
-
-        # 使用者點選查詢收藏名單
-        elif text == MenuText.FAVORITES:
-            user = User.objects.get(line_user_id=user_id)
-            favorite_count = user.favorites.count()
-
-            if favorite_count == 0:
-                # 沒有收藏
-                message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
-
-            elif favorite_count <= 5:
-                # 1-5 間 → Carousel
-                message = FavoritesMessageBuilder.show_favorites_carousel(user_id)
-
-            else:
-                # 超過 5 間 → 分多頁的 Carousel
-                message = FavoritesMessageBuilder.show_favorites_list(user_id)
-
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[message]
-                )
-            )
-        elif text == MenuText.RECENT_SEARCH:
-            quick_reply = QuickReplyBuilder.create_recent_search_quick_reply(user_id)
-
-            if quick_reply:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            TextMessage(
-                                text='請選擇最近搜尋的關鍵字：',
-                                quick_reply=quick_reply
-                            )
-                        ]
-                    )
-                )
-            else:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text='目前還沒有搜尋紀錄喔～')]
-                    )
-                )
-            return
-
-        # 使用者並沒有先點 RichMenu而輸入文字
-        else:  # 待改
+        # 使用者輸入非預期文字
+        else:
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
@@ -288,10 +185,6 @@ def handle_postback(event):
 
         if not LockService.acquire(user_id, 'postback'):
             logger.info(f'User {user_id} throttled, skip processing')
-            return
-
-        if not user:
-            reply_text(line_bot_api, event.reply_token, '找不到會員資料，請重新操作')
             return
 
         action = params.get('action')

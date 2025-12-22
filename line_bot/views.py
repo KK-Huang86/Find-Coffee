@@ -21,12 +21,11 @@ from linebot.v3.messaging import (
     RichMenuBounds,
     RichMenuSize,
     RichMenuRequest,
-    MessageAction
-
+    PostbackAction,
 )
 
 from .event_handlers import handler
-from .constants import MenuText
+from .constants import MenuText, MenuAction
 
 logger = logging.getLogger(__name__)
 
@@ -349,75 +348,45 @@ def rich_menu():
             chat_bar_text='點我查看更多',
             areas=[
                 RichMenuArea(
-                    bounds=RichMenuBounds(
-                        x=0,
-                        y=0,
-                        width=833,
-                        height=843
-                    ),
-                    action=MessageAction(
+                    bounds=RichMenuBounds(x=0, y=0, width=833, height=843),
+                    action=PostbackAction(
                         label=MenuText.SEARCH_SHOP_NAME,
-                        text=MenuText.SEARCH_SHOP_NAME
+                        data=f'action=menu&type={MenuAction.SEARCH_SHOP_NAME}'
                     )
                 ),
                 RichMenuArea(
-                    bounds=RichMenuBounds(
-                        x=834,
-                        y=0,
-                        width=833,
-                        height=843
-                    ),
-                    action=MessageAction(
+                    bounds=RichMenuBounds(x=834, y=0, width=833, height=843),
+                    action=PostbackAction(
                         label=MenuText.SEARCH_ADDRESS,
-                        text=MenuText.SEARCH_ADDRESS
+                        data=f'action=menu&type={MenuAction.SEARCH_ADDRESS}'
                     )
                 ),
                 RichMenuArea(
-                    bounds=RichMenuBounds(
-                        x=1666,
-                        y=0,
-                        width=834,
-                        height=843
-                    ),
-                    action=MessageAction(
+                    bounds=RichMenuBounds(x=1666, y=0, width=834, height=843),
+                    action=PostbackAction(
                         label=MenuText.SHARE_LOCATION,
-                        text=MenuText.SHARE_LOCATION
+                        data=f'action=menu&type={MenuAction.SHARE_LOCATION}'
                     )
                 ),
                 RichMenuArea(
-                    bounds=RichMenuBounds(
-                        x=0,
-                        y=844,
-                        width=833,
-                        height=842
-                    ),
-                    action=MessageAction(
+                    bounds=RichMenuBounds(x=0, y=844, width=833, height=842),
+                    action=PostbackAction(
                         label=MenuText.FAVORITES,
-                        text=MenuText.FAVORITES
+                        data=f'action=menu&type={MenuAction.FAVORITES}'
                     )
                 ),
                 RichMenuArea(
-                    bounds=RichMenuBounds(
-                        x=834,
-                        y=844,
-                        width=833,
-                        height=842
-                    ),
-                    action=MessageAction(
-                        label='最近查詢',
-                        text='最近查詢'
+                    bounds=RichMenuBounds(x=834, y=844, width=833, height=842),
+                    action=PostbackAction(
+                        label=MenuText.RECENT_SEARCH,
+                        data=f'action=menu&type={MenuAction.RECENT_SEARCH}'
                     )
                 ),
                 RichMenuArea(
-                    bounds=RichMenuBounds(
-                        x=1666,
-                        y=844,
-                        width=834,
-                        height=842
-                    ),
-                    action=MessageAction(
-                        label='更多資訊',
-                        text='更多資訊'
+                    bounds=RichMenuBounds(x=1666, y=844, width=834, height=842),
+                    action=PostbackAction(
+                        label=MenuText.MORE_INFO,
+                        data=f'action=menu&type={MenuAction.MORE_INFO}'
                     )
                 )
             ]
@@ -439,4 +408,4 @@ def rich_menu():
         )
 
 
-rich_menu()
+# rich_menu()  # 需要時手動呼叫，不要自動執行
