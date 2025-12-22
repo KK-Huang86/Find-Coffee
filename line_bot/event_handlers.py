@@ -224,7 +224,12 @@ def handle_location_message(event):
         address = event.message.address  # 可能為 None
 
         user_id = event.source.user_id
-        user = User.objects.filter(line_user_id=user_id)
+        user = User.objects.filter(line_user_id=user_id).first()
+
+        if not user:
+            logger.warning(f'User not found: {user_id}')
+            reply_text(line_bot_api, event.reply_token, '找不到會員資料，請重新操作')
+            return
 
         if not LockService.acquire(user_id, 'location'):
             logger.info(f'User {user_id} throttled, skip processing')
@@ -275,6 +280,11 @@ def handle_postback(event):
 
         user_id = event.source.user_id
         user = User.objects.filter(line_user_id=user_id).first()
+
+        if not user:
+            logger.warning(f'User not found: {user_id}')
+            reply_text(line_bot_api, event.reply_token, '找不到會員資料，請重新操作')
+            return
 
         if not LockService.acquire(user_id, 'postback'):
             logger.info(f'User {user_id} throttled, skip processing')
