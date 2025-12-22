@@ -500,7 +500,6 @@ class FavoritesMessageBuilder:
                 'weight': 'bold',
                 'size': 'xl',
                 'margin': 'md',
-                'align': 'center',
             },
             {
                 'type': 'separator',
