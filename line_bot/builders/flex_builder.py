@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date
+from urllib.parse import urlencode
 from typing import Union
 
 from linebot.v3.messaging import (
@@ -14,14 +15,16 @@ from linebot.v3.messaging import (
     QuickReply,
     QuickReplyItem,
     MessageAction,
-    LocationAction
+    LocationAction,
+    PostbackAction,
 )
 
 from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
-from line_bot.constants import MenuText
-from line_bot.utils import parse_opening_hours
 from users.models import User
+from line_bot.utils import parse_opening_hours
+from line_bot.constants import MenuText
+from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,7 @@ class FlexMessageBuilder:
 
         """
         1. 從資料庫拉出來的營業時間範例：-> dict
-        'opening_hours': 
+        'opening_hours':
         {'星期一: 12:00 – 00:00', '星期二: 12:00 – 00:00', '星期四: 12:00 – 00:00', '星期五: 12:00 – 00:00', '星期六: 12:00 – 00:00', '星期日: 12:00 – 00:00'}
 
         2. 從 Google API 拉出來的營業時間範例： -> list
@@ -291,76 +294,10 @@ class LineMessageBuilder:
     def _get_or_create_shop_info(place_id):
         """
         嘗試從資料庫取得店家資訊，若無，則從 Google API 取得資料並寫入資料庫。
-
-        Args:
-            place_id (str): Google Places ID.
-
-        Returns:
-            tuple: (info_d, cafe_obj)
-                   info_d (dict): 包含店家詳細資訊的字典。
-                   cafe_obj (Cafe): 相關的 Cafe Model 實例。
-                   若失敗，則回傳 (None, None)。
+        委託給 helpers.get_or_create_cafe_info 統一處理。
         """
-        cafe = Cafe.objects.filter(place_id=place_id).first()
-
-        if cafe:
-            # 1. 資料庫有 → 直接轉換
-            info_d = cafe.to_dict()
-            return info_d, cafe
-
-        # 2. 資料庫無 → 呼叫 Google API
-        info_d = GoogleAPI.get_shop_detail(place_id)
-
-        """
-        {
-             'name': '點二咖啡(公休日請看ig 精選限動，不接待超過四人、無插座、禁帶寵物）',
-             'address': '台北市中山区民族东路208號2樓', 
-             'phone': '無提供', 
-             'rating': Decimal('4.4'),
-             'user_ratings_total': 657, 
-             'place_id': 'ChIJl9JYfaupQjQR8E80com/?cid=17207212494665568240',
-             'website': 'https://www.facebook.com/point2coffee/', 
-             'lat': 25.0681271, 'lng': 121.5311919,
-             'opening_hours': {'星期一': '12:00 – 18:00',
-              '星期二': '12:00 – 18:00', 
-              '星期三': '12:00 – 18:00',
-              '星期四': '12:00 - 18:00', 
-              '星期五': '12:00 – 18:00', 
-              '星期六': '12:00 – 18:00',
-              '星期日': '12:00 – 18:00'}
-        }
-        """
-
-        if not info_d:
-            return None, None
-
-        if not info_d.get('place_id'):
-            logger.error('缺少 place_id,無法建立店家資料')
-            return None, None
-
-        # 3. 解析並寫入資料庫
-        try:
-            opening_hours_l = info_d.get('opening_hours', [])
-            opening_hours_d = parse_opening_hours(opening_hours_l)
-
-            cafe = Cafe.objects.create(
-                place_id=info_d['place_id'],
-                name=info_d.get('name') or '未提供名稱',
-                address=info_d.get('address') or '未提供地址',
-                phone=info_d.get('phone') or '未提供電話',
-                rating=info_d.get('rating'),
-                user_ratings_total=info_d.get('user_ratings_total', 0),
-                google_maps=info_d.get('google_maps') or '未提供地圖連結',
-                website=info_d.get('website') or '未提供網站',
-                lat=info_d.get('lat') or 0.0,
-                lng=info_d.get('lng') or 0.0,
-                opening_hours=opening_hours_d
-            )
-            return cafe.to_dict(), cafe  # 使用新建立的 cafe 物件的 to_dict
-
-        except Exception as e:
-            logger.error(f'儲存或解析店家資料時發生錯誤: {e}', exc_info=True)
-            return None, None
+        from line_bot.handlers.helpers import get_or_create_cafe_info
+        return get_or_create_cafe_info(place_id)
 
     @staticmethod
     def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
@@ -475,6 +412,9 @@ class PostbackBuilder:
         """
 
         place_id = info_d['place_id']
+
+
+        #TODO: data use urlencode(payload)
 
         favorite_action = {
             'type': 'postback',
@@ -760,3 +700,41 @@ class QuickReplyBuilder:
                 )
             ]
         )
+
+    @staticmethod
+    def create_recent_search_quick_reply(user_id):
+        """產生最近搜尋的 Quick Reply"""
+        history = SearchHistoryService.get_search_history(user_id)
+
+        if not history:
+            return None
+
+        items = []
+        for record in history[:5]:
+            keyword = record['keyword']
+            search_type = record['type']
+
+            icon = '☕️' if search_type == "shop_name" else '📍'
+
+            label = f'{icon} {keyword}'
+            label = label[:18]  # 保守限制
+
+            payload = {
+                'action': 'recent_search',
+                'type': search_type,
+                'keyword': keyword,
+            }
+
+            data = urlencode(payload)
+
+            items.append(
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label=label,
+                        data=data,
+                        display_text=keyword  # 用戶點擊後顯示的文字
+                    )
+                )
+            )
+
+        return QuickReply(items=items)

@@ -1,6 +1,7 @@
 # Create your views here.
 import logging
 import os
+from decouple import config
 
 import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -24,14 +25,14 @@ from linebot.v3.messaging import (
 
 )
 
-from .handlers import handler
+from .event_handlers import handler
 from .constants import MenuText
 
 logger = logging.getLogger(__name__)
 
 # 初始化設定
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+LINE_CHANNEL_ACCESS_TOKEN = config('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = config('LINE_CHANNEL_SECRET')
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 
