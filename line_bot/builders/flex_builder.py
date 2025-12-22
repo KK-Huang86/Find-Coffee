@@ -1,8 +1,11 @@
 import json
 import logging
+import requests
 from datetime import date
 from urllib.parse import urlencode
 from typing import Union
+from decouple import config
+
 
 from linebot.v3.messaging import (
     ReplyMessageRequest,
@@ -31,7 +34,30 @@ logger = logging.getLogger(__name__)
 
 class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
-    CLOSED_TEXTS = {'休息', '公休', 'Closed'}  # 沒有順序，使用 set 更快
+    CLOSED_TEXTS = {'休息', '公休', 'Closed'}
+    DEFAULT_PHOTO_URL = 'https://developers.line.biz/assets/images/services/bot-designer-icon.png'
+
+    @staticmethod
+    def resolve_photo_url(photo_reference: str) -> str:
+        """解析 Google Places Photo API 重導向，取得實際圖片 URL"""
+        if not photo_reference:
+            return FlexMessageBuilder.DEFAULT_PHOTO_URL
+
+        photo_api_url = (
+            f'https://maps.googleapis.com/maps/api/place/photo'
+            f'?photo_reference={photo_reference}'
+            f'&maxwidth=400'
+            f'&key={config("GOOGLE_API_KEY")}'
+        )
+
+        try:
+            response = requests.head(photo_api_url, allow_redirects=True, timeout=5)
+            if response.status_code == 200:
+                return response.url
+        except requests.RequestException:
+            pass
+
+        return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
     # 處理營業時間格式
     @staticmethod
@@ -126,12 +152,14 @@ class FlexMessageBuilder:
             'flex': 0
         })
 
+        photo_url = FlexMessageBuilder.resolve_photo_url(info.get('photo_reference', ''))
+
         # 建立 Flex Message
         flex_message = {
             'type': 'bubble',
             'hero': {
                 'type': 'image',
-                'url': 'https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png',
+                'url': photo_url,
                 'size': 'full',
                 'aspectRatio': '20:13',
                 'aspectMode': 'cover',

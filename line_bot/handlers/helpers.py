@@ -57,7 +57,8 @@ def get_or_create_cafe_info(place_id):
             website=info_d.get('website') or '',
             lat=info_d.get('lat') or 0.0,
             lng=info_d.get('lng') or 0.0,
-            opening_hours=opening_hours_d
+            opening_hours=opening_hours_d,
+            photo_reference=info_d.get('photo_reference') or ''
         )
         logger.info(f'建立新咖啡店: {cafe.name} ({cafe.place_id})')
         return cafe.to_dict(), cafe

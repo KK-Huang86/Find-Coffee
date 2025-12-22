@@ -35,6 +35,11 @@ class Cafe(models.Model):
     # 查詢資料是否有定期更新，每30天會更新資料（使用者若有查詢該筆資料）
     last_refreshed = models.DateTimeField(null=True, blank=True, verbose_name='資料最後更新時間')
 
+    # photo
+    photo_reference = models.CharField(blank=True, default='')
+    photo_s3_url = models.URLField(blank=True)  # S3 URL（可為空）
+    view_count = models.IntegerField(default=0)  # 追蹤熱門度
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -72,7 +77,8 @@ class Cafe(models.Model):
             'website': self.website,
             'lat': self.lat,
             'lng': self.lng,
-            'opening_hours': self.opening_hours
+            'opening_hours': self.opening_hours,
+            'photo_reference': self.photo_reference,
         }
 
     @classmethod
