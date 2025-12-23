@@ -80,6 +80,7 @@ class Cafe(models.Model):
             'lng': self.lng,
             'opening_hours': self.opening_hours,
             'photo_reference': self.photo_reference,
+            'photo_s3_url':self.photo_s3_url,
         }
 
     @classmethod

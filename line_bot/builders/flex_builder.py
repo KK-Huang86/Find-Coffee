@@ -81,6 +81,31 @@ class FlexMessageBuilder:
             return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
     @staticmethod
+    def _trigger_s3_upload(place_id: str, photo_reference: str):
+        """
+        觸發背景任務上傳照片到 S3
+
+        這是異步任務，不會阻塞主流程
+
+        Args:
+            place_id: Google Places ID
+            photo_reference: Google Places Photo Reference
+        """
+        try:
+            from cafe.tasks import download_and_upload_cafe_photo
+            from cafe.models import Cafe
+
+            # 取得 cafe 物件
+            cafe = Cafe.objects.filter(place_id=place_id).first()
+            if cafe and not cafe.photo_s3_url:
+                logger.info(f' 觸發背景任務：上傳照片到 S3 - {place_id}')
+                download_and_upload_cafe_photo.delay(cafe.id)
+            else:
+                logger.debug(f'⏭跳過背景任務（已有 S3 URL 或找不到 cafe）')
+        except Exception as e:
+            logger.error(f'觸發背景任務失敗: {e}')
+
+    @staticmethod
     def resolve_photo_url(photo_reference: str) -> str:
         """解析 Google Places Photo API 重導向，取得實際圖片 URL"""
         if not photo_reference:
