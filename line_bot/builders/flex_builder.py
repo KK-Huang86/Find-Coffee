@@ -6,7 +6,6 @@ from urllib.parse import urlencode
 from typing import Union
 from decouple import config
 
-
 from linebot.v3.messaging import (
     ReplyMessageRequest,
     TextMessage,
@@ -51,6 +50,35 @@ class FlexMessageBuilder:
         Returns:
             str: 照片 URL
         """
+
+        if isinstance(cafe_dict_or_obj, dict):
+            photo_s3_url = cafe_dict_or_obj.get('photo_s3_url', '')
+            photo_reference = cafe_dict_or_obj.get('photo_reference', '')
+            place_id = cafe_dict_or_obj.get('place_id', '')
+
+        else:
+            # Cafe本身的實例
+            photo_s3_url = cafe_dict_or_obj.photo_s3_url or ''
+            photo_reference = cafe_dict_or_obj.photo_reference or ''
+            place_id = cafe_dict_or_obj.place_id
+
+        if photo_s3_url:
+            logger.info(f'place_id: {place_id}, photo_s3_url: {photo_s3_url}，從S3 拉資料')
+            return photo_s3_url
+
+
+        elif photo_reference:
+            logger.info(f'place_id: {place_id}, photo_reference: {photo_reference}，解析google photo')
+            resolved_url = FlexMessageBuilder.resolve_photo_url(photo_reference)
+
+            if resolved_url != FlexMessageBuilder.DEFAULT_PHOTO_URL:
+                FlexMessageBuilder._trigger_s3_upload(place_id, photo_reference)
+
+            return resolved_url
+
+        else:
+            logger.info(f'place_id: {place_id}，因沒有設定圖片，使用預設圖')
+            return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
     @staticmethod
     def resolve_photo_url(photo_reference: str) -> str:
@@ -168,7 +196,7 @@ class FlexMessageBuilder:
         })
 
         # 處理咖啡店照片
-        photo_url = FlexMessageBuilder.resolve_photo_url(info.get('photo_reference', ''))
+        photo_url = FlexMessageBuilder.get_photo_url(info)
 
         # 建立 Flex Message
         flex_message = {
@@ -347,6 +375,7 @@ class LineMessageBuilder:
     def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
 
         if not shops:
+            logger.error('找不到店家資訊')
             # 回傳找不到店家的訊息
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -457,8 +486,7 @@ class PostbackBuilder:
 
         place_id = info_d['place_id']
 
-
-        #TODO: data use urlencode(payload)
+        # TODO: data use urlencode(payload)
 
         favorite_action = {
             'type': 'postback',
