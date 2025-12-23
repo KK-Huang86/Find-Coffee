@@ -36,9 +36,10 @@ class Cafe(models.Model):
     last_refreshed = models.DateTimeField(null=True, blank=True, verbose_name='資料最後更新時間')
 
     # photo
-    photo_reference = models.CharField(blank=True, default='')
-    photo_s3_url = models.URLField(blank=True)  # S3 URL（可為空）
-    view_count = models.IntegerField(default=0)  # 追蹤熱門度
+    photo_reference = models.CharField(blank=True, default='', verbose_name='Google Photo Reference')
+    photo_s3_url = models.URLField(blank=True, default='', verbose_name='S3 照片 URL')
+    view_count = models.IntegerField(default=0, verbose_name='瀏覽次數')
+    photo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='照片更新時間')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

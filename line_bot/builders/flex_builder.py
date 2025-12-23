@@ -38,6 +38,21 @@ class FlexMessageBuilder:
     DEFAULT_PHOTO_URL = 'https://developers.line.biz/assets/images/services/bot-designer-icon.png'
 
     @staticmethod
+    def get_photo_url(cafe_dict_or_obj):
+        """
+        取得照片 URL 的優先順序：
+        1. S3 URL -> 若已經查詢過會異步存到 S3，再從 S3 抓下來
+        2. resolve Google Photo URL -> 透過 photo_reference 去抓取實際的圖片 url（僅限第一次）
+        3. 預設圖 -> 若沒有設定 photo_reference，給預設圖
+
+        Args:
+            cafe_dict_or_obj: dict 或 Cafe model 物件
+
+        Returns:
+            str: 照片 URL
+        """
+
+    @staticmethod
     def resolve_photo_url(photo_reference: str) -> str:
         """解析 Google Places Photo API 重導向，取得實際圖片 URL"""
         if not photo_reference:
@@ -152,6 +167,7 @@ class FlexMessageBuilder:
             'flex': 0
         })
 
+        # 處理咖啡店照片
         photo_url = FlexMessageBuilder.resolve_photo_url(info.get('photo_reference', ''))
 
         # 建立 Flex Message
