@@ -90,7 +90,7 @@ class Command(BaseCommand):
                 )
                 skipped_count += 1
 
-        # 結果報告
+        # 結果
         self.stdout.write(
             self.style.SUCCESS(
                 f'\n匯入完成！\n'
