@@ -127,6 +127,102 @@ class FlexMessageBuilder:
 
         return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
+    # 標籤樣式配置
+    TAG_STYLES = {
+        'socket': {
+            'color': '#0F5132',
+            'backgroundColor': '#D1E7DD',
+        },
+        'limited_time': {
+            'color': '#055160',
+            'backgroundColor': '#CFF4FC',
+        }
+    }
+
+    @staticmethod
+    def _create_attribute_tags(info: dict) -> list:
+        """
+        根據咖啡店屬性生成標籤列表，抓是否有插座 跟 限時資訊
+
+        Args:
+            info: 包含 has_socket 和 limited_time 的字典
+
+        Returns:
+            list: 標籤元素列表，可能為空
+        """
+        tags = []
+
+        # 插座標籤：yes/maybe 顯示，no 不顯示
+        has_socket = info.get('has_socket')
+        if has_socket in ('yes', 'maybe'):
+            tags.append(FlexMessageBuilder._create_tag_element(
+                text='🔌 有插座',
+                tag_type='socket'
+            ))
+
+        # 限時標籤：根據值顯示不同文字
+        limited_time = info.get('limited_time')
+        limited_time_text_map = {
+            'no': '⏱ 不限時',
+            'maybe': '⏱ 視情況',
+            'yes': '⏱ 有限時',
+        }
+        limited_time_text = limited_time_text_map.get(limited_time)
+
+        if limited_time_text:
+            tags.append(FlexMessageBuilder._create_tag_element(
+                text=limited_time_text,
+                tag_type='limited_time'
+            ))
+
+        return tags
+
+    @staticmethod
+    def _create_tag_element(text: str, tag_type: str) -> dict:
+        """
+        創建單個標籤元素
+
+        Args:
+            text: 標籤文字
+            tag_type: 標籤類型 ('socket' 或 'limited_time')
+
+        Returns:
+            dict: Flex Message text element
+        """
+        style = FlexMessageBuilder.TAG_STYLES.get(tag_type, {})
+        return {
+            'type': 'text',
+            'text': text,
+            'size': 'xs',
+            'color': style.get('color', '#666666'),
+            'backgroundColor': style.get('backgroundColor', '#EEEEEE'),
+            'paddingStart': '8px',
+            'paddingEnd': '8px',
+            'paddingTop': '4px',
+            'paddingBottom': '4px',
+            'cornerRadius': '12px',
+            'flex': 0
+        }
+
+    @staticmethod
+    def _create_tags_box(tags: list) -> dict:
+        """
+        創建標籤容器 box
+
+        Args:
+            tags: 標籤元素列表
+
+        Returns:
+            dict: Flex Message box element
+        """
+        return {
+            'type': 'box',
+            'layout': 'horizontal',
+            'spacing': 'sm',
+            'margin': 'md',
+            'contents': tags
+        }
+
     # 處理營業時間格式
     @staticmethod
     def format_opening_hours(open_hours: Union[dict, list]):
@@ -337,6 +433,13 @@ class FlexMessageBuilder:
                 'contents': []
             }
         }
+
+        # 插入屬性標籤（在評分之後、詳細資訊之前）
+        attribute_tags = FlexMessageBuilder._create_attribute_tags(info)
+        if attribute_tags:
+            tags_box = FlexMessageBuilder._create_tags_box(attribute_tags)
+            # 插入到 body contents 的第三個位置（店名、評分之後）
+            flex_message['body']['contents'].insert(2, tags_box)
 
         if is_multiple:
             # 多筆結果時：顯示「看地圖」與「選擇這間」
