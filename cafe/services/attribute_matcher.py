@@ -1,6 +1,7 @@
 import logging
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 
 from cafe.models import Cafe, CafeNomadCache, CafeAttributeVote
@@ -91,32 +92,32 @@ class CafeAttributeMatcher:
         Returns:
             bool: 是否有成功更新
         """
+
         updated = False
+        update_fields = []
 
-        # 同步插座與否
-        if sync_socket and cache.socket:
-            cafe.has_socket = cache.socket
-            # 同步至 CafeAttributeVote
-            cls._create_vote_record(cafe, 'socket', cache.socket)
-            updated = True
-            logger.info(f'Cafe {cafe.place_id} 同步插座資料: {cache.socket}')
+        with transaction.atomic():
+            # 同步插座與否
+            if sync_socket and cache.socket:
+                cafe.has_socket = cache.socket
+                cls._create_vote_record(cafe, 'socket', cache.socket)
+                updated = True
+                update_fields.append('has_socket')
+                logger.info(f'Cafe {cafe.place_id} 同步插座資料: {cache.socket}')
 
-        # 同步限時與否
-        if sync_limited_time and cache.limited_time:
-            cafe.limited_time = cache.limited_time
-            cls._create_vote_record(cafe, 'limited_time', cache.limited_time)
-            updated = True
-            logger.info(f'Cafe {cafe.place_id} 同步限時資料: {cache.limited_time}')
+            # 同步限時與否
+            if sync_limited_time and cache.limited_time:
+                cafe.limited_time = cache.limited_time
+                cls._create_vote_record(cafe, 'limited_time', cache.limited_time)
+                updated = True
+                update_fields.append('limited_time')
+                logger.info(f'Cafe {cafe.place_id} 同步限時資料: {cache.limited_time}')
 
-        # 更新 Cafe 的資料
-        if updated:
-            cafe.attributes_last_calculated_at = timezone.now()
-            cafe.save(update_fields=[
-                'has_socket',
-                'limited_time',
-                'attributes_last_calculated_at',
-                'updated_at'
-            ])
+            # 更新 Cafe 的資料
+            if updated:
+                cafe.attributes_last_calculated_at = timezone.now()
+                update_fields.extend(['attributes_last_calculated_at', 'updated_at'])
+                cafe.save(update_fields=update_fields)
 
         return updated
 
