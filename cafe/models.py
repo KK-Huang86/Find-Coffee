@@ -4,20 +4,20 @@ from django.db.models import F
 from users.models import User
 
 
+LIMITED_TIME_CHOICES = [
+    ("no", "一律不限時"),
+    ("maybe", "視情況限時"),
+    ("yes", "一律限時"),
+]
+SOCKET_CHOICES = [
+    ("no", "很少或沒有"),
+    ("maybe", "視座位"),
+    ("yes", "很多"),
+]
+
 # Create your models here.
 
 class Cafe(models.Model):
-    LIMITED_TIME_CHOICES = [
-        ("no", "一律不限時"),
-        ("maybe", "視情況限時"),
-        ("yes", "一律限時"),
-    ]
-
-    SOCKET_CHOICES = [
-        ("no", "很少或沒有"),
-        ("maybe", "視座位"),
-        ("yes", "很多"),
-    ]
 
     # 唯一key
     place_id = models.CharField(max_length=100, unique=True, db_index=True, verbose_name='Google Place ID')
@@ -182,18 +182,6 @@ class CafeAttributeVote(models.Model):
 
 class CafeNomadCache(models.Model):
     """CafeNomad API 資料快取表"""
-
-    SOCKET_CHOICES = [
-        ('yes', '很多'),
-        ('no', '很少或沒有'),
-        ('maybe', '視座位'),
-    ]
-
-    LIMITED_TIME_CHOICES = [
-        ('yes', '一律限時'),
-        ('no', '一律不限時'),
-        ('maybe', '視情況限時'),
-    ]
 
     STANDING_DESK_CHOICES = [
         ('yes', '有'),

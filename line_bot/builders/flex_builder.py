@@ -68,13 +68,12 @@ class FlexMessageBuilder:
 
         # 限時標籤：根據值顯示不同文字
         limited_time = info.get('limited_time')
-        limited_time_text = None
-        if limited_time == 'no':
-            limited_time_text = '⏱ 不限時'
-        elif limited_time == 'maybe':
-            limited_time_text = '⏱ 視情況'
-        elif limited_time == 'yes':
-            limited_time_text = '⏱ 有限時'
+        limited_time_text_map = {
+            'no': '⏱ 不限時',
+            'maybe': '⏱ 視情況',
+            'yes': '⏱ 有限時',
+        }
+        limited_time_text = limited_time_text_map.get(limited_time)
 
         if limited_time_text:
             tags.append(FlexMessageBuilder._create_tag_element(

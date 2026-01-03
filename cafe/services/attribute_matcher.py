@@ -126,10 +126,12 @@ class CafeAttributeMatcher:
         """
         創建 CafeAttributeVote ，
         """
-        CafeAttributeVote.objects.create(
+        CafeAttributeVote.objects.update_or_create(
             cafe=cafe,
-            user=None,  # cafenomad 的資料來源
             attribute=attribute,
-            value=value,
-            source='cafenomad'
+            source='cafenomad',
+            user=None,  # 確保對 cafenomad 來源的紀錄是唯一的
+
+            # values 表示該 attribute 的值，例如 'yes' 'no' 'maybe'
+            defaults={'value': value}
         )

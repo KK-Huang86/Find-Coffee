@@ -36,7 +36,7 @@ def get_or_create_cafe_info(place_id):
                 if CafeAttributeMatcher.match_and_sync_attributes(cafe):
                     cafe.refresh_from_db()
             except Exception as e:
-                logger.warning(f'查詢 CafeNomadCache 失敗 {e}')
+                logger.warning(f'查詢 CafeNomadCache 失敗 {e}', exc_info=True)
         return cafe.to_dict(), cafe
 
     # 2. DB 沒有，呼叫 Google API
@@ -73,7 +73,7 @@ def get_or_create_cafe_info(place_id):
         try:
             CafeAttributeMatcher.match_and_sync_attributes(cafe)
         except Exception as e:
-            logger.warning(f'查詢 CafeNomadCache 失敗 {e}')
+            logger.warning(f'查詢 CafeNomadCache 失敗 {e}',exc_info=True)
 
         return cafe.to_dict(), cafe
 
