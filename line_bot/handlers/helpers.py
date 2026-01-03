@@ -9,6 +9,7 @@ from linebot.v3.messaging import (
 )
 
 from cafe.models import Cafe
+from cafe.services.attribute_matcher import CafeAttributeMatcher
 from integrations.google.api import GoogleAPI
 from line_bot.utils import parse_opening_hours
 
@@ -29,6 +30,13 @@ def get_or_create_cafe_info(place_id):
     # 1. 先查 DB
     cafe = Cafe.objects.filter(place_id=place_id).first()
     if cafe:
+       # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料
+        if cafe.has_socket is None or cafe.limited_time is None:
+            try:
+                if CafeAttributeMatcher.match_and_sync_attributes(cafe):
+                    cafe.refresh_from_db()
+            except Exception as e:
+                logger.warning(f'查詢 CafeNomadCache 失敗 {e}')
         return cafe.to_dict(), cafe
 
     # 2. DB 沒有，呼叫 Google API
@@ -60,6 +68,13 @@ def get_or_create_cafe_info(place_id):
             opening_hours=opening_hours_d
         )
         logger.info(f'建立新咖啡店: {cafe.name} ({cafe.place_id})')
+
+        # 從 Google API 查詢的咖啡店，理論上沒有 插頭 跟 是否為不限時的選項，查 CafeNomadCache
+        try:
+            CafeAttributeMatcher.match_and_sync_attributes(cafe)
+        except Exception as e:
+            logger.warning(f'查詢 CafeNomadCache 失敗 {e}')
+
         return cafe.to_dict(), cafe
 
     except Exception as e:
