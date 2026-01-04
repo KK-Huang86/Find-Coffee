@@ -65,6 +65,10 @@ class CafeAttributeMatcher:
         Returns:
             CafeNomadCache 或 None
         """
+        # 確保是 Decimal 類型
+        lat = Decimal(str(lat))
+        lng = Decimal(str(lng))
+
         lat_min = lat - cls.COORDINATE_TOLERANCE
         lat_max = lat + cls.COORDINATE_TOLERANCE
         lng_min = lng - cls.COORDINATE_TOLERANCE

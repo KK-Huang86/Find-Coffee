@@ -98,7 +98,7 @@ class Cafe(models.Model):
             'limited_time': self.limited_time,
             'has_socket': self.has_socket,
             'photo_reference': self.photo_reference,
-            'photo_s3_url':self.photo_s3_url,
+            'photo_s3_url': self.photo_s3_url,
         }
 
     @classmethod
