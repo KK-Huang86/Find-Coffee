@@ -35,6 +35,17 @@ class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
     CLOSED_TEXTS = {'休息', '公休', 'Closed'}
     DEFAULT_PHOTO_URL = 'https://developers.line.biz/assets/images/services/bot-designer-icon.png'
+    # 標籤樣式配置
+    TAG_STYLES = {
+        'socket': {
+            'color': '#0F5132',
+            'backgroundColor': '#D1E7DD',
+        },
+        'limited_time': {
+            'color': '#055160',
+            'backgroundColor': '#CFF4FC',
+        }
+    }
 
     @staticmethod
     def get_photo_url(cafe_dict_or_obj):
@@ -99,7 +110,8 @@ class FlexMessageBuilder:
             cafe = Cafe.objects.filter(place_id=place_id).first()
             if cafe and not cafe.photo_s3_url:
                 logger.info(f'觸發背景任務：上傳照片到 S3 - {place_id}')
-                download_and_upload_cafe_photo.delay(cafe.id)
+                result=download_and_upload_cafe_photo.delay(cafe.id)
+                logger.warning(f'Celery task sent: {result.id}')
             else:
                 logger.debug(f'跳過背景任務（已有 S3 URL 或找不到 cafe）')
         except Exception as e:
@@ -127,17 +139,7 @@ class FlexMessageBuilder:
 
         return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
-    # 標籤樣式配置
-    TAG_STYLES = {
-        'socket': {
-            'color': '#0F5132',
-            'backgroundColor': '#D1E7DD',
-        },
-        'limited_time': {
-            'color': '#055160',
-            'backgroundColor': '#CFF4FC',
-        }
-    }
+
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:

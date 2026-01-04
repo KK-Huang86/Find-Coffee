@@ -1,5 +1,3 @@
-# 輸出值（給 Django .env 使用）
-
 output "s3_bucket_name" {
   description = "S3 Bucket 名稱"
   value       = aws_s3_bucket.cafe_photos.id

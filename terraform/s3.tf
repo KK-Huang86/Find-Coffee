@@ -126,7 +126,7 @@ resource "aws_s3_bucket_policy" "cafe_photos" {
         # 只允許讀取
         Action = "s3:GetObject"
 
-        # 套用到這個 bucket 的所有檔案
+        # 套用到這個 bucket 的所有檔案 「/*」
         Resource = "${aws_s3_bucket.cafe_photos.arn}/*"
 
         # 認可的 CloudFront distribution

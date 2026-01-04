@@ -1,7 +1,4 @@
-# ============================================
-# IAM User（給 Django 使用）
-# ============================================
-
+# 20260104 因為尚未部署至 AWS EC2 ，因此將 Django 申請外部 user
 resource "aws_iam_user" "django_app" {
   name = "${var.project_name}-django-app"
 
@@ -11,7 +8,7 @@ resource "aws_iam_user" "django_app" {
   }
 }
 
-# IAM Policy（限制只能操作照片 bucket）
+
 resource "aws_iam_policy" "s3_upload" {
   name        = "${var.project_name}-s3-upload-policy"
   description = "Allow Django to upload photos to S3"

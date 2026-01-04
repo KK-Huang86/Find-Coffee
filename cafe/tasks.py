@@ -81,6 +81,7 @@ def download_and_upload_cafe_photo(self, cafe_id):
 
         logger.info(f'上傳到 S3：{s3_key}')
 
+
         s3_client.upload_fileobj(
             BytesIO(response.content),
             bucket_name,
