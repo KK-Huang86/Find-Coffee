@@ -77,7 +77,7 @@ def handle_recent_search(line_bot_api, reply_token, user, params):
 def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, place_id=None):
     """處理店名搜尋"""
 
-    # 若有 place_id 直接取用。近期查詢該資料只有一筆時，才會存 place_id，否則為 None
+    # 1. 若有 place_id 直接取用。近期查詢該資料只有一筆時，才會存 place_id，否則為 None
     if place_id:
         cafe = Cafe.objects.filter(place_id=place_id).first()
         if cafe:
@@ -86,37 +86,24 @@ def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, 
             reply_cafe_detail(line_bot_api, reply_token, info_d, is_favorited)
             return
 
-    # 檢查 DB 是否有此店家，搜尋的時候可能不只有一間
+    # 2. 檢查 DB 是否有此店家，搜尋的時候可能不只有一間
     cafes = Cafe.objects.filter(name__icontains=keyword)[:5]
 
-    if len(cafes) == 1:
-        # 只有一筆結果，直接顯示詳情，postback
-        cafe = cafes[0]
-        info_d = cafe.to_dict()
-        is_favorited = user.favorites.filter(cafe=cafe).exists()
-        reply_cafe_detail(line_bot_api, reply_token, info_d, is_favorited)
-        return
-
-    elif cafes.exists():
-        # DB 有多筆資料，顯示 carousel 讓使用者選擇
+    if cafes.exists():
+        # DB 有資料，顯示 carousel（理論上這裡抓到的都是兩筆以上的資料，因為一筆的話會有 place_id）
         shops = [{'place_id': cafe.place_id} for cafe in cafes]
-        LineMessageBuilder.send_shop_result(
-            line_bot_api,
-            reply_token,
-            shops,
-            user,
-            quick_reply=QuickReplyBuilder.create_search_again_actions()
-        )
 
+    # 3. 都沒有的話直接打 Google API
     else:
         shops = GoogleAPI.search_coffee_shops(keyword)
-        LineMessageBuilder.send_shop_result(
-            line_bot_api,
-            reply_token,
-            shops,
-            user,
-            quick_reply=QuickReplyBuilder.create_search_again_actions()
-        )
+
+    LineMessageBuilder.send_shop_result(
+        line_bot_api,
+        reply_token,
+        shops,
+        user,
+        quick_reply=QuickReplyBuilder.create_search_again_actions()
+    )
 
 
 def _handle_address_search(line_bot_api, reply_token, user, user_id, keyword):
