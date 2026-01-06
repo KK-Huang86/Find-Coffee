@@ -77,7 +77,7 @@ class GoogleAPI:
             'place_id': place_id,
             'key': GoogleAPI.GOOGLE_API_KEY,
             'language': 'zh-TW',
-            'fields': 'name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,geometry,url,website'
+            'fields': 'name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,geometry,url,website,photo'
         }
 
         try:
@@ -103,6 +103,10 @@ class GoogleAPI:
         address = result.get('formatted_address', '')
         clean_address = GoogleAPI._clean_taiwan_address(address)
 
+        # photo
+        photos = result.get('photos', [])
+        photo_reference = photos[0].get('photo_reference') if photos else ''
+
         info = {
             'place_id': place_id,
             'name': result.get('name'),
@@ -114,7 +118,8 @@ class GoogleAPI:
             'user_ratings_total': result.get('user_ratings_total'),
             'opening_hours': result.get('opening_hours', {}).get('weekday_text', []),
             'google_maps': result.get('url'),
-            'website': result.get('website', '無提供')
+            'website': result.get('website', '無提供'),
+            'photo_reference': photo_reference
         }
         return info
 

@@ -15,7 +15,7 @@ class CafeAttributeMatcher:
     """
 
     # 誤差值為 55 公尺
-    COORDINATE_TOLERANCE = Decimal('0.0005')
+    COORDINATE_TOLERANCE = Decimal('0.0001')
 
     @classmethod
     def match_and_sync_attributes(cls, cafe: Cafe) -> bool:
@@ -65,6 +65,10 @@ class CafeAttributeMatcher:
         Returns:
             CafeNomadCache 或 None
         """
+        # 確保是 Decimal 類型
+        lat = Decimal(str(lat))
+        lng = Decimal(str(lng))
+
         lat_min = lat - cls.COORDINATE_TOLERANCE
         lat_max = lat + cls.COORDINATE_TOLERANCE
         lng_min = lng - cls.COORDINATE_TOLERANCE

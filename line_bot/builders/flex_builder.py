@@ -1,8 +1,10 @@
 import json
 import logging
+import requests
 from datetime import date
 from urllib.parse import urlencode
 from typing import Union
+from decouple import config
 
 from linebot.v3.messaging import (
     ReplyMessageRequest,
@@ -31,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
-    CLOSED_TEXTS = {'休息', '公休', 'Closed'}  # 沒有順序，使用 set 更快
-
+    CLOSED_TEXTS = {'休息', '公休', 'Closed'}
+    DEFAULT_PHOTO_URL = 'https://developers.line.biz/assets/images/services/bot-designer-icon.png'
     # 標籤樣式配置
     TAG_STYLES = {
         'socket': {
@@ -44,6 +46,93 @@ class FlexMessageBuilder:
             'backgroundColor': '#CFF4FC',
         }
     }
+
+    @staticmethod
+    def get_photo_url(cafe_dict_or_obj):
+        """
+        取得照片 URL 的優先順序：
+        1. S3 URL -> 若已經查詢過會異步存到 S3，再從 S3 抓下來
+        2. resolve Google Photo URL -> 透過 photo_reference 去抓取實際的圖片 url（僅限第一次）
+        3. 預設圖 -> 若沒有設定 photo_reference，給預設圖
+
+        Args:
+            cafe_dict_or_obj: dict 或 Cafe model 物件
+
+        Returns:
+            str: 照片 URL
+        """
+
+        if not isinstance(cafe_dict_or_obj, dict):
+            # 如果是 Cafe 物件，轉換為字典以統一處理
+            cafe_dict_or_obj = cafe_dict_or_obj.to_dict()
+
+        photo_s3_url = cafe_dict_or_obj.get('photo_s3_url', '')
+        photo_reference = cafe_dict_or_obj.get('photo_reference', '')
+        place_id = cafe_dict_or_obj.get('place_id', '')
+
+        if photo_s3_url:
+            logger.info(f'place_id: {place_id}, photo_s3_url: {photo_s3_url}，從S3 拉資料')
+            return photo_s3_url
+
+
+        elif photo_reference:
+            logger.info(f'place_id: {place_id}, photo_reference: {photo_reference}，解析google photo')
+            resolved_url = FlexMessageBuilder.resolve_photo_url(photo_reference)
+
+            if resolved_url != FlexMessageBuilder.DEFAULT_PHOTO_URL:
+                FlexMessageBuilder._trigger_s3_upload(place_id)
+
+            return resolved_url
+
+        else:
+            logger.info(f'place_id: {place_id}，因沒有設定圖片，使用預設圖')
+            return FlexMessageBuilder.DEFAULT_PHOTO_URL
+
+    @staticmethod
+    def _trigger_s3_upload(place_id: str):
+        """
+        觸發背景任務上傳照片到 S3
+
+        這是異步任務，不會阻塞主流程
+
+        Args:
+            place_id: Google Places ID
+        """
+        try:
+            from cafe.tasks import download_and_upload_cafe_photo
+            from cafe.models import Cafe
+
+            # 取得 cafe 物件
+            cafe = Cafe.objects.filter(place_id=place_id).first()
+            if cafe and not cafe.photo_s3_url:
+                logger.info(f'觸發背景任務：上傳照片到 S3 - {place_id}')
+                result = download_and_upload_cafe_photo.delay(cafe.id)
+                logger.warning(f'Celery task sent: {result.id}')
+            else:
+                logger.debug(f'跳過背景任務（已有 S3 URL 或找不到 cafe）')
+        except Exception as e:
+            logger.error(f'觸發背景任務失敗: {e}')
+
+    @staticmethod
+    def resolve_photo_url(photo_reference: str) -> str:
+        """解析 Google Places Photo API 重導向，取得實際圖片 URL"""
+        if not photo_reference:
+            return FlexMessageBuilder.DEFAULT_PHOTO_URL
+
+        photo_api_url = (
+            f'https://maps.googleapis.com/maps/api/place/photo'
+            f'?photo_reference={photo_reference}'
+            f'&maxwidth=400'
+            f'&key={config("GOOGLE_API_KEY")}'
+        )
+
+        try:
+            response = requests.head(photo_api_url, allow_redirects=True, timeout=2)
+            if response.status_code == 200:
+                return response.url
+        except requests.RequestException as e:
+            logger.warning(f'解析 Google photo URL 失敗 (reference: {photo_reference}): {e}')
+        return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:
@@ -222,12 +311,15 @@ class FlexMessageBuilder:
             'flex': 0
         })
 
+        # 處理咖啡店照片
+        photo_url = FlexMessageBuilder.get_photo_url(info)
+
         # 建立 Flex Message
         flex_message = {
             'type': 'bubble',
             'hero': {
                 'type': 'image',
-                'url': 'https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png',
+                'url': photo_url,
                 'size': 'full',
                 'aspectRatio': '20:13',
                 'aspectMode': 'cover',
@@ -406,6 +498,7 @@ class LineMessageBuilder:
     def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
 
         if not shops:
+            logger.error('找不到店家資訊')
             # 回傳找不到店家的訊息
             line_bot_api.reply_message(
                 ReplyMessageRequest(
@@ -516,8 +609,7 @@ class PostbackBuilder:
 
         place_id = info_d['place_id']
 
-
-        #TODO: data use urlencode(payload)
+        # TODO: data use urlencode(payload)
 
         favorite_action = {
             'type': 'postback',

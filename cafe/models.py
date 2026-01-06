@@ -51,6 +51,12 @@ class Cafe(models.Model):
                                   verbose_name='是否有插座')
     attributes_last_calculated_at = models.DateTimeField(null=True)
 
+    # photo
+    photo_reference = models.CharField(blank=True, default='', verbose_name='Google Photo Reference')
+    photo_s3_url = models.URLField(blank=True, default='', verbose_name='S3 照片 URL')
+    view_count = models.IntegerField(default=0, verbose_name='瀏覽次數')
+    photo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='照片更新時間')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,6 +97,8 @@ class Cafe(models.Model):
             'opening_hours': self.opening_hours,
             'limited_time': self.limited_time,
             'has_socket': self.has_socket,
+            'photo_reference': self.photo_reference,
+            'photo_s3_url': self.photo_s3_url,
         }
 
     @classmethod
