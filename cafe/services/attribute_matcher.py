@@ -15,7 +15,7 @@ class CafeAttributeMatcher:
     """
 
     # 誤差值為 55 公尺
-    COORDINATE_TOLERANCE = Decimal('0.0005')
+    COORDINATE_TOLERANCE = Decimal('0.0001')
 
     @classmethod
     def match_and_sync_attributes(cls, cafe: Cafe) -> bool:
