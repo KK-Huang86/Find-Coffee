@@ -62,16 +62,13 @@ class FlexMessageBuilder:
             str: 照片 URL
         """
 
-        if isinstance(cafe_dict_or_obj, dict):
-            photo_s3_url = cafe_dict_or_obj.get('photo_s3_url', '')
-            photo_reference = cafe_dict_or_obj.get('photo_reference', '')
-            place_id = cafe_dict_or_obj.get('place_id', '')
+        if not isinstance(cafe_dict_or_obj, dict):
+            # 如果是 Cafe 物件，轉換為字典以統一處理
+            cafe_dict_or_obj = cafe_dict_or_obj.to_dict()
 
-        else:
-            # Cafe本身的實例
-            photo_s3_url = cafe_dict_or_obj.photo_s3_url or ''
-            photo_reference = cafe_dict_or_obj.photo_reference or ''
-            place_id = cafe_dict_or_obj.place_id
+        photo_s3_url = cafe_dict_or_obj.get('photo_s3_url', '')
+        photo_reference = cafe_dict_or_obj.get('photo_reference', '')
+        place_id = cafe_dict_or_obj.get('place_id', '')
 
         if photo_s3_url:
             logger.info(f'place_id: {place_id}, photo_s3_url: {photo_s3_url}，從S3 拉資料')
@@ -83,7 +80,7 @@ class FlexMessageBuilder:
             resolved_url = FlexMessageBuilder.resolve_photo_url(photo_reference)
 
             if resolved_url != FlexMessageBuilder.DEFAULT_PHOTO_URL:
-                FlexMessageBuilder._trigger_s3_upload(place_id, photo_reference)
+                FlexMessageBuilder._trigger_s3_upload(place_id)
 
             return resolved_url
 
@@ -92,7 +89,7 @@ class FlexMessageBuilder:
             return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
     @staticmethod
-    def _trigger_s3_upload(place_id: str, photo_reference: str):
+    def _trigger_s3_upload(place_id: str):
         """
         觸發背景任務上傳照片到 S3
 
@@ -100,7 +97,6 @@ class FlexMessageBuilder:
 
         Args:
             place_id: Google Places ID
-            photo_reference: Google Places Photo Reference
         """
         try:
             from cafe.tasks import download_and_upload_cafe_photo
@@ -110,7 +106,7 @@ class FlexMessageBuilder:
             cafe = Cafe.objects.filter(place_id=place_id).first()
             if cafe and not cafe.photo_s3_url:
                 logger.info(f'觸發背景任務：上傳照片到 S3 - {place_id}')
-                result=download_and_upload_cafe_photo.delay(cafe.id)
+                result = download_and_upload_cafe_photo.delay(cafe.id)
                 logger.warning(f'Celery task sent: {result.id}')
             else:
                 logger.debug(f'跳過背景任務（已有 S3 URL 或找不到 cafe）')
@@ -131,15 +127,12 @@ class FlexMessageBuilder:
         )
 
         try:
-            response = requests.head(photo_api_url, allow_redirects=True, timeout=5)
+            response = requests.head(photo_api_url, allow_redirects=True, timeout=2)
             if response.status_code == 200:
                 return response.url
-        except requests.RequestException:
-            pass
-
+        except requests.RequestException as e:
+            logger.warning(f'解析 Google photo URL 失敗 (reference: {photo_reference}): {e}')
         return FlexMessageBuilder.DEFAULT_PHOTO_URL
-
-
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:

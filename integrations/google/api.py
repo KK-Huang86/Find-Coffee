@@ -119,7 +119,7 @@ class GoogleAPI:
             'opening_hours': result.get('opening_hours', {}).get('weekday_text', []),
             'google_maps': result.get('url'),
             'website': result.get('website', '無提供'),
-            'photo_reference':photo_reference
+            'photo_reference': photo_reference
         }
         return info
 
