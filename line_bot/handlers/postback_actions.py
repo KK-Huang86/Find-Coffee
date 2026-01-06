@@ -86,14 +86,14 @@ def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, 
             reply_cafe_detail(line_bot_api, reply_token, info_d, is_favorited)
             return
 
-    # 2. 檢查 DB 是否有此店家，搜尋的時候可能不只有一間
+    # 2. 若沒有 place_id，檢查 DB 是否有此店家，搜尋的時候可能不只有一間
     cafes = Cafe.objects.filter(name__icontains=keyword)[:5]
 
     if cafes.exists():
         # DB 有資料，顯示 carousel（理論上這裡抓到的都是兩筆以上的資料，因為一筆的話會有 place_id）
         shops = [{'place_id': cafe.place_id} for cafe in cafes]
 
-    # 3. 都沒有的話直接打 Google API
+    # 3. 都沒有的話直接打 Google API 進行查詢
     else:
         shops = GoogleAPI.search_coffee_shops(keyword)
 
