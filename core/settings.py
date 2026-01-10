@@ -143,3 +143,42 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Celery
+
+ENVIRONMENT = config('ENVIRONMENT', default='development')
+
+# Broker 設定（根據環境切換）
+if ENVIRONMENT == 'production':
+    # ===== 生產環境：使用 SQS =====
+    CELERY_BROKER_URL = 'sqs://'
+    CELERY_BROKER_TRANSPORT_OPTIONS = {
+        'region': config('AWS_REGION', default='ap-northeast-1'),
+        'queue_name_prefix': 'find-coffee-',
+        'visibility_timeout': 3600,  # 1 小時（需 > 最長任務時間）
+        'polling_interval': 1,  # 每秒檢查一次
+    }
+else:
+    # ===== 開發環境：使用 Redis =====
+    CELERY_BROKER_URL = config(
+        'CELERY_BROKER_URL',
+        default='redis://localhost:6379/0'
+    )
+
+# 不追蹤任務結果（fire and forget）
+CELERY_RESULT_BACKEND = None
+
+# 通用設定
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Taipei'
+
+# 任務設定
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 分鐘硬超時
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 分鐘軟超時
+
+# 可靠性設定
+CELERY_TASK_ACKS_LATE = True  # 任務完成後才確認（失敗會重試）
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 一次只拿一個任務
+CELERY_TASK_REJECT_ON_WORKER_LOST = True  # Worker 掛掉時重新排隊

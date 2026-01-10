@@ -4,9 +4,21 @@ from django.db.models import F
 from users.models import User
 
 
+LIMITED_TIME_CHOICES = [
+    ("no", "一律不限時"),
+    ("maybe", "視情況限時"),
+    ("yes", "一律限時"),
+]
+SOCKET_CHOICES = [
+    ("no", "很少或沒有"),
+    ("maybe", "視座位"),
+    ("yes", "很多"),
+]
+
 # Create your models here.
 
 class Cafe(models.Model):
+
     # 唯一key
     place_id = models.CharField(max_length=100, unique=True, db_index=True, verbose_name='Google Place ID')
 
@@ -16,14 +28,11 @@ class Cafe(models.Model):
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='電話')
 
     # 地理位置
-    lat = models.FloatField(blank=True, null=True, verbose_name='緯度')
-    lng = models.FloatField(blank=True, null=True, verbose_name='經度')
+    lat = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True, verbose_name='緯度')
+    lng = models.DecimalField(max_digits=10, decimal_places=6, blank=True, null=True, verbose_name='經度')
 
     rating = models.DecimalField(max_digits=2, decimal_places=1, blank=True, null=True, verbose_name='Google 評分')
     user_ratings_total = models.IntegerField(default=0, verbose_name='評論數量')
-
-    has_plug = models.BooleanField(null=True, blank=True, verbose_name='是否有插座')
-    is_time_unlimited = models.BooleanField(null=True, blank=True, verbose_name='是否不限時')
 
     # 營業資訊
     opening_hours = models.JSONField(default=list, blank=True, verbose_name='營業時間')
@@ -34,6 +43,19 @@ class Cafe(models.Model):
 
     # 查詢資料是否有定期更新，每30天會更新資料（使用者若有查詢該筆資料）
     last_refreshed = models.DateTimeField(null=True, blank=True, verbose_name='資料最後更新時間')
+
+    # 咖啡店的環境
+    limited_time = models.CharField(max_length=10, null=True, blank=True, choices=LIMITED_TIME_CHOICES,
+                                    verbose_name='是否限時')
+    has_socket = models.CharField(max_length=10, null=True, blank=True, choices=SOCKET_CHOICES,
+                                  verbose_name='是否有插座')
+    attributes_last_calculated_at = models.DateTimeField(null=True)
+
+    # photo
+    photo_reference = models.CharField(blank=True, default='', verbose_name='Google Photo Reference')
+    photo_s3_url = models.URLField(blank=True, default='', verbose_name='S3 照片 URL')
+    view_count = models.IntegerField(default=0, verbose_name='瀏覽次數')
+    photo_updated_at = models.DateTimeField(null=True, blank=True, verbose_name='照片更新時間')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -70,9 +92,13 @@ class Cafe(models.Model):
             'place_id': self.place_id,
             'google_maps': self.google_maps,
             'website': self.website,
-            'lat': self.lat,
-            'lng': self.lng,
-            'opening_hours': self.opening_hours
+            'lat': float(self.lat),
+            'lng': float(self.lng),
+            'opening_hours': self.opening_hours,
+            'limited_time': self.limited_time,
+            'has_socket': self.has_socket,
+            'photo_reference': self.photo_reference,
+            'photo_s3_url': self.photo_s3_url,
         }
 
     @classmethod
@@ -105,3 +131,133 @@ class Favorite(models.Model):
         verbose_name = '收藏'
         verbose_name_plural = '收藏列表'
         unique_together = ('user', 'cafe')
+
+
+class CafeAttributeVote(models.Model):
+    """咖啡店屬性投票記錄"""
+
+    ATTRIBUTE_CHOICES = [
+        ('socket', '插座'),
+        ('limited_time', "限時"),
+        ('cheap', '價格'),
+        ('quiet', '安靜'),
+    ]
+
+    VALUE_CHOICES = [
+        ('yes', '是/有'),
+        ('no', '否/無'),
+        ('maybe', '可能/部分'),
+        ('unknown', '未知'),
+    ]
+
+    SOURCE_CHOICES = [
+        ('user', '使用者回報'),
+        ('cafenomad', 'CafeNomad API'),
+        ('inferred', '系統推論'),  # 先設計
+    ]
+    cafe = models.ForeignKey(Cafe, on_delete=models.CASCADE, related_name='attribute_votes', verbose_name='咖啡店')
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, verbose_name='回報使用者')
+
+    attribute = models.CharField(max_length=20, choices=ATTRIBUTE_CHOICES, verbose_name='屬性類型')
+    value = models.CharField(max_length=20, choices=VALUE_CHOICES, verbose_name='屬性值')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, verbose_name='資料來源')
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='建立時間')
+
+    class Meta:
+        verbose_name = '咖啡店屬性投票'
+        verbose_name_plural = '咖啡店屬性投票'
+
+        indexes = [
+            models.Index(fields=['cafe', 'attribute']),
+            models.Index(fields=['created_at']),
+        ]
+
+        ordering = ['-created_at']
+
+        # 防止別人瘋狂評分、評價
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cafe', 'attribute', 'user'],
+                condition=models.Q(user__isnull=False),
+                name='unique_user_vote_per_attribute'
+            )
+        ]
+
+    def __str__(self):
+        return f'{self.cafe.name} - {self.get_attribute_display()}: {self.get_value_display()}'
+
+
+class CafeNomadCache(models.Model):
+    """CafeNomad API 資料快取表"""
+
+    STANDING_DESK_CHOICES = [
+        ('yes', '有'),
+        ('no', '無'),
+    ]
+
+    # 基本資訊
+    cafenomad_id = models.CharField(max_length=100, unique=True, db_index=True, verbose_name='CafeNomad ID')
+    name = models.CharField(max_length=200, verbose_name='店名')
+    city = models.CharField(max_length=50, blank=True, verbose_name='城市')
+    address = models.CharField(max_length=255, blank=True, verbose_name='地址')
+
+    # 地理位置
+    lat = models.DecimalField(max_digits=9, decimal_places=6, verbose_name='緯度')
+    lng = models.DecimalField(max_digits=10, decimal_places=6, verbose_name='經度')
+
+    # 咖啡店屬性
+    socket = models.CharField(max_length=10, null=True, blank=True, choices=SOCKET_CHOICES, verbose_name='插座')
+    limited_time = models.CharField(max_length=10, null=True, blank=True, choices=LIMITED_TIME_CHOICES,
+                                    verbose_name='是否限時')
+    standing_desk = models.CharField(max_length=10, null=True, blank=True, choices=STANDING_DESK_CHOICES,
+                                     verbose_name='站立桌')
+
+    # 評分資訊
+    wifi = models.FloatField(null=True, blank=True, verbose_name='WiFi 穩定度')
+    seat = models.FloatField(null=True, blank=True, verbose_name='通常有位')
+    quiet = models.FloatField(null=True, blank=True, verbose_name='安靜程度')
+    tasty = models.FloatField(null=True, blank=True, verbose_name='咖啡好喝')
+    cheap = models.FloatField(null=True, blank=True, verbose_name='價格便宜')
+    music = models.FloatField(null=True, blank=True, verbose_name='裝潢音樂')
+
+    # 其他資訊
+    url = models.URLField(max_length=500, blank=True, verbose_name='官方網站')
+    mrt = models.CharField(max_length=100, blank=True, verbose_name='最近捷運站')
+    open_time = models.CharField(max_length=200, blank=True, verbose_name='營業時間')
+
+    synced_at = models.DateTimeField(auto_now=True, verbose_name='最後同步時間')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='建立時間')
+
+    class Meta:
+        db_table = 'cafe_nomad_cache'
+        verbose_name = 'CafeNomad 快取'
+        verbose_name_plural = 'CafeNomad 快取'
+
+        # 關鍵索引（加速經緯度查詢）
+        indexes = [
+            models.Index(fields=['lat', 'lng'], name='idx_cafenomad_coords'),
+            models.Index(fields=['city'], name='idx_cafenomad_city'),
+            models.Index(fields=['synced_at'], name='idx_cafenomad_synced'),
+        ]
+
+        ordering = ['-synced_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.city})"
+
+    @property
+    def has_complete_attributes(self):
+        """是否有完整的屬性資訊"""
+        return self.socket is not None and self.limited_time is not None
+
+    def to_dict(self):
+        return {
+            'name': self.name,
+            'city': self.city,
+            'lat': float(self.lat),
+            'lng': float(self.lng),
+            'socket': self.socket,
+            'limited_time': self.limited_time,
+            'address': self.address,
+        }

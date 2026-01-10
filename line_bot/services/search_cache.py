@@ -67,7 +67,7 @@ class SearchHistoryService:
             history = cache.get(key, [])
             return history
         except Exception as e:
-            logger.error(f"Failed to get search history: {e}")
+            logger.error(f'Failed to get search history: {e}',exc_info=True)
             return []
 
     @staticmethod
@@ -78,5 +78,5 @@ class SearchHistoryService:
             cache.delete(key)
             return True
         except Exception as e:
-            logger.error(f"Failed to clear search history: {e}")
+            logger.error(f"Failed to clear search history: {e}",exc_info=True)
             return False
