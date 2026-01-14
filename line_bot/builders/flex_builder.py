@@ -907,6 +907,7 @@ class QuickReplyBuilder:
         for record in history[:5]:
             keyword = record['keyword']
             search_type = record['type']
+            place_id = record.get('place_id')
 
             icon = '☕️' if search_type == "shop_name" else '📍'
 
@@ -917,6 +918,7 @@ class QuickReplyBuilder:
                 'action': 'recent_search',
                 'type': search_type,
                 'keyword': keyword,
+                'place_id':place_id,
             }
 
             data = urlencode(payload)

@@ -13,7 +13,7 @@ class SearchHistoryService:
     CACHE_TTL = 3600 * 24 * 7  # 保留 7 天
 
     @staticmethod
-    def add_search(user_id, keyword, search_type='shop_name'):
+    def add_search(user_id, keyword, search_type='shop_name', place_id=None):
         """
         記錄搜尋關鍵字到 Redis
 
@@ -21,6 +21,7 @@ class SearchHistoryService:
             user_id: LINE 使用者 ID
             keyword: 搜尋關鍵字（店名或路名）
             search_type: 搜尋類型 ('shop_name' 或 'address')
+            place_id: 咖啡店 place_id（僅單一結果時存入，多筆結果為 None）
         """
         try:
             key = f'{SearchHistoryService.CACHE_KEY_PREFIX}:{user_id}'
@@ -32,6 +33,7 @@ class SearchHistoryService:
             new_record = {
                 'keyword': keyword,
                 'type': search_type,
+                'place_id': place_id
             }
 
             # 移除重複的關鍵字（避免同樣的關鍵字出現兩次）
@@ -67,7 +69,7 @@ class SearchHistoryService:
             history = cache.get(key, [])
             return history
         except Exception as e:
-            logger.error(f'Failed to get search history: {e}',exc_info=True)
+            logger.error(f'Failed to get search history: {e}', exc_info=True)
             return []
 
     @staticmethod
@@ -78,5 +80,5 @@ class SearchHistoryService:
             cache.delete(key)
             return True
         except Exception as e:
-            logger.error(f"Failed to clear search history: {e}",exc_info=True)
+            logger.error(f'Failed to clear search history: {e}', exc_info=True)
             return False

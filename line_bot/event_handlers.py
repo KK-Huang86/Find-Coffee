@@ -70,8 +70,11 @@ def handle_message(event):
                 # 本地沒有，打 Google API
                 shops = GoogleAPI.search_coffee_shops(text)
 
+            # 只有 1 筆結果才存 place_id，多筆用 keyword 重搜
+            place_id = shops[0]['place_id'] if len(shops) == 1 else None
+
             # 紀錄搜尋歷史
-            SearchHistoryService.add_search(user_id, text, search_type='shop_name')
+            SearchHistoryService.add_search(user_id, text, search_type='shop_name', place_id=place_id)
 
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
@@ -160,6 +163,7 @@ def handle_location_message(event):
 def _parse_postback_data(data: str) -> dict:
     parsed = parse_qs(data)
     return {k: v[0] for k, v in parsed.items()}
+
 
 # postback 處理
 @handler.add(PostbackEvent)
