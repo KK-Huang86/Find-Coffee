@@ -11,7 +11,7 @@ from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder
 from line_bot.constants import UserState, MenuAction
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.services.search_cache import SearchHistoryService
-from line_bot.state import set_state
+from line_bot.state import StateManager
 from users.views import FavoritesManager
 
 logger = logging.getLogger(__name__)
@@ -119,13 +119,13 @@ def _handle_address_search(line_bot_api, reply_token, user, user_id, keyword):
 
 def _menu_search_shop_name(line_bot_api, reply_token, user):
     """處理店名查詢"""
-    set_state(user.line_user_id, UserState.WAITING_SHOP_NAME)
+    StateManager.set_state(user.line_user_id, UserState.WAITING_SHOP_NAME)
     reply_text(line_bot_api, reply_token, '請輸入咖啡店名稱 ☕️')
 
 
 def _menu_search_address(line_bot_api, reply_token, user):
     """處理路名查詢"""
-    set_state(user.line_user_id, UserState.WAITING_ADDRESS)
+    StateManager.set_state(user.line_user_id, UserState.WAITING_ADDRESS)
     reply_text(line_bot_api, reply_token, '請輸入路名️（例如：台北市信義區松信路）')
 
 

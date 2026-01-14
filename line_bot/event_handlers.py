@@ -25,7 +25,7 @@ from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder
 from line_bot.handlers.postback_actions import ACTION_HANDLERS
 from line_bot.handlers.helpers import reply_text
 from line_bot.services.search_cache import SearchHistoryService
-from line_bot.state import get_state, reset_state
+from line_bot.state import StateManager
 from users.models import User
 from cafe.models import Cafe
 from utils.utils import LockService
@@ -50,7 +50,7 @@ def handle_message(event):
         line_bot_api = MessagingApi(api_client)
         user_id = event.source.user_id
         text = event.message.text
-        state = get_state(user_id)
+        state = StateManager.get_state(user_id)
         user = User.objects.get(line_user_id=user_id)
 
         if not LockService.acquire(user_id, 'message'):
@@ -80,7 +80,7 @@ def handle_message(event):
                 user,
                 quick_reply=QuickReplyBuilder.create_search_again_actions()
             )
-            reset_state(user_id)
+            StateManager.reset_state(user_id)
             return
 
         # 使用者查詢某一路名的咖啡店，回傳結果
@@ -97,7 +97,7 @@ def handle_message(event):
                 user,
                 quick_reply=QuickReplyBuilder.create_carousel_pagination_actions()
             )
-            reset_state(user_id)
+            StateManager.reset_state(user_id)
             return
 
         # 使用者輸入非預期文字
