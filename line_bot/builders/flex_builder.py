@@ -25,7 +25,7 @@ from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
 from users.models import User
 from line_bot.utils import parse_opening_hours
-from line_bot.constants import MenuText
+from line_bot.constants import MenuText,MenuAction
 from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
@@ -824,21 +824,21 @@ class QuickReplyBuilder:
         return QuickReply(
             items=[
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='🔍 再找一間',
-                        text=MenuText.SEARCH_SHOP_NAME
+                        data=f'action=menu&type={MenuAction.SEARCH_SHOP_NAME}'
                     )
                 ),
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='📍 附近搜尋',
-                        text=MenuText.SHARE_LOCATION
+                        data=f'action=menu&type={MenuAction.SHARE_LOCATION}'
                     )
                 ),
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='❤️ 我的收藏',
-                        text=MenuText.FAVORITES
+                        data=f'action=menu&type={MenuAction.FAVORITES}'
                     )
                 )
             ]
@@ -853,27 +853,27 @@ class QuickReplyBuilder:
         return QuickReply(
             items=[
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='🔍 再用路名查一次',
-                        text=MenuText.SEARCH_ADDRESS
+                        data=f'action=menu&type={MenuAction.SEARCH_ADDRESS}'
                     )
                 ),
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='🔍 店名查詢',
-                        text=MenuText.SEARCH_SHOP_NAME
+                        data=f'action=menu&type={MenuAction.SEARCH_SHOP_NAME}'
                     )
                 ),
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='📍 附近搜尋',
-                        text=MenuText.SHARE_LOCATION
+                        data=f'action=menu&type={MenuAction.SHARE_LOCATION}'
                     )
                 ),
                 QuickReplyItem(
-                    action=MessageAction(
+                    action=PostbackAction(
                         label='❤️ 我的收藏',
-                        text=MenuText.FAVORITES
+                        data=f'action=menu&type={MenuAction.FAVORITES}'
                     )
                 )
             ]
