@@ -129,3 +129,8 @@ def download_and_upload_cafe_photo(self, cafe_id):
         logger.error(f'上傳 S3 失敗：{e}', exc_info=True)
         # Celery 會自動重試
         raise
+
+
+@shared_task()
+def upload_cafe_data(cafe_id):
+    """用來更新咖啡店資料，根據Cafe 的 last_refreshed 進行判斷"""
