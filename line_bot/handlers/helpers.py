@@ -31,13 +31,16 @@ def get_or_create_cafe_info(place_id):
         tuple: (info_dict, cafe_object)
                若失敗則回傳 (None, None)
     """
+
+    DATA_REFRESH_DAYS = 30
+
     # 1. 先查 DB
     cafe = Cafe.objects.filter(place_id=place_id).first()
     if cafe:
         # 檢查該咖啡店的資訊是否需要刷新，走同步，因為有些資訊需即時更新
         last_refreshed = cafe.last_refreshed
         now = timezone.now()
-        if last_refreshed is None or now - last_refreshed >= timedelta(days=30):
+        if last_refreshed is None or now - last_refreshed >= timedelta(days=DATA_REFRESH_DAYS):
             refresh_cafe_data(cafe.id)
             cafe.refresh_from_db()  # 同步更新後，重新從 DB 取得最新資料
         # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料

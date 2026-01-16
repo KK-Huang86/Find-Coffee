@@ -176,7 +176,7 @@ def refresh_cafe_data(cafe_id):
         download_and_upload_cafe_photo.delay(cafe.id)
 
 
-    # 3. 照片超過180天後也重新拉資料更新
+    # 3. 照片超過180天後重新拉資料更新
     elif (
         cafe.photo_updated_at
         and timezone.now() - cafe.photo_updated_at >= timedelta(days=PHOTO_REFRESH_DAYS)
