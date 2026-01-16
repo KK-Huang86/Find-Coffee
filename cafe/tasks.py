@@ -3,6 +3,7 @@ import requests
 
 from celery import shared_task
 from django.utils import timezone
+from datetime import timedelta
 
 from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
@@ -144,6 +145,9 @@ def refresh_cafe_data(cafe_id):
     異步更新咖啡店資料
     當 last_refreshed 超過 30 天時觸發
     """
+
+    PHOTO_REFRESH_DAYS = 180
+
     try:
         cafe = Cafe.objects.get(id=cafe_id)
     except Cafe.DoesNotExist:
@@ -156,7 +160,7 @@ def refresh_cafe_data(cafe_id):
         logger.warning(f'Google API 無回傳資料: {cafe.place_id}')
         return {'status': 'failed', 'reason': 'no_api_response'}
 
-    # 更新欄位（保留原值如果 API 沒返回）
+    # 1. 更新欄位（保留原值如果 API 沒返回）
     cafe.name = result.get('name') or cafe.name
     cafe.address = result.get('address') or cafe.address
     cafe.phone = result.get('phone') or cafe.phone
@@ -164,15 +168,21 @@ def refresh_cafe_data(cafe_id):
     cafe.user_ratings_total = result.get('user_ratings_total', cafe.user_ratings_total)
     cafe.website = result.get('website') or cafe.website
     cafe.google_maps = result.get('google_maps') or cafe.google_maps
-
-    # 若有新的 photo_reference，清除舊的 S3 URL 讓下次重新上傳
-    new_photo_ref = result.get('photo_reference')
-    if new_photo_ref and new_photo_ref != cafe.photo_reference:
-        cafe.photo_reference = new_photo_ref
-        cafe.photo_s3_url = ''  # 清除舊的，觸發重新上傳
-
     cafe.last_refreshed = timezone.now()
     cafe.save()
+
+    # 2. 再來決定「是否需要更新照片」 photo_reference 本質是
+    if not cafe.photo_s3_url:
+        download_and_upload_cafe_photo.delay(cafe.id)
+
+
+    # 3. 照片超過180天後也重新拉資料更新
+    elif (
+        cafe.photo_updated_at
+        and timezone.now() - cafe.photo_updated_at >= timedelta(days=PHOTO_REFRESH_DAYS)
+    ):
+        download_and_upload_cafe_photo.delay(cafe.id)
+
 
     logger.info(f'已更新咖啡店資料: {cafe.name} ({cafe.place_id})')
     return {'status': 'success', 'cafe_id': cafe.id, 'cafe_name': cafe.name}
