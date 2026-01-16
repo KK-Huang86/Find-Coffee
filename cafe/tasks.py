@@ -5,9 +5,11 @@ from celery import shared_task
 from django.utils import timezone
 
 from cafe.models import Cafe
+from integrations.google.api import GoogleAPI
 
 from decouple import config
 import boto3  # Python SDK
+from botocore.config import Config
 from io import BytesIO
 
 logger = logging.getLogger(__name__)
@@ -69,18 +71,23 @@ def download_and_upload_cafe_photo(self, cafe_id):
             return {'status': 'failed', 'reason': 'invalid_content_type'}
 
         # 4. 上傳到 S3
+        s3_config = Config(
+            retries={'max_attempts': 3, 'mode': 'standard'},  # S3 請求層級重試，task 曾也有自動重跑機制
+            connect_timeout=10,
+            read_timeout=30
+        )
         s3_client = boto3.client(
             's3',
             aws_access_key_id=config('AWS_ACCESS_KEY_ID'),
             aws_secret_access_key=config('AWS_SECRET_ACCESS_KEY'),
-            region_name=config('AWS_REGION', default='ap-northeast-1')
+            region_name=config('AWS_REGION', default='ap-northeast-1'),
+            config=s3_config
         )
 
         bucket_name = config('S3_BUCKET_NAME')
         s3_key = f'cafe-photos/{cafe.place_id}.jpg'
 
         logger.info(f'上傳到 S3：{s3_key}')
-
 
         s3_client.upload_fileobj(
             BytesIO(response.content),
@@ -132,5 +139,40 @@ def download_and_upload_cafe_photo(self, cafe_id):
 
 
 @shared_task()
-def upload_cafe_data(cafe_id):
-    """用來更新咖啡店資料，根據Cafe 的 last_refreshed 進行判斷"""
+def refresh_cafe_data(cafe_id):
+    """
+    異步更新咖啡店資料
+    當 last_refreshed 超過 30 天時觸發
+    """
+    try:
+        cafe = Cafe.objects.get(id=cafe_id)
+    except Cafe.DoesNotExist:
+        logger.error(f'Cafe {cafe_id} 不存在')
+        return {'status': 'failed', 'reason': 'cafe_not_found'}
+
+    result = GoogleAPI.get_shop_detail(cafe.place_id)
+
+    if not result:
+        logger.warning(f'Google API 無回傳資料: {cafe.place_id}')
+        return {'status': 'failed', 'reason': 'no_api_response'}
+
+    # 更新欄位（保留原值如果 API 沒返回）
+    cafe.name = result.get('name') or cafe.name
+    cafe.address = result.get('address') or cafe.address
+    cafe.phone = result.get('phone') or cafe.phone
+    cafe.rating = result.get('rating') or cafe.rating
+    cafe.user_ratings_total = result.get('user_ratings_total', cafe.user_ratings_total)
+    cafe.website = result.get('website') or cafe.website
+    cafe.google_maps = result.get('google_maps') or cafe.google_maps
+
+    # 若有新的 photo_reference，清除舊的 S3 URL 讓下次重新上傳
+    new_photo_ref = result.get('photo_reference')
+    if new_photo_ref and new_photo_ref != cafe.photo_reference:
+        cafe.photo_reference = new_photo_ref
+        cafe.photo_s3_url = ''  # 清除舊的，觸發重新上傳
+
+    cafe.last_refreshed = timezone.now()
+    cafe.save()
+
+    logger.info(f'已更新咖啡店資料: {cafe.name} ({cafe.place_id})')
+    return {'status': 'success', 'cafe_id': cafe.id, 'cafe_name': cafe.name}
