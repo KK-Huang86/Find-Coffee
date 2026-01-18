@@ -161,13 +161,21 @@ def refresh_cafe_data(cafe_id):
         return {'status': 'failed', 'reason': 'no_api_response'}
 
     # 1. 更新欄位（保留原值如果 API 沒返回）
-    cafe.name = result.get('name') or cafe.name
-    cafe.address = result.get('address') or cafe.address
-    cafe.phone = result.get('phone') or cafe.phone
-    cafe.rating = result.get('rating') or cafe.rating
-    cafe.user_ratings_total = result.get('user_ratings_total', cafe.user_ratings_total)
-    cafe.website = result.get('website') or cafe.website
-    cafe.google_maps = result.get('google_maps') or cafe.google_maps
+    # cafe.name = result.get('name') or cafe.name -> 如果拿到 None 會爆掉
+    # update_data['name'] = None 暫存，後續 setattr存入
+    update_data = {
+        'name': result.get('name'),
+        'address': result.get('address'),
+        'phone': result.get('phone'),
+        'rating': result.get('rating'),
+        'user_ratings_total': result.get('user_ratings_total'),
+        'website': result.get('website'),
+        'google_maps': result.get('google_maps'),
+    }
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(cafe, key, value)
+
     cafe.last_refreshed = timezone.now()
     cafe.save()
 
