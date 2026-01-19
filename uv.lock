@@ -409,25 +409,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "boto3", specifier = ">=1.42.16" },
-    { name = "celery", specifier = ">=5.6.0" },
-    { name = "certifi", specifier = ">=2025.10.5" },
-    { name = "django", specifier = ">=5.2.7" },
-    { name = "line-bot-sdk", specifier = ">=3.19.1" },
-    { name = "psycopg2-binary", specifier = ">=2.9.11" },
-    { name = "python-decouple", specifier = ">=3.8" },
-    { name = "python-dotenv", specifier = ">=1.1.1" },
-    { name = "redis", specifier = ">=7.1.0" },
+    { name = "boto3", specifier = "~=1.42.30" },
+    { name = "celery", specifier = "~=5.6.2" },
+    { name = "certifi", specifier = "~=2026.1.4" },
+    { name = "django", specifier = "~=6.0.1" },
+    { name = "line-bot-sdk", specifier = "~=3.21.0" },
+    { name = "psycopg2-binary", specifier = "~=2.9.11" },
+    { name = "python-decouple", specifier = "~=3.8" },
+    { name = "python-dotenv", specifier = "~=1.2.1" },
+    { name = "redis", specifier = "~=7.1.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "factory-boy", specifier = ">=3.3.3" },
-    { name = "pre-commit", specifier = ">=4.5.0" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-django", specifier = ">=4.11.1" },
-    { name = "pytest-mock", specifier = ">=3.15.1" },
-    { name = "ruff", specifier = ">=0.14.9" },
+    { name = "factory-boy", specifier = "~=3.3.3" },
+    { name = "pre-commit", specifier = "~=4.5.1" },
+    { name = "pytest", specifier = "~=9.0.2" },
+    { name = "pytest-django", specifier = "~=4.11.1" },
+    { name = "pytest-mock", specifier = "~=3.15.1" },
+    { name = "ruff", specifier = "~=0.14.13" },
 ]
 
 [[package]]
