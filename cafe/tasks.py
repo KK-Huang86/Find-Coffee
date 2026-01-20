@@ -3,11 +3,14 @@ import requests
 
 from celery import shared_task
 from django.utils import timezone
+from datetime import timedelta
 
 from cafe.models import Cafe
+from integrations.google.api import GoogleAPI
 
 from decouple import config
 import boto3  # Python SDK
+from botocore.config import Config
 from io import BytesIO
 
 logger = logging.getLogger(__name__)
@@ -69,18 +72,23 @@ def download_and_upload_cafe_photo(self, cafe_id):
             return {'status': 'failed', 'reason': 'invalid_content_type'}
 
         # 4. 上傳到 S3
+        s3_config = Config(
+            retries={'max_attempts': 3, 'mode': 'standard'},  # S3 請求層級重試，task 曾也有自動重跑機制
+            connect_timeout=10,
+            read_timeout=30
+        )
         s3_client = boto3.client(
             's3',
             aws_access_key_id=config('AWS_ACCESS_KEY_ID'),
             aws_secret_access_key=config('AWS_SECRET_ACCESS_KEY'),
-            region_name=config('AWS_REGION', default='ap-northeast-1')
+            region_name=config('AWS_REGION', default='ap-northeast-1'),
+            config=s3_config
         )
 
         bucket_name = config('S3_BUCKET_NAME')
         s3_key = f'cafe-photos/{cafe.place_id}.jpg'
 
         logger.info(f'上傳到 S3：{s3_key}')
-
 
         s3_client.upload_fileobj(
             BytesIO(response.content),
@@ -129,3 +137,64 @@ def download_and_upload_cafe_photo(self, cafe_id):
         logger.error(f'上傳 S3 失敗：{e}', exc_info=True)
         # Celery 會自動重試
         raise
+
+
+@shared_task(
+    max_retries=3,
+    default_retry_delay=60,  # 60 秒後重試
+    autoretry_for=(requests.RequestException,)
+)
+def refresh_cafe_data(cafe_id):
+    """
+    異步更新咖啡店資料
+    (當 last_refreshed 超過 30 天時觸發，該邏輯放在 helpers.py)
+    """
+
+    PHOTO_REFRESH_DAYS = 180
+
+    try:
+        cafe = Cafe.objects.get(id=cafe_id)
+    except Cafe.DoesNotExist:
+        logger.error(f'Cafe {cafe_id} 不存在')
+        return {'status': 'failed', 'reason': 'cafe_not_found'}
+
+    result = GoogleAPI.get_shop_detail(cafe.place_id)
+
+    if not result:
+        logger.warning(f'Google API 無回傳資料: {cafe.place_id}')
+        return {'status': 'failed', 'reason': 'no_api_response'}
+
+    # 1. 更新欄位（保留原值如果 API 沒返回）
+    # cafe.name = result.get('name') or cafe.name -> 如果拿到 None 會爆掉
+    # update_data['name'] = None 暫存，後續 setattr存入
+    update_data = {
+        'name': result.get('name'),
+        'address': result.get('address'),
+        'phone': result.get('phone'),
+        'rating': result.get('rating'),
+        'user_ratings_total': result.get('user_ratings_total'),
+        'website': result.get('website'),
+        'google_maps': result.get('google_maps'),
+    }
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(cafe, key, value)
+
+    cafe.last_refreshed = timezone.now()
+    cafe.save()
+
+    # 2. 再來決定「是否需要更新照片」 photo_reference 本質是
+    if not cafe.photo_s3_url:
+        download_and_upload_cafe_photo.delay(cafe.id)
+
+
+    # 3. 照片超過180天後重新拉資料更新
+    elif (
+        cafe.photo_updated_at
+        and timezone.now() - cafe.photo_updated_at >= timedelta(days=PHOTO_REFRESH_DAYS)
+    ):
+        download_and_upload_cafe_photo.delay(cafe.id)
+
+
+    logger.info(f'已更新咖啡店資料: {cafe.name} ({cafe.place_id})')
+    return {'status': 'success', 'cafe_id': cafe.id, 'cafe_name': cafe.name}

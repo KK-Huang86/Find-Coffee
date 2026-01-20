@@ -7,9 +7,13 @@ from linebot.v3.messaging import (
     FlexMessage,
     FlexContainer,
 )
+from datetime import timedelta
+
+from django.utils import timezone
 
 from cafe.models import Cafe
 from cafe.services.attribute_matcher import CafeAttributeMatcher
+from cafe.tasks import refresh_cafe_data
 from integrations.google.api import GoogleAPI
 from line_bot.utils import parse_opening_hours
 
@@ -27,10 +31,19 @@ def get_or_create_cafe_info(place_id):
         tuple: (info_dict, cafe_object)
                若失敗則回傳 (None, None)
     """
+
+    DATA_REFRESH_DAYS = 30
+
     # 1. 先查 DB
     cafe = Cafe.objects.filter(place_id=place_id).first()
     if cafe:
-       # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料
+        # 檢查該咖啡店的資訊是否需要刷新，走同步，因為有些資訊需即時更新
+        last_refreshed = cafe.last_refreshed
+        now = timezone.now()
+        if last_refreshed is None or now - last_refreshed >= timedelta(days=DATA_REFRESH_DAYS):
+            refresh_cafe_data(cafe.id)
+            cafe.refresh_from_db()  # 同步更新後，重新從 DB 取得最新資料
+        # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料
         if cafe.has_socket is None or cafe.limited_time is None:
             try:
                 if CafeAttributeMatcher.match_and_sync_attributes(cafe):
@@ -66,7 +79,8 @@ def get_or_create_cafe_info(place_id):
             lat=info_d.get('lat') or 0.0,
             lng=info_d.get('lng') or 0.0,
             opening_hours=opening_hours_d,
-            photo_reference=info_d.get('photo_reference') or ''
+            photo_reference=info_d.get('photo_reference') or '',
+            last_refreshed=timezone.now(),
         )
         logger.info(f'建立新咖啡店: {cafe.name} ({cafe.place_id})')
 
@@ -74,7 +88,7 @@ def get_or_create_cafe_info(place_id):
         try:
             CafeAttributeMatcher.match_and_sync_attributes(cafe)
         except Exception as e:
-            logger.warning(f'查詢 CafeNomadCache 失敗 {e}',exc_info=True)
+            logger.warning(f'查詢 CafeNomadCache 失敗 {e}', exc_info=True)
 
         return cafe.to_dict(), cafe
 

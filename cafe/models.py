@@ -99,6 +99,7 @@ class Cafe(models.Model):
             'has_socket': self.has_socket,
             'photo_reference': self.photo_reference,
             'photo_s3_url': self.photo_s3_url,
+            'last_refreshed': self.last_refreshed,
         }
 
     @classmethod
