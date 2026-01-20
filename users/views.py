@@ -10,8 +10,7 @@ from cafe.models import Cafe, Favorite
 logger = logging.getLogger(__name__)
 
 
-#TODO:好友、每一個使用的次數
-
+# TODO:好友、每一個使用的次數
 
 
 class FavoritesManager:

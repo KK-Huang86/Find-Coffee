@@ -20,10 +20,10 @@ resource "aws_iam_policy" "s3_upload" {
         Sid    = "AllowS3PhotosBucketOperations"
         Effect = "Allow"
         Action = [
-          "s3:PutObject",       # 上傳檔案
-          "s3:PutObjectAcl",    # 設定檔案權限
-          "s3:GetObject",       # 讀取檔案
-          "s3:DeleteObject"     # 刪除檔案
+          "s3:PutObject",    # 上傳檔案
+          "s3:PutObjectAcl", # 設定檔案權限
+          "s3:GetObject",    # 讀取檔案
+          "s3:DeleteObject"  # 刪除檔案
         ]
         Resource = "${aws_s3_bucket.cafe_photos.arn}/*"
       },
@@ -31,7 +31,7 @@ resource "aws_iam_policy" "s3_upload" {
         Sid    = "AllowListBucket"
         Effect = "Allow"
         Action = [
-          "s3:ListBucket"       # 列出檔案
+          "s3:ListBucket" # 列出檔案
         ]
         Resource = aws_s3_bucket.cafe_photos.arn
       }

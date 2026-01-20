@@ -21,13 +21,13 @@ output "cloudfront_url" {
 output "aws_access_key_id" {
   description = "Django App AWS Access Key ID"
   value       = aws_iam_access_key.django_app.id
-  sensitive   = true  # 不會直接顯示
+  sensitive   = true # 不會直接顯示
 }
 
 output "aws_secret_access_key" {
   description = "Django App AWS Secret Access Key"
   value       = aws_iam_access_key.django_app.secret
-  sensitive   = true  # 不會直接顯示
+  sensitive   = true # 不會直接顯示
 }
 
 # 使用方式：

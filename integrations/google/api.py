@@ -2,7 +2,6 @@ import logging
 import re
 from decouple import config
 
-
 import requests
 from requests.exceptions import RequestException, Timeout
 
