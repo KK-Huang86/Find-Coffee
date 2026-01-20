@@ -3,7 +3,6 @@ from django.db.models import F
 
 from users.models import User
 
-
 LIMITED_TIME_CHOICES = [
     ("no", "一律不限時"),
     ("maybe", "視情況限時"),
@@ -15,10 +14,10 @@ SOCKET_CHOICES = [
     ("yes", "很多"),
 ]
 
+
 # Create your models here.
 
 class Cafe(models.Model):
-
     # 唯一key
     place_id = models.CharField(max_length=100, unique=True, db_index=True, verbose_name='Google Place ID')
 

@@ -58,7 +58,6 @@ def callback(request):
     return HttpResponse('OK')
 
 
-
 def rich_menu():
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -132,6 +131,5 @@ def rich_menu():
         line_bot_api.set_default_rich_menu(
             rich_menu_id=rich_menu_id
         )
-
 
 # rich_menu()  # 需要時手動呼叫，不要自動執行

@@ -123,7 +123,6 @@ def _handle_address_search(line_bot_api, reply_token, user, user_id, keyword):
     )
 
 
-
 def _menu_search_shop_name(line_bot_api, reply_token, user):
     """處理店名查詢"""
     StateManager.set_state(user.line_user_id, UserState.WAITING_SHOP_NAME)

@@ -25,7 +25,7 @@ from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
 from users.models import User
 from line_bot.utils import parse_opening_hours
-from line_bot.constants import MenuText,MenuAction
+from line_bot.constants import MenuText, MenuAction
 from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
@@ -918,7 +918,7 @@ class QuickReplyBuilder:
                 'action': 'recent_search',
                 'type': search_type,
                 'keyword': keyword,
-                'place_id':place_id,
+                'place_id': place_id,
             }
 
             data = urlencode(payload)

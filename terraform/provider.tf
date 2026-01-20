@@ -10,10 +10,10 @@ terraform {
 
   # 遠端 State 儲存
   backend "s3" {
-    bucket         = "find-coffee-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "ap-northeast-1"
-    encrypt        = true
+    bucket  = "find-coffee-terraform-state"
+    key     = "production/terraform.tfstate"
+    region  = "ap-northeast-1"
+    encrypt = true
 
     # 防止多人同時操作，操作時會鎖住
     dynamodb_table = "terraform-state-lock"

@@ -84,11 +84,11 @@ class CafeAttributeMatcher:
 
     @classmethod
     def _sync_attributes(
-        cls,
-        cafe: Cafe,
-        cache: CafeNomadCache,
-        sync_socket: bool,
-        sync_limited_time: bool
+            cls,
+            cafe: Cafe,
+            cache: CafeNomadCache,
+            sync_socket: bool,
+            sync_limited_time: bool
     ) -> bool:
         """
         同步相關資訊
