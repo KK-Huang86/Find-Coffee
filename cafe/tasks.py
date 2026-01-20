@@ -139,11 +139,15 @@ def download_and_upload_cafe_photo(self, cafe_id):
         raise
 
 
-@shared_task()
+@shared_task(
+    max_retries=3,
+    default_retry_delay=60,  # 60 秒後重試
+    autoretry_for=(requests.RequestException,)
+)
 def refresh_cafe_data(cafe_id):
     """
     異步更新咖啡店資料
-    當 last_refreshed 超過 30 天時觸發
+    (當 last_refreshed 超過 30 天時觸發，該邏輯放在 helpers.py)
     """
 
     PHOTO_REFRESH_DAYS = 180
