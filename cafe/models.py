@@ -99,7 +99,8 @@ class Cafe(models.Model):
             'has_socket': self.has_socket,
             'photo_reference': self.photo_reference,
             'photo_s3_url': self.photo_s3_url,
-            'last_refreshed': self.last_refreshed,
+            'last_refreshed': self.last_refreshed.isoformat() if self.last_refreshed else None,
+            # last_refreshed本身是 Datetime 格式，沒辦法直接被 JSON序列化，因此使用 isoformat()，將 Datetime 格式改成  "2025-01-20T12:30:00"
         }
 
     @classmethod
