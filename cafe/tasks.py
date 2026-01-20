@@ -196,7 +196,9 @@ def refresh_cafe_data(cafe_id):
             and timezone.now() - cafe.photo_updated_at >= timedelta(days=PHOTO_REFRESH_DAYS)
     ):
         # 清除舊照片資訊以強制觸發重新下載
-        Cafe.objects.filter(id=cafe.id).update(photo_s3_url="", photo_updated_at=None)
+        cafe.photo_s3_url = ""
+        cafe.photo_updated_at = None
+        cafe.save(update_fields=['photo_s3_url', 'photo_updated_at'])
         download_and_upload_cafe_photo.delay(cafe.id)
 
     logger.info(f'已更新咖啡店資料: {cafe.name} ({cafe.place_id})')
