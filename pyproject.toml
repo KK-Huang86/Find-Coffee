@@ -34,3 +34,7 @@ line-length = 120
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "find_coffee.settings"
 python_files = ["test_*.py"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
