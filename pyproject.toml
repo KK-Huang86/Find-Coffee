@@ -1,28 +1,40 @@
-[tool.poetry]
+[project]
 name = "find-coffee"
 version = "0.1.0"
 description = ""
-authors = ["KK-Huang86 <iankk0806@gmail.com>"]
 readme = "README.md"
-package-mode = false
+authors = [{ name = "KK-Huang86", email = "iankk0806@gmail.com" }]
+requires-python = ">=3.13"
 
-[tool.poetry.dependencies]
-python = "^3.13"
-django = "^5.2.7"
-line-bot-sdk = "^3.19.1"
-python-dotenv = "^1.1.1"
-certifi = "^2025.10.5"
-psycopg2-binary = "^2.9.11"
-python-decouple = "^3.8"
-redis = "^7.1.0"
-celery = "^5.6.0"
-boto3 = "^1.42.16"
+dependencies = [
+    "django~=6.0.1",
+    "line-bot-sdk~=3.21.0",
+    "python-dotenv~=1.2.1",
+    "certifi~=2026.1.4",
+    "psycopg2-binary~=2.9.11",
+    "python-decouple~=3.8",
+    "redis~=7.1.0",
+    "celery~=5.6.2",
+    "boto3~=1.42.30",
+]
 
+[dependency-groups]
+dev = [
+    "pre-commit~=4.5.1",
+    "ruff~=0.14.13",
+    "factory-boy~=3.3.3",
+    "pytest~=9.0.2",
+    "pytest-django~=4.11.1",
+    "pytest-mock~=3.15.1",
+]
 
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^4.5.0"
-ruff = "^0.14.9"
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "find_coffee.settings"
+python_files = ["test_*.py"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

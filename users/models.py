@@ -87,7 +87,7 @@ class Friendship(models.Model):
 
         constraints = [
             models.CheckConstraint(
-                check=~models.Q(user=models.F('friend')),  # 驗證user是否!=friend
+                condition=~models.Q(user=models.F('friend')),  # 驗證user是否!=friend
                 name='prevent_self_friendship'
             )
         ]
