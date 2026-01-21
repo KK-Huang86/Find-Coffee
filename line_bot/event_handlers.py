@@ -9,6 +9,7 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
+    ShowLoadingAnimationRequest,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -38,6 +39,13 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
+def show_loading(line_bot_api: MessagingApi, user_id: str):
+    """顯示打字中動畫"""
+    line_bot_api.show_loading_animation(
+        ShowLoadingAnimationRequest(chat_id=user_id)
+    )
+
+
 @handler.add(FollowEvent)
 def handle_follow(event):
     user_id = event.source.user_id
@@ -56,6 +64,9 @@ def handle_message(event):
         if not LockService.acquire(user_id, 'message'):
             logger.info(f'User {user_id} throttled, skip processing')
             return
+
+        # 顯示打字中動畫
+        show_loading(line_bot_api, user_id)
 
         # 使用者查詢單一咖啡店，回傳結果
         if state == UserState.WAITING_SHOP_NAME:
@@ -135,6 +146,9 @@ def handle_location_message(event):
             logger.info(f'User {user_id} throttled, skip processing')
             return
 
+        # 顯示打字中動畫
+        show_loading(line_bot_api, user_id)
+
         shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
         logger.info(shops)
 
@@ -190,6 +204,9 @@ def handle_postback(event):
         if not LockService.acquire(user_id, 'postback'):
             logger.info(f'User {user_id} throttled, skip processing')
             return
+
+        # 顯示打字中動畫
+        show_loading(line_bot_api, user_id)
 
         action = params.get('action')
         handler_func = ACTION_HANDLERS.get(action)
