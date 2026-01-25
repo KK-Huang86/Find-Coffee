@@ -1,7 +1,11 @@
 import logging
 
-logger = logging.getLogger(__name__)
+from linebot.v3.messaging import (
+    MessagingApi,
+    ShowLoadingAnimationRequest,
+)
 
+logger = logging.getLogger(__name__)
 
 
 def parse_opening_hours(opening_hours_l):
@@ -24,3 +28,10 @@ def parse_opening_hours(opening_hours_l):
             hours_dict[day] = time.strip()
 
     return hours_dict
+
+
+def show_loading(line_bot_api: MessagingApi, user_id: str):
+    """顯示打字中動畫"""
+    line_bot_api.show_loading_animation(
+        ShowLoadingAnimationRequest(chat_id=user_id)
+    )

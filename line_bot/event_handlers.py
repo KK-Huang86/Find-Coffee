@@ -27,6 +27,7 @@ from line_bot.handlers.postback_actions import ACTION_HANDLERS
 from line_bot.handlers.helpers import reply_text
 from line_bot.services.search_cache import SearchHistoryService
 from line_bot.state import StateManager
+from line_bot.utils import show_loading
 from users.models import User
 from cafe.models import Cafe
 from utils.utils import LockService
@@ -37,13 +38,6 @@ LINE_CHANNEL_SECRET = config('LINE_CHANNEL_SECRET')
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-
-def show_loading(line_bot_api: MessagingApi, user_id: str):
-    """顯示打字中動畫"""
-    line_bot_api.show_loading_animation(
-        ShowLoadingAnimationRequest(chat_id=user_id)
-    )
 
 
 @handler.add(FollowEvent)
