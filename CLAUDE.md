@@ -33,7 +33,9 @@ LINE Bot 服務，幫助使用者搜尋附近咖啡店，支援位置搜尋、�
 - `CafeNomadCache`: CafeNomad API 快取 (有 socket, limited_time 屬性)
 - `User`: LINE 使用者
 
-## Task
+## Celery Tasks (cafe/tasks.py)
+- `download_and_upload_cafe_photo`: 下載 Google 照片 → 上傳 S3
+- `refresh_cafe_data`: 更新咖啡店資料 (last_refreshed的值超過 30 天觸發，照片 photo_updated_at的值超過 180 天重抓)
 
 ## LINE Bot 架構
 - **Rich Menu**: 6 格選單 (views.py)
