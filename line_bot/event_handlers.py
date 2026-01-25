@@ -9,6 +9,7 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
+    ShowLoadingAnimationRequest,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -26,6 +27,7 @@ from line_bot.handlers.postback_actions import ACTION_HANDLERS
 from line_bot.handlers.helpers import reply_text
 from line_bot.services.search_cache import SearchHistoryService
 from line_bot.state import StateManager
+from line_bot.utils import show_loading
 from users.models import User
 from cafe.models import Cafe
 from utils.utils import LockService
@@ -56,6 +58,9 @@ def handle_message(event):
         if not LockService.acquire(user_id, 'message'):
             logger.info(f'User {user_id} throttled, skip processing')
             return
+
+        # 顯示打字中動畫
+        show_loading(line_bot_api, user_id)
 
         # 使用者查詢單一咖啡店，回傳結果
         if state == UserState.WAITING_SHOP_NAME:
@@ -135,6 +140,9 @@ def handle_location_message(event):
             logger.info(f'User {user_id} throttled, skip processing')
             return
 
+        # 顯示打字中動畫
+        show_loading(line_bot_api, user_id)
+
         shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
         logger.info(shops)
 
@@ -190,6 +198,9 @@ def handle_postback(event):
         if not LockService.acquire(user_id, 'postback'):
             logger.info(f'User {user_id} throttled, skip processing')
             return
+
+        # 顯示打字中動畫
+        show_loading(line_bot_api, user_id)
 
         action = params.get('action')
         handler_func = ACTION_HANDLERS.get(action)
