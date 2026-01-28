@@ -1,0 +1,76 @@
+services:
+  db:
+    container_name: find-coffee-db
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - find_coffee_network
+    restart: always
+
+  redis:
+    container_name: find-coffee-redis
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - find_coffee_network
+    restart: always
+
+  web:
+    build: .
+    container_name: find-coffee-web
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    environment:
+      # 只覆蓋 Docker 環境專用的設定
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    networks:
+      - find_coffee_network
+    restart: always
+
+  celery:
+    build: .
+    container_name: find-coffee-celery
+    command: celery -A core worker -l info
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    environment:
+      # 只覆蓋 Docker 環境專用的設定
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    networks:
+      - find_coffee_network
+    restart: always
+
+networks:
+  find_coffee_network:
+    driver: bridge
+
+# 宣告
+volumes:
+  postgres_data:
+  redis_data:
