@@ -637,6 +637,11 @@ class PostbackBuilder:
                     },
                     {
                         'type': 'postback',
+                        'label': '⭐ 評價',
+                        'data': f'action=vote&place_id={place_id}'
+                    },
+                    {
+                        'type': 'postback',
                         'label': '🤖 問問AI',
                         'data': f'action=ask_ai&place_id={place_id}'
                     }
