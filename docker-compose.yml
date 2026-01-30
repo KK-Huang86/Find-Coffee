@@ -1,3 +1,21 @@
+# 共用模板
+x-app: &x-app
+  build: .
+  volumes:
+    - .:/app
+  depends_on:
+    - db
+    - redis
+  env_file:
+    - .env
+  environment:
+    - DB_HOST=db
+    - REDIS_URL=redis://redis:6379/0
+    - CELERY_BROKER_URL=redis://redis:6379/0
+  networks:
+    - find_coffee_network
+  restart: always
+
 services:
   db:
     container_name: find-coffee-db
@@ -26,51 +44,20 @@ services:
     restart: always
 
   web:
-    build: .
+    <<: *x-app
     container_name: find-coffee-web
-    volumes:
-      - .:/app
     ports:
       - "8000:8000"
-    depends_on:
-      - db
-      - redis
-    env_file:
-      - .env
-    environment:
-      # 只覆蓋 Docker 環境專用的設定
-      - DB_HOST=db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    networks:
-      - find_coffee_network
-    restart: always
 
   celery:
-    build: .
+    <<: *x-app
     container_name: find-coffee-celery
     command: celery -A core worker -l info
-    volumes:
-      - .:/app
-    depends_on:
-      - db
-      - redis
-    env_file:
-      - .env
-    environment:
-      # 只覆蓋 Docker 環境專用的設定
-      - DB_HOST=db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    networks:
-      - find_coffee_network
-    restart: always
 
 networks:
   find_coffee_network:
     driver: bridge
 
-# 宣告
 volumes:
   postgres_data:
   redis_data:

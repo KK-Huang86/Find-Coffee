@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [{ name = "KK-Huang86", email = "iankk0806@gmail.com" }]
 requires-python = ">=3.13"
 
+# 生產需求
 dependencies = [
     "django~=6.0.1",
     "line-bot-sdk~=3.21.0",
@@ -18,6 +19,7 @@ dependencies = [
     "boto3~=1.42.30",
 ]
 
+# 測試開發需求
 [dependency-groups]
 dev = [
     "pre-commit~=4.5.1",
