@@ -10,6 +10,7 @@ db.sqlite3
 staticfiles/
 .idea/
 .sql/
+backup.sql
 
 .terraform/
 *.tfstate
