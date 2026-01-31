@@ -31,7 +31,10 @@ class VoteService:
             user_id: User ID
             answers: 回答字典，如 {'socket': 'yes', 'limited_time': 'no', ...}
         """
-        cafe = Cafe.objects.get(id=cafe_id)
+        try:
+            cafe = Cafe.objects.get(id=cafe_id)
+        except Exception as e:
+            logger.error(f'cant find this cafe in data , cafe id:{cafe_id}: {e}')
 
         with transaction.atomic():
             for attribute, value in answers.items():
