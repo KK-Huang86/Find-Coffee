@@ -34,6 +34,8 @@ class TestRefreshCafeData:
             photo_s3_url='https://example.com/photo.jpg',  # 有照片，不觸發更新
             photo_updated_at=timezone.now(),
         )
+
+        # 從 google map 拉到的新資料
         mock_google_api.return_value = {
             'name': '新名稱',
             'address': '新地址',
