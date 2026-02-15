@@ -96,6 +96,9 @@ class TestRefreshCafeData:
         refresh_cafe_data(cafe_id=cafe.id)
 
         mock_photo_task.assert_called_once_with(cafe.id)
+        cafe.refresh_from_db()
+        assert cafe.photo_s3_url == ""
+        assert cafe.photo_updated_at is None
 
     def test_no_photo_upload_recent(self, mock_google_api, mock_photo_task):
         """photo_updated_at 未超過 180 天時，不觸發照片更新"""

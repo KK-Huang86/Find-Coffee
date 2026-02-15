@@ -19,7 +19,6 @@ from cafe.tests.factories import (
 
 @pytest.mark.django_db
 class TestCafeModel:
-    """Cafe 模型測試"""
 
     def test_cafe_creation(self):
         """測試 Cafe 基本建立"""
@@ -113,8 +112,8 @@ class TestCafeModel:
         assert result['place_id'] == 'test_place_id'
         assert result['google_maps'] == 'https://maps.google.com/test'
         assert result['website'] == 'https://test.com'
-        assert result['lat'] == 25.033964
-        assert result['lng'] == 121.564468
+        assert result['lat'] == pytest.approx(25.033964)
+        assert result['lng'] == pytest.approx(121.564468)
         assert result['opening_hours'] == ['週一: 09:00-21:00']
         assert result['limited_time'] == 'no'
         assert result['has_socket'] == 'yes'
@@ -337,7 +336,6 @@ class TestCafeAttributeVoteModel:
 
 @pytest.mark.django_db
 class TestCafeNomadCacheModel:
-    """CafeNomadCache 模型測試"""
 
     def test_cache_creation(self):
         """測試建立 CafeNomad 資料"""
@@ -422,8 +420,8 @@ class TestCafeNomadCacheModel:
         assert result['name'] == '測試咖啡店'
         assert result['city'] == '台北市'
         assert result['address'] == '信義區信義路'
-        assert result['lat'] == 25.033964
-        assert result['lng'] == 121.564468
+        assert result['lat'] == pytest.approx(25.033964)
+        assert result['lng'] == pytest.approx(121.564468)
         assert result['socket'] == 'yes'
         assert result['limited_time'] == 'no'
 
