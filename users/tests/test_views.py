@@ -96,6 +96,7 @@ class TestFavoritesManagerAddFavorite:
         }
 
         success, message = FavoritesManager.add_favorite(user, info)
+        # ChIJ123 之前被測試收藏過
 
         assert success is False
         assert '已在您的收藏清單中' in message
@@ -285,7 +286,7 @@ class TestFavoritesManagerRemoveFavorite:
         cafe = CafeFactory(place_id='ChIJ123', name='測試咖啡店', favorite_count=1)
         Favorite.objects.create(user=user, cafe=cafe)
 
-        # Spy on decrement_favorite_count
+        # Spy on decrement_favorite_count 正常執行
         mock_decrement = mocker.spy(Cafe, 'decrement_favorite_count')
 
         info = {
