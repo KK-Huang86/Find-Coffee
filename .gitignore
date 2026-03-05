@@ -9,7 +9,8 @@ db.sqlite3
 *.pdf
 staticfiles/
 .idea/
-
+.sql/
+backup.sql
 
 .terraform/
 *.tfstate
