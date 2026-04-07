@@ -5,10 +5,11 @@ import logging
 
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage
 
-from cafe.models import Cafe
+from cafe.models import Cafe, CafeAttributeVote
+from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
-from line_bot.constants import UserState, MenuAction
+from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.services.search_cache import SearchHistoryService
 from line_bot.state import StateManager
@@ -76,6 +77,122 @@ def handle_recent_search(line_bot_api, reply_token, user, params):
 
     elif search_type == 'address':
         _handle_address_search(line_bot_api, reply_token, user, user_id, keyword)
+
+
+def handle_vote(line_bot_api, reply_token, user, params):
+    """會員對於該咖啡店評價"""
+
+    place_id = params.get('place_id')
+
+    info_d, cafe = get_or_create_cafe_info(place_id)
+    if not info_d:
+        reply_text(line_bot_api, reply_token, '找不到此咖啡店')
+        return
+
+    # 避免重複評價
+    committed = CafeAttributeVote.objects.filter(user_id=user.id, cafe_id=cafe.id).exists()
+    if committed:
+        reply_text(line_bot_api, reply_token, '您已經對此咖啡店評價過了，感謝您的貢獻！')
+        return
+
+    user_id = user.line_user_id
+
+    # 設定狀態和 context
+    StateManager.set_state(user_id, UserState.WAITING_VOTE)
+    StateManager.set_context(user_id, {
+        'place_id': place_id,
+        'cafe_id': cafe.id,
+        'cafe_name': info_d.get('name', ''),
+        'current_index': 0,
+        'answers': {}
+    })
+
+    # 發送第一個問題
+    first_attr = VOTE_ATTRIBUTES[0]
+    question = VOTE_QUESTIONS[first_attr]
+    quick_reply = QuickReplyBuilder.create_vote_options(first_attr)
+
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[
+                TextMessage(
+                    text=f'📝 開始評價「{info_d.get("name", "")}」\n\n{question}',
+                    quick_reply=quick_reply
+                )
+            ]
+        )
+    )
+
+
+def handle_vote_answer(line_bot_api, reply_token, user, params):
+    """處理投票回答"""
+
+    user_id = user.line_user_id
+    state = StateManager.get_state(user_id)
+
+    # 檢查狀態
+    if state != UserState.WAITING_VOTE:
+        reply_text(line_bot_api, reply_token, '評價流程已過期，請重新開始')
+        return
+
+    context = StateManager.get_context(user_id)
+    if not context:
+        reply_text(line_bot_api, reply_token, '評價流程已過期，請重新開始')
+        StateManager.reset_all(user_id)
+        return
+
+    # 記錄本次回答
+    attr = params.get('attr')
+    value = params.get('value')
+
+    # 驗證輸入值，防止惡意請求
+    valid_values_for_attr = [opt[0] for opt in VOTE_OPTIONS.get(attr, [])]
+    if attr not in VOTE_ATTRIBUTES or value not in valid_values_for_attr:
+        logger.warning(f'來自使用者 {user_id} 的無效投票回答: attr={attr}, value={value}')
+        reply_text(line_bot_api, reply_token, '您選擇的評價選項無效，請重新開始。')
+        StateManager.reset_all(user_id)
+        return
+
+    context['answers'][attr] = value
+
+    # 移動到下一題
+    current_index = context.get('current_index', 0) + 1
+    context['current_index'] = current_index
+
+    # 檢查是否還有下一題
+    if current_index < len(VOTE_ATTRIBUTES):
+        # 還有題目，發送下一題
+        next_attr = VOTE_ATTRIBUTES[current_index]
+        question = VOTE_QUESTIONS[next_attr]
+        quick_reply = QuickReplyBuilder.create_vote_options(next_attr)
+
+        StateManager.set_context(user_id, context)
+
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[
+                    TextMessage(text=question, quick_reply=quick_reply)
+                ]
+            )
+        )
+    else:
+        # 所有題目回答完畢，儲存投票
+        cafe_id = context.get('cafe_id')
+        answers = context.get('answers')
+        cafe_name = context.get('cafe_name', '')
+
+        VoteService.create_user_votes(cafe_id, user.id, answers)
+
+        # 清除狀態
+        StateManager.reset_all(user_id)
+
+        reply_text(
+            line_bot_api,
+            reply_token,
+            f'感謝您對「{cafe_name}」的評價！\n您的回饋將幫助其他使用者 ☕️'
+        )
 
 
 def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, place_id=None):
@@ -218,5 +335,7 @@ ACTION_HANDLERS = {
     'unfavorite': handle_unfavorite,
     'view_detail': handle_view_detail,
     'recent_search': handle_recent_search,
+    'vote': handle_vote,
+    'vote_answer': handle_vote_answer,
     'menu': handle_menu,
 }

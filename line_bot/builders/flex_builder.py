@@ -25,7 +25,7 @@ from cafe.models import Cafe
 from integrations.google.api import GoogleAPI
 from users.models import User
 from line_bot.utils import parse_opening_hours
-from line_bot.constants import MenuText, MenuAction
+from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS
 from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
@@ -627,13 +627,13 @@ class PostbackBuilder:
                     favorite_action,
                     {
                         'type': 'postback',
-                        'label': '📞 撥打電話',
-                        'data': f'action=call&place_id={place_id}'
+                        'label': '🔗 分享',
+                        'data': f'action=share&place_id={place_id}'
                     },
                     {
                         'type': 'postback',
-                        'label': '🔗 分享',
-                        'data': f'action=share&place_id={place_id}'
+                        'label': '⭐ 評價',
+                        'data': f'action=vote&place_id={place_id}'
                     },
                     {
                         'type': 'postback',
@@ -929,6 +929,30 @@ class QuickReplyBuilder:
                         label=label,
                         data=data,
                         display_text=keyword  # 用戶點擊後顯示的文字
+                    )
+                )
+            )
+
+        return QuickReply(items=items)
+
+    @staticmethod
+    def create_vote_options(attribute):
+        """
+        產生投票選項的 Quick Reply
+        Args:
+            attribute: 屬性名稱 (socket, limited_time, quiet, cheap)
+        """
+
+        options = VOTE_OPTIONS.get(attribute, [])
+        items = []
+
+        for value, label in options:
+            items.append(
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label=label,
+                        data=f'action=vote_answer&attr={attribute}&value={value}',
+                        display_text=label
                     )
                 )
             )
