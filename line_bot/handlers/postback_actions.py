@@ -9,7 +9,7 @@ from cafe.models import Cafe, CafeAttributeVote
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
-from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS
+from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.services.search_cache import SearchHistoryService
 from line_bot.state import StateManager
@@ -145,6 +145,15 @@ def handle_vote_answer(line_bot_api, reply_token, user, params):
     # 記錄本次回答
     attr = params.get('attr')
     value = params.get('value')
+
+    # 驗證輸入值，防止惡意請求
+    valid_values_for_attr = [opt[0] for opt in VOTE_OPTIONS.get(attr, [])]
+    if attr not in VOTE_ATTRIBUTES or value not in valid_values_for_attr:
+        logger.warning(f'來自使用者 {user_id} 的無效投票回答: attr={attr}, value={value}')
+        reply_text(line_bot_api, reply_token, '您選擇的評價選項無效，請重新開始。')
+        StateManager.reset_all(user_id)
+        return
+
     context['answers'][attr] = value
 
     # 移動到下一題

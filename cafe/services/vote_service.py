@@ -22,7 +22,7 @@ class VoteService:
     }
 
     VALID_ATTRIBUTES = {'socket', 'limited_time'}
-    VALID_VALUES = {'yes', 'no', 'unknown'}
+    VALID_VALUES = {'yes', 'no', 'maybe', 'unknown'}
 
     @classmethod
     def create_user_votes(cls, cafe_id: int, user_id: int, answers: dict):
