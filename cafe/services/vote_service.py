@@ -21,6 +21,9 @@ class VoteService:
         # 'cheap': 'is_cheap',   # TODO: 需要新增 Cafe 欄位
     }
 
+    VALID_ATTRIBUTES = {'socket', 'limited_time'}
+    VALID_VALUES = {'yes', 'no', 'unknown'}
+
     @classmethod
     def create_user_votes(cls, cafe_id: int, user_id: int, answers: dict):
         """
@@ -38,6 +41,12 @@ class VoteService:
 
         with transaction.atomic():
             for attribute, value in answers.items():
+                if attribute not in cls.VALID_ATTRIBUTES:
+                    logger.warning(f'Unknown attribute: {attribute}, skipping')
+                    continue
+                if value not in cls.VALID_VALUES:
+                    logger.warning(f'Invalid value: {value} for {attribute}, skipping')
+                    continue
                 CafeAttributeVote.objects.update_or_create(
                     cafe_id=cafe_id,
                     user_id=user_id,
@@ -77,7 +86,7 @@ class VoteService:
                 continue
 
             # 多數決：計算每個 value 的票數
-            vote_counts = votes.values('value').annotate(count=Count('id')).order_by('-count')
+            vote_counts = votes.values('value').annotate(count=Count('id')).order_by('-count', 'value')
 
             if vote_counts:
                 winning_value = vote_counts[0]['value']
