@@ -52,8 +52,8 @@ services:
   celery:
     <<: *x-app
     container_name: find-coffee-celery
-    command: celery -A core worker -l info
-
+    command: uv run celery -A core worker -l info
+    
 networks:
   find_coffee_network:
     driver: bridge
