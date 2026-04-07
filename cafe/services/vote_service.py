@@ -21,7 +21,7 @@ class VoteService:
         # 'cheap': 'is_cheap',   # TODO: 需要新增 Cafe 欄位
     }
 
-    VALID_ATTRIBUTES = {'socket', 'limited_time'}
+    VALID_ATTRIBUTES = {'socket', 'limited_time', 'quiet', 'cheap'}
     VALID_VALUES = {'yes', 'no', 'maybe', 'unknown'}
 
     @classmethod
@@ -38,6 +38,7 @@ class VoteService:
             cafe = Cafe.objects.get(id=cafe_id)
         except Exception as e:
             logger.error(f'cant find this cafe in data , cafe id:{cafe_id}: {e}')
+            return
 
         with transaction.atomic():
             for attribute, value in answers.items():
