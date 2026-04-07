@@ -3,6 +3,7 @@ x-app: &x-app
   build: .
   volumes:
     - .:/app
+    - /app/.venv
   depends_on:
     - db
     - redis
@@ -52,7 +53,7 @@ services:
   celery:
     <<: *x-app
     container_name: find-coffee-celery
-    command: celery -A core worker -l info
+    command: uv run --no-sync celery -A core worker -l info
 
 networks:
   find_coffee_network:
