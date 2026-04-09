@@ -201,18 +201,20 @@ class TestHandleMenu:
         assert '沒有收藏' in call_args.messages[0].text
 
     def test_favorites_few_shows_carousel(self):
-        """FAVORITES 收藏 <=5 時，顯示 carousel"""
+        """FAVORITES 收藏 <=5 時（邊界值 5），顯示 carousel"""
         user = UserFactory()
-        for cafe in [CafeFactory() for _ in range(3)]:
+        for cafe in [CafeFactory() for _ in range(5)]:
             user.favorites.create(cafe=cafe)
         mock_api = MagicMock()
 
-        with patch('line_bot.handlers.postback_actions.FavoritesMessageBuilder.show_favorites_carousel') as mock_carousel, \
-             patch('line_bot.handlers.postback_actions.ReplyMessageRequest'):
+        with (
+            patch('line_bot.handlers.postback_actions.FavoritesMessageBuilder.show_favorites_carousel') as mock_carousel,
+            patch('line_bot.handlers.postback_actions.ReplyMessageRequest'),
+        ):
             mock_carousel.return_value = MagicMock()
             handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
 
-        mock_carousel.assert_called_once_with(user)
+        mock_carousel.assert_called_once_with(user.line_user_id)
 
     def test_favorites_many_shows_list(self):
         """FAVORITES 收藏 >5 時，顯示清單"""
@@ -221,12 +223,14 @@ class TestHandleMenu:
             user.favorites.create(cafe=cafe)
         mock_api = MagicMock()
 
-        with patch('line_bot.handlers.postback_actions.FavoritesMessageBuilder.show_favorites_list') as mock_list, \
-             patch('line_bot.handlers.postback_actions.ReplyMessageRequest'):
+        with (
+            patch('line_bot.handlers.postback_actions.FavoritesMessageBuilder.show_favorites_list') as mock_list,
+            patch('line_bot.handlers.postback_actions.ReplyMessageRequest'),
+        ):
             mock_list.return_value = MagicMock()
             handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
 
-        mock_list.assert_called_once_with(user)
+        mock_list.assert_called_once_with(user.line_user_id)
 
     def test_recent_search_no_history_replies_prompt(self):
         """RECENT_SEARCH 無紀錄時，回覆提示訊息"""

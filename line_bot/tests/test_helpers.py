@@ -3,6 +3,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
+from linebot.v3.messaging import ReplyMessageRequest, TextMessage
 
 from cafe.models import Cafe
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
@@ -29,8 +30,10 @@ class TestGetOrCreateCafeInfo:
         """last_refreshed 超過 30 天，觸發 refresh"""
         cafe = CafeFactory(last_refreshed=timezone.now() - timedelta(days=31))
 
-        with patch('line_bot.handlers.helpers.refresh_cafe_data') as mock_refresh, \
-             patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match:
+        with (
+            patch('line_bot.handlers.helpers.refresh_cafe_data') as mock_refresh,
+            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
+        ):
             mock_refresh.return_value = None
             mock_match.return_value = False
             get_or_create_cafe_info(cafe.place_id)
@@ -41,8 +44,10 @@ class TestGetOrCreateCafeInfo:
         """last_refreshed 為 None，觸發 refresh"""
         cafe = CafeFactory(last_refreshed=None)
 
-        with patch('line_bot.handlers.helpers.refresh_cafe_data') as mock_refresh, \
-             patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match:
+        with (
+            patch('line_bot.handlers.helpers.refresh_cafe_data') as mock_refresh,
+            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
+        ):
             mock_refresh.return_value = None
             mock_match.return_value = False
             get_or_create_cafe_info(cafe.place_id)
@@ -60,8 +65,10 @@ class TestGetOrCreateCafeInfo:
             'lng': 121.564,
         }
 
-        with patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google, \
-             patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match:
+        with (
+            patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
+            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
+        ):
             mock_google.return_value = google_data
             mock_match.return_value = False
             info_d, cafe = get_or_create_cafe_info(place_id)
@@ -94,8 +101,6 @@ class TestReplyText:
 
     def test_calls_api_with_correct_message(self):
         """正確呼叫 LINE API 傳送文字訊息"""
-        from linebot.v3.messaging import ReplyMessageRequest, TextMessage
-
         mock_api = MagicMock()
         reply_text(mock_api, 'test_token', '測試訊息')
 
@@ -122,11 +127,13 @@ class TestReplyCafeDetail:
             'rating': 4.5,
         }
 
-        with patch('line_bot.builders.flex_builder.FlexMessageBuilder.create_shop_flex_message', return_value={}), \
-             patch('line_bot.builders.flex_builder.PostbackBuilder.create_cafe_action_postback') as mock_button, \
-             patch('line_bot.handlers.helpers.FlexContainer.from_json'), \
-             patch('line_bot.handlers.helpers.FlexMessage') as mock_flex_msg, \
-             patch('line_bot.handlers.helpers.ReplyMessageRequest') as mock_req:
+        with (
+            patch('line_bot.builders.flex_builder.FlexMessageBuilder.create_shop_flex_message', return_value={}),
+            patch('line_bot.builders.flex_builder.PostbackBuilder.create_cafe_action_postback') as mock_button,
+            patch('line_bot.handlers.helpers.FlexContainer.from_json'),
+            patch('line_bot.handlers.helpers.FlexMessage') as mock_flex_msg,
+            patch('line_bot.handlers.helpers.ReplyMessageRequest') as mock_req,
+        ):
             mock_button.return_value = MagicMock()
             mock_flex_msg.return_value = MagicMock()
             mock_req.return_value = MagicMock()
@@ -141,11 +148,13 @@ class TestReplyCafeDetail:
         mock_api = MagicMock()
         info_d = {'place_id': 'test_place_id', 'name': '測試咖啡店'}
 
-        with patch('line_bot.builders.flex_builder.FlexMessageBuilder.create_shop_flex_message', return_value={}), \
-             patch('line_bot.builders.flex_builder.PostbackBuilder.create_cafe_action_postback') as mock_button, \
-             patch('line_bot.handlers.helpers.FlexContainer.from_json'), \
-             patch('line_bot.handlers.helpers.FlexMessage'), \
-             patch('line_bot.handlers.helpers.ReplyMessageRequest'):
+        with (
+            patch('line_bot.builders.flex_builder.FlexMessageBuilder.create_shop_flex_message', return_value={}),
+            patch('line_bot.builders.flex_builder.PostbackBuilder.create_cafe_action_postback') as mock_button,
+            patch('line_bot.handlers.helpers.FlexContainer.from_json'),
+            patch('line_bot.handlers.helpers.FlexMessage'),
+            patch('line_bot.handlers.helpers.ReplyMessageRequest'),
+        ):
             mock_button.return_value = MagicMock()
             reply_cafe_detail(mock_api, 'test_token', info_d, is_favorited=True)
 

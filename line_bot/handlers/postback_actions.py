@@ -158,9 +158,9 @@ def _menu_favorites(line_bot_api, reply_token, user):
     if favorite_count == 0:
         message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
     elif favorite_count <= 5:
-        message = FavoritesMessageBuilder.show_favorites_carousel(user)
+        message = FavoritesMessageBuilder.show_favorites_carousel(user.line_user_id)
     else:
-        message = FavoritesMessageBuilder.show_favorites_list(user)
+        message = FavoritesMessageBuilder.show_favorites_list(user.line_user_id)
 
     line_bot_api.reply_message(
         ReplyMessageRequest(reply_token=reply_token, messages=[message])
