@@ -1,0 +1,395 @@
+import pytest
+from unittest.mock import MagicMock, patch
+
+from line_bot.constants import UserState
+from line_bot.event_handlers import (
+    _parse_postback_data,
+    handle_follow,
+    handle_message,
+    handle_location_message,
+    handle_postback,
+)
+from line_bot.tests.factories import UserFactory, CafeFactory
+
+
+class TestParsePostbackData:
+    """測試 _parse_postback_data"""
+
+    def test_parses_single_param(self):
+        """解析單一參數"""
+        result = _parse_postback_data('action=favorite')
+        assert result == {'action': 'favorite'}
+
+    def test_parses_multiple_params(self):
+        """解析多個參數"""
+        result = _parse_postback_data('action=favorite&place_id=abc123')
+        assert result == {'action': 'favorite', 'place_id': 'abc123'}
+
+    def test_empty_string_returns_empty_dict(self):
+        """空字串回傳空 dict"""
+        result = _parse_postback_data('')
+        assert result == {}
+
+
+@pytest.mark.django_db
+class TestHandleFollow:
+    """測試 handle_follow"""
+
+    def test_creates_user_on_first_follow(self):
+        """第一次追蹤，建立新使用者"""
+        from users.models import User
+        event = MagicMock()
+        event.source.user_id = 'brand_new_user'
+
+        handle_follow(event)
+
+        assert User.objects.filter(line_user_id='brand_new_user').exists()
+
+    def test_does_not_duplicate_existing_user(self):
+        """重複追蹤，不建立重複使用者"""
+        from users.models import User
+        user = UserFactory()
+        event = MagicMock()
+        event.source.user_id = user.line_user_id
+
+        handle_follow(event)
+
+        assert User.objects.filter(line_user_id=user.line_user_id).count() == 1
+
+
+@pytest.mark.django_db
+class TestHandleMessage:
+    """測試 handle_message"""
+
+    def _make_event(self, user_id, text, reply_token='test_token'):
+        event = MagicMock()
+        event.source.user_id = user_id
+        event.message.text = text
+        event.reply_token = reply_token
+        return event
+
+    def test_throttled_user_skips_processing(self):
+        """LockService 拒絕時，不觸發 loading 動畫也不回覆"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '星巴克')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.NORMAL),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=False),
+            patch('line_bot.event_handlers.show_loading') as mock_loading,
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_message(event)
+
+        mock_loading.assert_not_called()
+        mock_line_bot_api.reply_message.assert_not_called()
+
+    def test_waiting_shop_name_hits_db(self):
+        """WAITING_SHOP_NAME 時，DB 有資料直接使用，不呼叫 Google API"""
+        user = UserFactory()
+        cafe = CafeFactory(name='星巴克信義店')
+        event = self._make_event(user.line_user_id, '星巴克')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_SHOP_NAME),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search'),
+            patch('line_bot.event_handlers.GoogleAPI.search_coffee_shops') as mock_google,
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result') as mock_send,
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_message(event)
+
+        mock_google.assert_not_called()
+        mock_send.assert_called_once()
+        shops_arg = mock_send.call_args[0][2]
+        assert any(s['place_id'] == cafe.place_id for s in shops_arg)
+
+    def test_waiting_shop_name_falls_back_to_google(self):
+        """WAITING_SHOP_NAME 時，DB 無資料，呼叫 Google API"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '不存在的咖啡店xyz')
+        google_shops = [{'place_id': 'g_place_id_1', 'name': '測試店'}]
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_SHOP_NAME),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search'),
+            patch('line_bot.event_handlers.GoogleAPI.search_coffee_shops', return_value=google_shops) as mock_google,
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result') as mock_send,
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_message(event)
+
+        mock_google.assert_called_once_with('不存在的咖啡店xyz')
+        mock_send.assert_called_once()
+
+    def test_waiting_shop_name_single_result_saves_place_id(self):
+        """單一搜尋結果時，SearchHistoryService 儲存 place_id"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '星巴克')
+        google_shops = [{'place_id': 'single_place_id'}]
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_SHOP_NAME),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search') as mock_history,
+            patch('line_bot.event_handlers.GoogleAPI.search_coffee_shops', return_value=google_shops),
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result'),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_message(event)
+
+        mock_history.assert_called_once_with(
+            user.line_user_id, '星巴克', search_type='shop_name', place_id='single_place_id'
+        )
+
+    def test_waiting_shop_name_multiple_results_saves_none_place_id(self):
+        """多筆搜尋結果時，SearchHistoryService 的 place_id 為 None"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '咖啡')
+        google_shops = [{'place_id': 'id1'}, {'place_id': 'id2'}]
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_SHOP_NAME),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search') as mock_history,
+            patch('line_bot.event_handlers.GoogleAPI.search_coffee_shops', return_value=google_shops),
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result'),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_message(event)
+
+        mock_history.assert_called_once_with(
+            user.line_user_id, '咖啡', search_type='shop_name', place_id=None
+        )
+
+    def test_waiting_address_calls_google_nearby(self):
+        """WAITING_ADDRESS 時，呼叫 Google 地址搜尋並記錄歷史"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '信義路')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_ADDRESS),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search') as mock_history,
+            patch('line_bot.event_handlers.GoogleAPI.search_nearby_coffee_shops', return_value=[]) as mock_google,
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result'),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_message(event)
+
+        mock_google.assert_called_once_with(address='信義路')
+        mock_history.assert_called_once_with(user.line_user_id, '信義路', search_type='address')
+
+    def test_unknown_state_replies_prompt(self):
+        """NORMAL 狀態下輸入文字，回覆引導使用選單的提示"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '隨意文字')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.NORMAL),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_message(event)
+
+        mock_line_bot_api.reply_message.assert_called_once()
+        call_args = mock_line_bot_api.reply_message.call_args[0][0]
+        assert '選單' in call_args.messages[0].text
+
+
+@pytest.mark.django_db
+class TestHandleLocationMessage:
+    """測試 handle_location_message"""
+
+    def _make_event(self, user_id, lat=25.033, lng=121.564, address='台北市信義區', reply_token='test_token'):
+        event = MagicMock()
+        event.source.user_id = user_id
+        event.message.latitude = lat
+        event.message.longitude = lng
+        event.message.address = address
+        event.reply_token = reply_token
+        return event
+
+    def test_user_not_found_replies_error(self):
+        """找不到使用者時，回覆錯誤訊息"""
+        event = self._make_event('nonexistent_user')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.reply_text') as mock_reply_text,
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_location_message(event)
+
+        mock_reply_text.assert_called_once()
+        assert '找不到' in mock_reply_text.call_args[0][2]
+
+    def test_throttled_user_skips_processing(self):
+        """LockService 拒絕時，不觸發 loading 動畫也不回覆"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id)
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=False),
+            patch('line_bot.event_handlers.show_loading') as mock_loading,
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_location_message(event)
+
+        mock_loading.assert_not_called()
+        mock_line_bot_api.reply_message.assert_not_called()
+
+    def test_no_shops_found_replies_prompt(self):
+        """附近無咖啡店時，回覆找不到的提示"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id)
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.GoogleAPI.search_nearby_coffee_shops', return_value=[]),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_location_message(event)
+
+        mock_line_bot_api.reply_message.assert_called_once()
+        call_args = mock_line_bot_api.reply_message.call_args[0][0]
+        assert '找不到咖啡店' in call_args.messages[0].text
+
+    def test_shops_found_sends_result(self):
+        """找到咖啡店時，呼叫 send_shop_result"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id)
+        shops = [{'place_id': 'abc', 'name': '測試咖啡'}]
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.GoogleAPI.search_nearby_coffee_shops', return_value=shops),
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result') as mock_send,
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_location_message(event)
+
+        mock_send.assert_called_once()
+
+
+@pytest.mark.django_db
+class TestHandlePostback:
+    """測試 handle_postback"""
+
+    def _make_event(self, user_id, data, reply_token='test_token'):
+        event = MagicMock()
+        event.source.user_id = user_id
+        event.postback.data = data
+        event.reply_token = reply_token
+        return event
+
+    def test_user_not_found_replies_error(self):
+        """找不到使用者時，回覆錯誤訊息"""
+        event = self._make_event('nonexistent_user', 'action=favorite&place_id=abc')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.reply_text') as mock_reply_text,
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_postback(event)
+
+        mock_reply_text.assert_called_once()
+        assert '找不到' in mock_reply_text.call_args[0][2]
+
+    def test_throttled_user_skips_processing(self):
+        """LockService 拒絕時，不觸發 loading 動畫也不回覆"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=favorite')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=False),
+            patch('line_bot.event_handlers.show_loading') as mock_loading,
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_postback(event)
+
+        mock_loading.assert_not_called()
+        mock_line_bot_api.reply_message.assert_not_called()
+
+    def test_known_action_dispatches_to_handler(self):
+        """已知 action，分派到對應的 handler 並傳入正確參數"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=favorite&place_id=abc')
+        mock_handler = MagicMock()
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'favorite': mock_handler}),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_postback(event)
+
+        mock_handler.assert_called_once_with(
+            mock_line_bot_api, 'test_token', user, {'action': 'favorite', 'place_id': 'abc'}
+        )
+
+    def test_unknown_action_does_not_reply(self):
+        """未知 action，不回覆任何訊息"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=unknown_action')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_postback(event)
+
+        mock_line_bot_api.reply_message.assert_not_called()
