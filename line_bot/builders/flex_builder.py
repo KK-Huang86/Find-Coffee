@@ -16,13 +16,10 @@ from linebot.v3.messaging import (
     FlexBubble,
     QuickReply,
     QuickReplyItem,
-    MessageAction,
     LocationAction,
     PostbackAction,
 )
 
-from cafe.models import Cafe
-from integrations.google.api import GoogleAPI
 from users.models import User
 from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS
@@ -109,7 +106,7 @@ class FlexMessageBuilder:
                 result = download_and_upload_cafe_photo.delay(cafe.id)
                 logger.warning(f'Celery task sent: {result.id}')
             else:
-                logger.debug(f'跳過背景任務（已有 S3 URL 或找不到 cafe）')
+                logger.debug('跳過背景任務（已有 S3 URL 或找不到 cafe）')
         except Exception as e:
             logger.error(f'觸發背景任務失敗: {e}')
 

@@ -1,5 +1,4 @@
 import logging
-from collections import Counter
 
 from django.db import transaction
 from django.db.models import Count

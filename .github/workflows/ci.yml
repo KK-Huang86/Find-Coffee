@@ -47,9 +47,9 @@ jobs:
       DB_PORT: 5432
       REDIS_URL: redis://localhost:6379/0
       CELERY_BROKER_URL: redis://localhost:6379/0
-      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-      LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
-      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      LINE_CHANNEL_ACCESS_TOKEN: dummy
+      LINE_CHANNEL_SECRET: dummy
+      GOOGLE_API_KEY: dummy
 
     steps:
       - name: Checkout code
@@ -59,12 +59,16 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: "3.13"
 
       - name: Install dependencies
         run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
 
       - name: Run database migrations
         run: uv run python manage.py migrate
 
       - name: Run tests
-        run: uv run pytest -v
+        run: uv run pytest -v --cov --cov-report=term-missing

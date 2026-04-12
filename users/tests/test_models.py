@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
 from users.models import User, Friendship
-from users.tests.factories import UserFactory, FriendshipFactory
+from users.tests.factories import UserFactory
 
 
 @pytest.mark.django_db

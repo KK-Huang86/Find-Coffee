@@ -26,6 +26,7 @@ dev = [
     "ruff~=0.14.13",
     "factory-boy~=3.3.3",
     "pytest~=9.0.2",
+    "pytest-cov~=6.1.0",
     "pytest-django~=4.11.1",
     "pytest-mock~=3.15.1",
 ]

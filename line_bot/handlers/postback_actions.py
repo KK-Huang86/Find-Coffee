@@ -11,7 +11,6 @@ from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
 from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
-from line_bot.services.search_cache import SearchHistoryService
 from line_bot.state import StateManager
 from users.views import FavoritesManager
 
