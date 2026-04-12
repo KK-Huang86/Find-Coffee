@@ -19,3 +19,4 @@ backup.sql
 terraform.tfvars
 
 .coverage
+coverage.xml

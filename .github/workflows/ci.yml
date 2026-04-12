@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
@@ -71,4 +70,10 @@ jobs:
         run: uv run python manage.py migrate
 
       - name: Run tests
-        run: uv run pytest -v --cov --cov-report=term-missing
+        run: uv run pytest -v --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
