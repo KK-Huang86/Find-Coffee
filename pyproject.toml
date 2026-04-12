@@ -34,7 +34,7 @@ dev = [
 line-length = 120
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "core.settings"
+DJANGO_SETTINGS_MODULE = "core.test_settings"
 python_files = ["test_*.py"]
 
 [build-system]
