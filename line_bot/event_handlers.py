@@ -9,7 +9,6 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
-    ShowLoadingAnimationRequest,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -126,8 +125,6 @@ def handle_location_message(event):
 
         lat = event.message.latitude
         lng = event.message.longitude
-        address = event.message.address  # 可能為 None
-
         user_id = event.source.user_id
         user = User.objects.filter(line_user_id=user_id).first()
 

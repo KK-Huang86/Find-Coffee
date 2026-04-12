@@ -1,10 +1,9 @@
 import pytest
 from decimal import Decimal
-from datetime import datetime
 from django.db import IntegrityError
 from django.utils import timezone
 
-from cafe.models import Cafe, Favorite, CafeAttributeVote, CafeNomadCache
+from cafe.models import Cafe
 from cafe.tests.factories import (
     CafeFactory,
     UserFactory,

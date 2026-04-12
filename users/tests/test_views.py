@@ -169,7 +169,7 @@ class TestFavoritesManagerAddFavorite:
     def test_add_favorite_increment_called(self, mocker):
         """驗證 increment_favorite_count 被呼叫"""
         user = UserFactory()
-        cafe = CafeFactory(place_id='ChIJ123', name='測試咖啡店')
+        CafeFactory(place_id='ChIJ123', name='測試咖啡店')
 
         mock_parse = mocker.patch('users.views.parse_opening_hours')
         mock_parse.return_value = {}
@@ -229,7 +229,7 @@ class TestFavoritesManagerRemoveFavorite:
     def test_remove_favorite_not_in_favorites(self):
         """Favorite 不存在（未曾收藏）"""
         user = UserFactory()
-        cafe = CafeFactory(place_id='ChIJ123', name='測試咖啡店')
+        CafeFactory(place_id='ChIJ123', name='測試咖啡店')
 
         info = {
             'place_id': 'ChIJ123',

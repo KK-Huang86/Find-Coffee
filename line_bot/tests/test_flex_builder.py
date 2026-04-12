@@ -1,5 +1,4 @@
 import pytest
-from datetime import date
 from unittest.mock import MagicMock, patch
 
 from linebot.v3.messaging import (
@@ -7,12 +6,10 @@ from linebot.v3.messaging import (
     TextMessage,
     QuickReply,
     LocationAction,
-    PostbackAction,
 )
 
 from line_bot.builders.flex_builder import (
     FlexMessageBuilder,
-    LineMessageBuilder,
     PostbackBuilder,
     FavoritesMessageBuilder,
     QuickReplyBuilder,
@@ -21,9 +18,9 @@ from line_bot.constants import MenuAction
 from line_bot.tests.factories import CafeFactory, UserFactory
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder.get_photo_url
-# ---------------------------------------------------------------------------
+
 
 class TestGetPhotoUrl:
     """測試 FlexMessageBuilder.get_photo_url"""
@@ -71,9 +68,9 @@ class TestGetPhotoUrl:
         assert result == 'https://s3.example.com/cafe.jpg'
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder.resolve_photo_url
-# ---------------------------------------------------------------------------
+
 
 class TestResolvePhotoUrl:
     """測試 FlexMessageBuilder.resolve_photo_url"""
@@ -117,9 +114,9 @@ class TestResolvePhotoUrl:
         assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder._create_attribute_tags
-# ---------------------------------------------------------------------------
+
 
 class TestCreateAttributeTags:
     """測試 FlexMessageBuilder._create_attribute_tags"""
@@ -165,9 +162,9 @@ class TestCreateAttributeTags:
         assert len(tags) == 2
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder._create_tag_element
-# ---------------------------------------------------------------------------
+
 
 class TestCreateTagElement:
     """測試 FlexMessageBuilder._create_tag_element"""
@@ -200,9 +197,9 @@ class TestCreateTagElement:
         assert element['backgroundColor'] == '#EEEEEE'
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder._create_tags_box
-# ---------------------------------------------------------------------------
+
 
 class TestCreateTagsBox:
     """測試 FlexMessageBuilder._create_tags_box"""
@@ -216,9 +213,9 @@ class TestCreateTagsBox:
         assert box['contents'] == tags
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder.format_opening_hours
-# ---------------------------------------------------------------------------
+
 
 class TestFormatOpeningHours:
     """測試 FlexMessageBuilder.format_opening_hours"""
@@ -271,9 +268,9 @@ class TestFormatOpeningHours:
         assert result == '今日未營業'
 
 
-# ---------------------------------------------------------------------------
+
 # FlexMessageBuilder.create_shop_flex_message
-# ---------------------------------------------------------------------------
+
 
 class TestCreateShopFlexMessage:
     """測試 FlexMessageBuilder.create_shop_flex_message"""
@@ -417,9 +414,8 @@ class TestCreateShopFlexMessage:
         assert star_icons == []
 
 
-# ---------------------------------------------------------------------------
 # PostbackBuilder.create_cafe_action_postback
-# ---------------------------------------------------------------------------
+
 
 class TestPostbackBuilderCreateCafeActionPostback:
     """測試 PostbackBuilder.create_cafe_action_postback"""
@@ -451,7 +447,7 @@ class TestPostbackBuilderCreateCafeActionPostback:
             assert 'place_id=abc_xyz' in action['data']
 
     def test_contains_four_actions(self):
-        """按鈕選單包含 4 個 action（收藏、撥打電話、分享、問 AI）"""
+        """按鈕選單包含 4 個 action（收藏、分享、評價、問 AI）"""
         result = PostbackBuilder.create_cafe_action_postback(self._make_info())
         actions = result.to_dict()['template']['actions']
         assert len(actions) == 4
@@ -460,14 +456,15 @@ class TestPostbackBuilderCreateCafeActionPostback:
         """按鈕選單包含所有預期的標籤"""
         result = PostbackBuilder.create_cafe_action_postback(self._make_info())
         labels = [a['label'] for a in result.to_dict()['template']['actions']]
-        assert '📞 撥打電話' in labels
+        assert '⭐ 收藏' in labels
         assert '🔗 分享' in labels
+        assert '⭐ 評價' in labels
         assert '🤖 問問AI' in labels
 
 
-# ---------------------------------------------------------------------------
+
 # FavoritesMessageBuilder.show_favorites_carousel
-# ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestFavoritesMessageBuilderShowFavoritesCarousel:
@@ -514,9 +511,9 @@ class TestFavoritesMessageBuilderShowFavoritesCarousel:
         assert len(result.contents.contents) <= 5
 
 
-# ---------------------------------------------------------------------------
+
 # FavoritesMessageBuilder.show_favorites_list
-# ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 class TestFavoritesMessageBuilderShowFavoritesList:
@@ -557,9 +554,9 @@ class TestFavoritesMessageBuilderShowFavoritesList:
         assert any('test_pid_001' in box['action']['data'] for box in shop_boxes)
 
 
-# ---------------------------------------------------------------------------
+
 # QuickReplyBuilder
-# ---------------------------------------------------------------------------
+
 
 class TestQuickReplyBuilderCreateSearchAgainActions:
     """測試 QuickReplyBuilder.create_search_again_actions"""

@@ -17,3 +17,6 @@ backup.sql
 *.tfstate.backup
 .terraform.lock.hcl
 terraform.tfvars
+
+.coverage
+coverage.xml
