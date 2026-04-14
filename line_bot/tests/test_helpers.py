@@ -7,7 +7,7 @@ from linebot.v3.messaging import ReplyMessageRequest, TextMessage
 
 from cafe.models import Cafe
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
-from line_bot.tests.factories import CafeFactory
+from line_bot.tests.factories import CafeFactory, UserFactory
 
 
 @pytest.mark.django_db
@@ -20,7 +20,7 @@ class TestGetOrCreateCafeInfo:
 
         with patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match:
             mock_match.return_value = False
-            info_d, returned_cafe = get_or_create_cafe_info(cafe.place_id)
+            info_d, returned_cafe = get_or_create_cafe_info(cafe.place_id, user_id=1)
 
         assert info_d is not None
         assert returned_cafe == cafe
@@ -36,7 +36,7 @@ class TestGetOrCreateCafeInfo:
         ):
             mock_refresh.return_value = None
             mock_match.return_value = False
-            get_or_create_cafe_info(cafe.place_id)
+            get_or_create_cafe_info(cafe.place_id, user_id=1)
 
         mock_refresh.assert_called_once_with(cafe.id)
 
@@ -50,12 +50,26 @@ class TestGetOrCreateCafeInfo:
         ):
             mock_refresh.return_value = None
             mock_match.return_value = False
-            get_or_create_cafe_info(cafe.place_id)
+            get_or_create_cafe_info(cafe.place_id, user_id=1)
 
         mock_refresh.assert_called_once_with(cafe.id)
 
+    def test_returns_none_when_quota_exceeded(self):
+        """API 額度不足，回傳 (None, None) 且不呼叫 Google API"""
+        with (
+            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use') as mock_check,
+            patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
+        ):
+            mock_check.return_value = False
+            info_d, cafe = get_or_create_cafe_info('some_place_id', user_id=1)
+
+        assert info_d is None
+        assert cafe is None
+        mock_google.assert_not_called()
+
     def test_calls_google_api_when_not_in_db(self):
         """DB 無資料，呼叫 Google API 並存入 DB"""
+        user = UserFactory()
         place_id = 'test_google_place_id'
         google_data = {
             'place_id': place_id,
@@ -66,31 +80,40 @@ class TestGetOrCreateCafeInfo:
         }
 
         with (
+            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use', return_value=True),
+            patch('line_bot.handlers.helpers.ApiUsageService.increment_detail_calls') as mock_increment,
             patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
             patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
         ):
             mock_google.return_value = google_data
             mock_match.return_value = False
-            info_d, cafe = get_or_create_cafe_info(place_id)
+            info_d, cafe = get_or_create_cafe_info(place_id, user.id)
 
         mock_google.assert_called_once_with(place_id)
+        mock_increment.assert_called_once_with(user.id)
         assert info_d is not None
         assert Cafe.objects.filter(place_id=place_id).exists()
 
     def test_returns_none_when_google_api_fails(self):
         """Google API 回傳 None，回傳 (None, None)"""
-        with patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google:
+        with (
+            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use', return_value=True),
+            patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
+        ):
             mock_google.return_value = None
-            info_d, cafe = get_or_create_cafe_info('nonexistent_place_id')
+            info_d, cafe = get_or_create_cafe_info('nonexistent_place_id', user_id=1)
 
         assert info_d is None
         assert cafe is None
 
     def test_returns_none_when_google_data_missing_place_id(self):
         """Google API 回傳資料缺少 place_id，回傳 (None, None)"""
-        with patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google:
+        with (
+            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use', return_value=True),
+            patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
+        ):
             mock_google.return_value = {'name': '咖啡店'}
-            info_d, cafe = get_or_create_cafe_info('some_place_id')
+            info_d, cafe = get_or_create_cafe_info('some_place_id', user_id=1)
 
         assert info_d is None
         assert cafe is None

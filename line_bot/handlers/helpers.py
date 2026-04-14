@@ -15,21 +15,23 @@ from cafe.models import Cafe
 from cafe.services.attribute_matcher import CafeAttributeMatcher
 from cafe.tasks import refresh_cafe_data
 from integrations.google.api import GoogleAPI
+from integrations.services import ApiUsageService
 from line_bot.utils import parse_opening_hours
 
 logger = logging.getLogger(__name__)
 
 
-def get_or_create_cafe_info(place_id):
+def get_or_create_cafe_info(place_id, user_id):
     """
     從 DB 取得咖啡店資訊，若無則從 Google API 取得並存入 DB。
 
     Args:
         place_id (str): Google Places ID
+        user_id (int): 使用者 DB 主鍵，用於 API 額度追蹤
 
     Returns:
         tuple: (info_dict, cafe_object)
-               若失敗則回傳 (None, None)
+               若失敗或額度不足則回傳 (None, None)
     """
 
     DATA_REFRESH_DAYS = 30
@@ -52,7 +54,14 @@ def get_or_create_cafe_info(place_id):
                 logger.warning(f'查詢 CafeNomadCache 失敗 {e}', exc_info=True)
         return cafe.to_dict(), cafe
 
-    # 2. DB 沒有，呼叫 Google API
+
+
+
+    # 2. DB 沒有，先確認 API 額度，再呼叫 Google API
+    if not ApiUsageService.check_can_use(user_id):
+        logger.warning(f'User {user_id} 超過 API 額度，無法查詢 {place_id}')
+        return None, None
+
     info_d = GoogleAPI.get_shop_detail(place_id)
 
     if not info_d:
@@ -61,6 +70,8 @@ def get_or_create_cafe_info(place_id):
     if not info_d.get('place_id'):
         logger.error('缺少 place_id，無法建立店家資料')
         return None, None
+
+    ApiUsageService.increment_detail_calls(user_id)
 
     # 3. 存入 DB
     try:

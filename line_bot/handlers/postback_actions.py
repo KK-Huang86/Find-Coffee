@@ -21,7 +21,7 @@ def handle_favorite(line_bot_api, reply_token, user, params):
     """處理收藏動作"""
     place_id = params.get('place_id')
 
-    info_d, _ = get_or_create_cafe_info(place_id)
+    info_d, _ = get_or_create_cafe_info(place_id, user.id)
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
@@ -48,7 +48,7 @@ def handle_view_detail(line_bot_api, reply_token, user, params):
     """處理查看詳情動作"""
     place_id = params.get('place_id')
 
-    info_d, cafe = get_or_create_cafe_info(place_id)
+    info_d, cafe = get_or_create_cafe_info(place_id, user.id)
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到此咖啡店')
         return
@@ -83,7 +83,7 @@ def handle_vote(line_bot_api, reply_token, user, params):
 
     place_id = params.get('place_id')
 
-    info_d, cafe = get_or_create_cafe_info(place_id)
+    info_d, cafe = get_or_create_cafe_info(place_id, user.id)
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到此咖啡店')
         return

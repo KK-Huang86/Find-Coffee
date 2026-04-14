@@ -483,13 +483,13 @@ class FlexMessageBuilder:
 class LineMessageBuilder:
 
     @staticmethod
-    def _get_or_create_shop_info(place_id):
+    def _get_or_create_shop_info(place_id, user_id):
         """
         嘗試從資料庫取得店家資訊，若無，則從 Google API 取得資料並寫入資料庫。
         委託給 helpers.get_or_create_cafe_info 統一處理。
         """
         from line_bot.handlers.helpers import get_or_create_cafe_info
-        return get_or_create_cafe_info(place_id)
+        return get_or_create_cafe_info(place_id, user_id)
 
     @staticmethod
     def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
@@ -509,7 +509,7 @@ class LineMessageBuilder:
             # 單筆結果
             place_id = shops[0]['place_id']
 
-            info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id)
+            info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
             if not info_d:
                 line_bot_api.reply_message(
@@ -556,7 +556,7 @@ class LineMessageBuilder:
             for shop in shops:
                 place_id = shop['place_id']
 
-                info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id)
+                info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
                 if info_d:
                     flex_data = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
