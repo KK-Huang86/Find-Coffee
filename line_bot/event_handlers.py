@@ -70,11 +70,12 @@ def handle_message(event):
             # 1. 先查本地 DB
             cached_cafes = Cafe.objects.filter(name__icontains=text)[:5]
 
-            if cached_cafes.exists():
+            if cached_cafes:
                 now = timezone.now()
                 for cafe in cached_cafes:
                     if cafe.last_refreshed is None or now - cafe.last_refreshed >= timedelta(days=30):
-                        refresh_cafe_data.delay(cafe.id)
+                        if LockService.acquire(str(cafe.id), 'refresh', ttl=600): # 避免不同人同時觸發更新
+                            refresh_cafe_data.delay(cafe.id)
                 shops = [{'place_id': cafe.place_id} for cafe in cached_cafes]
             else:
                 # 本地沒有，打 Google API
