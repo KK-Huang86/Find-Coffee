@@ -2,7 +2,6 @@
 name = "find-coffee"
 version = "0.1.0"
 description = ""
-readme = "README.md"
 authors = [{ name = "KK-Huang86", email = "iankk0806@gmail.com" }]
 requires-python = ">=3.13"
 
@@ -17,6 +16,7 @@ dependencies = [
     "redis~=7.1.0",
     "celery~=5.6.2",
     "boto3~=1.42.30",
+    "gunicorn~=23.0.0",
 ]
 
 # 測試開發需求
