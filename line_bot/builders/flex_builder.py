@@ -22,7 +22,7 @@ from linebot.v3.messaging import (
 
 from users.models import User
 from line_bot.utils import parse_opening_hours
-from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS
+from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS, QUOTA_EXCEEDED
 from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
@@ -511,6 +511,14 @@ class LineMessageBuilder:
 
             info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
+            if info_d is QUOTA_EXCEEDED:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text='本月 API 查詢額度已達上限，無法取得店家資訊 😢')]
+                    )
+                )
+                return
             if not info_d:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -558,6 +566,14 @@ class LineMessageBuilder:
 
                 info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
+                if info_d is QUOTA_EXCEEDED:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=reply_token,
+                            messages=[TextMessage(text='本月 API 查詢額度已達上限，無法取得店家資訊 😢')]
+                        )
+                    )
+                    return
                 if info_d:
                     flex_data = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
                     flex_messages.append(flex_data)

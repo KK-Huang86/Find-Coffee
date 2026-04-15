@@ -16,6 +16,7 @@ from cafe.services.attribute_matcher import CafeAttributeMatcher
 from cafe.tasks import refresh_cafe_data
 from integrations.google.api import GoogleAPI
 from integrations.services import ApiUsageService
+from line_bot.constants import QUOTA_EXCEEDED
 from line_bot.utils import parse_opening_hours
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ def get_or_create_cafe_info(place_id, user_id):
     # 2. DB 沒有，先確認 API 額度，再呼叫 Google API
     if not ApiUsageService.check_can_use(user_id):
         logger.warning(f'User {user_id} 超過 API 額度，無法查詢 {place_id}')
-        return None, None
+        return QUOTA_EXCEEDED, None
 
     info_d = GoogleAPI.get_shop_detail(place_id)
 

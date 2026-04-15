@@ -1,3 +1,7 @@
+# Sentinel：代表 get_or_create_cafe_info 因額度不足而回傳，讓呼叫端顯示對應訊息
+QUOTA_EXCEEDED = 'QUOTA_EXCEEDED'
+
+
 class UserState:
     NORMAL = '初始'
     WAITING_SHOP_NAME = '等待查詢店名'

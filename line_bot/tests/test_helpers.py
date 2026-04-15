@@ -6,6 +6,7 @@ from django.utils import timezone
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage
 
 from cafe.models import Cafe
+from line_bot.constants import QUOTA_EXCEEDED
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.tests.factories import CafeFactory, UserFactory
 
@@ -54,8 +55,8 @@ class TestGetOrCreateCafeInfo:
 
         mock_refresh.assert_called_once_with(cafe.id)
 
-    def test_returns_none_when_quota_exceeded(self):
-        """API 額度不足，回傳 (None, None) 且不呼叫 Google API"""
+    def test_returns_quota_exceeded_when_quota_exceeded(self):
+        """API 額度不足，回傳 (QUOTA_EXCEEDED, None) 且不呼叫 Google API"""
         with (
             patch('line_bot.handlers.helpers.ApiUsageService.check_can_use') as mock_check,
             patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
@@ -63,7 +64,7 @@ class TestGetOrCreateCafeInfo:
             mock_check.return_value = False
             info_d, cafe = get_or_create_cafe_info('some_place_id', user_id=1)
 
-        assert info_d is None
+        assert info_d is QUOTA_EXCEEDED
         assert cafe is None
         mock_google.assert_not_called()
 

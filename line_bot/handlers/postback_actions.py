@@ -10,7 +10,7 @@ from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
 from integrations.services import ApiUsageService
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
-from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
+from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS, QUOTA_EXCEEDED
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.state import StateManager
 from users.views import FavoritesManager
@@ -23,6 +23,9 @@ def handle_favorite(line_bot_api, reply_token, user, params):
     place_id = params.get('place_id')
 
     info_d, _ = get_or_create_cafe_info(place_id, user.id)
+    if info_d is QUOTA_EXCEEDED:
+        reply_text(line_bot_api, reply_token, '本月 API 查詢額度已達上限，無法取得店家資訊 😢')
+        return
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
@@ -50,6 +53,9 @@ def handle_view_detail(line_bot_api, reply_token, user, params):
     place_id = params.get('place_id')
 
     info_d, cafe = get_or_create_cafe_info(place_id, user.id)
+    if info_d is QUOTA_EXCEEDED:
+        reply_text(line_bot_api, reply_token, '本月 API 查詢額度已達上限，無法取得店家資訊 😢')
+        return
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到此咖啡店')
         return
@@ -85,6 +91,9 @@ def handle_vote(line_bot_api, reply_token, user, params):
     place_id = params.get('place_id')
 
     info_d, cafe = get_or_create_cafe_info(place_id, user.id)
+    if info_d is QUOTA_EXCEEDED:
+        reply_text(line_bot_api, reply_token, '本月 API 查詢額度已達上限，無法取得店家資訊 😢')
+        return
     if not info_d:
         reply_text(line_bot_api, reply_token, '找不到此咖啡店')
         return
