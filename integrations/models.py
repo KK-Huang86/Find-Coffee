@@ -46,10 +46,9 @@ class ApiUsageRecord(models.Model):
         """檢查是否超過限制"""
 
         if self.total_api_calls >= self.monthly_limit:
-            self.can_use = False
-
-            self.save()
-
+            if self.can_use:
+                self.can_use = False
+                self.save()
             return False
 
         return True

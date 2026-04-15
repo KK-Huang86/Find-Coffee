@@ -8,6 +8,7 @@ from linebot.v3.messaging import ReplyMessageRequest, TextMessage
 from cafe.models import Cafe, CafeAttributeVote
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
+from integrations.services import ApiUsageService
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
 from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
@@ -211,11 +212,15 @@ def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, 
 
     if cafes.exists():
         # DB 有資料，顯示 carousel（理論上這裡抓到的都是兩筆以上的資料，因為一筆的話會有 place_id）
-        shops = [{'place_id': cafe.place_id} for cafe in cafes]
+        shops = [{'place_id': cafe.place_id, 'name': cafe.name} for cafe in cafes]
 
     # 3. 都沒有的話直接打 Google API 進行查詢
     else:
+        if not ApiUsageService.check_can_use(user.id):
+            reply_text(line_bot_api, reply_token, '本月搜尋次數已達上限，無法繼續查詢 😢')
+            return
         shops = GoogleAPI.search_coffee_shops(keyword)
+        ApiUsageService.increment_search_calls(user.id)
 
     LineMessageBuilder.send_shop_result(
         line_bot_api,
@@ -228,7 +233,11 @@ def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, 
 
 def _handle_address_search(line_bot_api, reply_token, user, user_id, keyword):
     """處理地址搜尋"""
+    if not ApiUsageService.check_can_use(user.id):
+        reply_text(line_bot_api, reply_token, '本月搜尋次數已達上限，無法繼續查詢 😢')
+        return
     shops = GoogleAPI.search_nearby_coffee_shops(address=keyword)
+    ApiUsageService.increment_search_calls(user.id)
 
     LineMessageBuilder.send_shop_result(
         line_bot_api,

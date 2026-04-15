@@ -506,7 +506,7 @@ class LineMessageBuilder:
             return
 
         if len(shops) == 1:
-            # 單筆結果
+            # 單筆結果：才需要取得完整詳細資訊
             place_id = shops[0]['place_id']
 
             info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
