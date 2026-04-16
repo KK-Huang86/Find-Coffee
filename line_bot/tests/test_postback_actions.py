@@ -244,15 +244,16 @@ class TestHandleMenu:
         call_args = mock_api.reply_message.call_args[0][0]
         assert '搜尋紀錄' in call_args.messages[0].text
 
-    def test_more_info_replies_coming_soon(self):
-        """MORE_INFO 回覆開發中訊息"""
+    def test_more_info_shows_feature_menu(self):
+        """MORE_INFO 顯示功能選單（含 QuickReply）"""
         user = UserFactory()
         mock_api = MagicMock()
 
         handle_menu(mock_api, 'test_token', user, {'type': MenuAction.MORE_INFO})
 
+        mock_api.reply_message.assert_called_once()
         call_args = mock_api.reply_message.call_args[0][0]
-        assert '開發中' in call_args.messages[0].text
+        assert call_args.messages[0].quick_reply is not None
 
     def test_unknown_type_does_not_reply(self):
         """未知的 menu type，不觸發任何回覆"""

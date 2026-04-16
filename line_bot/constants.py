@@ -3,6 +3,7 @@ class UserState:
     WAITING_SHOP_NAME = '等待查詢店名'
     WAITING_ADDRESS = '等待查詢路名'
     WAITING_VOTE = '等待評價'
+    WAITING_DISTRICT = '等待查詢行政區'
 
 
 # 投票屬性順序
@@ -61,3 +62,4 @@ class MenuAction:
     FAVORITES = 'favorites'
     RECENT_SEARCH = 'recent_search'
     MORE_INFO = 'more_info'
+    DISTRICT_SEARCH = 'district_search'

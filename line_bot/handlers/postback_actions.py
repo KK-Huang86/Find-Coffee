@@ -302,8 +302,25 @@ def _menu_recent_search(line_bot_api, reply_token, user):
 
 
 def _menu_more_info(line_bot_api, reply_token, user):
-    """處理更多資訊，後續開發中"""
-    reply_text(line_bot_api, reply_token, '更多資訊功能開發中...')
+    """更多功能選單"""
+    quick_reply = QuickReplyBuilder.create_more_info_actions()
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[
+                TextMessage(
+                    text='請選擇功能 ☕️',
+                    quick_reply=quick_reply
+                )
+            ]
+        )
+    )
+
+
+def _menu_district_search(line_bot_api, reply_token, user):
+    """處理工作友善咖啡查詢：設定狀態，等待使用者輸入行政區"""
+    StateManager.set_state(user.line_user_id, UserState.WAITING_DISTRICT)
+    reply_text(line_bot_api, reply_token, '請輸入行政區名稱\n（例如：大安區、信義區）')
 
 
 # Menu Dispatch Table
@@ -314,6 +331,7 @@ MENU_HANDLERS = {
     MenuAction.FAVORITES: _menu_favorites,
     MenuAction.RECENT_SEARCH: _menu_recent_search,
     MenuAction.MORE_INFO: _menu_more_info,
+    MenuAction.DISTRICT_SEARCH: _menu_district_search,
 }
 
 
