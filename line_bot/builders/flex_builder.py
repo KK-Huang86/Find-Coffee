@@ -152,7 +152,6 @@ class FlexMessageBuilder:
                 tag_type='socket'
             ))
 
-
         # 店家是否有貓貓狗狗：yes/maybe 顯示，no 不顯示
         has_pet = info.get('has_pet')
         if has_pet in ('yes', 'maybe'):
@@ -160,7 +159,6 @@ class FlexMessageBuilder:
                 text='🐈 有貓貓狗狗',
                 tag_type='has_pet'
             ))
-
 
         # 店家是否為寵物友善：yes/maybe 顯示，no 不顯示
         pet_friendly = info.get('pet_friendly')
@@ -194,7 +192,7 @@ class FlexMessageBuilder:
 
         Args:
             text: 標籤文字
-            tag_type: 標籤類型 ('socket' 或 'limited_time')
+            tag_type: 標籤類型 ('socket','limited_time','has_pet','pet_friendly')
 
         Returns:
             dict: Flex Message text element
