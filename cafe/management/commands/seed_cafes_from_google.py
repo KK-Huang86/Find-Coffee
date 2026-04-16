@@ -370,14 +370,14 @@ class Command(BaseCommand):
 
     def _process_one(self, place_id: str, dry_run: bool, stats: dict):
         if Cafe.objects.filter(place_id=place_id).exists():
-            self.stdout.write(f'  → 略過（DB 已有此店）')
+            self.stdout.write('  → 略過（DB 已有此店）')
             stats['skipped'] += 1
             return
 
         detail = GoogleAPI.get_shop_detail(place_id)
 
         if not detail or not detail.get('place_id'):
-            self.stdout.write(self.style.WARNING(f'  → 失敗：無法取得詳細資料'))
+            self.stdout.write(self.style.WARNING('  → 失敗：無法取得詳細資料'))
             stats['failed'] += 1
             return
 
@@ -385,7 +385,7 @@ class Command(BaseCommand):
         self.stdout.write(f'  → {name}')
 
         if dry_run:
-            self.stdout.write(f'     [dry-run] 會建立 Cafe + 2 筆 CafeAttributeVote')
+            self.stdout.write('     [dry-run] 會建立 Cafe + 2 筆 CafeAttributeVote')
             stats['created'] += 1
             return
 
@@ -393,7 +393,7 @@ class Command(BaseCommand):
             with transaction.atomic():
                 cafe = self._create_cafe(detail)
                 self._create_vote_records(cafe)
-            self.stdout.write(self.style.SUCCESS(f'     ✓ 已建立'))
+            self.stdout.write(self.style.SUCCESS('     ✓ 已建立'))
             stats['created'] += 1
 
         except Exception as e:

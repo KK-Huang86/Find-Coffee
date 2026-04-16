@@ -120,7 +120,6 @@ def handle_message(event):
         elif state == UserState.WAITING_DISTRICT:
             district = text.strip()
 
-            from django.db.models import Q
             cafes = Cafe.objects.filter(
                 address__icontains=district,
                 limited_time='no',
