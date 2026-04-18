@@ -55,14 +55,14 @@ class TestSearchCoffeeShops:
         assert result[0] == {'name': '星巴克', 'place_id': 'ChIJ001'}
         assert result[1] == {'name': '路易莎', 'place_id': 'ChIJ002'}
 
-    def test_max_five_results(self, mocker):
-        """最多回傳 5 筆結果"""
+    def test_max_ten_results(self, mocker):
+        """最多回傳 10 筆結果"""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             'status': 'OK',
             'results': [
                 {'name': f'咖啡店{i}', 'place_id': f'ChIJ{i:03d}'}
-                for i in range(8)
+                for i in range(12)
             ]
         }
         mock_response.raise_for_status = MagicMock()
@@ -70,7 +70,7 @@ class TestSearchCoffeeShops:
 
         result = GoogleAPI.search_coffee_shops('咖啡')
 
-        assert len(result) == 5
+        assert len(result) == 10
 
     def test_timeout(self, mocker):
         """請求逾時回傳空字典"""
@@ -351,14 +351,14 @@ class TestSearchNearbyCoffeeShops:
 
         assert result == []
 
-    def test_max_five_results(self, mocker):
-        """最多回傳 5 筆結果"""
+    def test_max_ten_results(self, mocker):
+        """最多回傳 10 筆結果"""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             'status': 'OK',
             'results': [
                 {'place_id': f'ChIJ{i:03d}', 'name': f'咖啡店{i}', 'rating': 4.0, 'user_ratings_total': 100}
-                for i in range(8)
+                for i in range(12)
             ]
         }
         mock_response.raise_for_status = MagicMock()
@@ -366,7 +366,7 @@ class TestSearchNearbyCoffeeShops:
 
         result = GoogleAPI.search_nearby_coffee_shops(lat=25.033, lng=121.564)
 
-        assert len(result) == 5
+        assert len(result) == 10
 
     def test_weighted_rating_sort_order(self, mocker):
         """驗證加權評分排序：高評分但少人評 vs 中評分但多人評"""
