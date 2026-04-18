@@ -41,7 +41,15 @@ class FlexMessageBuilder:
         'limited_time': {
             'color': '#055160',
             'backgroundColor': '#CFF4FC',
-        }
+        },
+        'has_pet': {
+            'color': '#6B3A2A',
+            'backgroundColor': '#F5E6D3',
+        },
+        'pet_friendly': {
+            'color': '#5C4B00',
+            'backgroundColor': '#FFF3CD',
+        },
     }
 
     @staticmethod
