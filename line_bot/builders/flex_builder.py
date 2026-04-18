@@ -983,6 +983,50 @@ class QuickReplyBuilder:
         )
 
     @staticmethod
+    def create_district_search_actions(search_type, keyword, next_offset, has_more=False):
+        """
+        工作友善 / 寵物搜尋結果後的快速回覆
+        - 固定顯示「重新搜尋」
+        - has_more=True 時額外顯示「下一頁」
+        """
+        # 重新搜尋對應的 postback
+        re_search_map = {
+            'district': f'action=menu&type={MenuAction.DISTRICT_SEARCH}',
+            'pet': f'action=menu&type={MenuAction.PET_SEARCH}',
+            'pet_friendly': f'action=menu&type={MenuAction.PET_FRIENDLY_SEARCH}',
+            'all_pet': 'action=all_pet_search',
+        }
+        re_search_data = re_search_map.get(search_type, f'action=menu&type={MenuAction.SEARCH_SHOP_NAME}')
+
+        items = [
+            QuickReplyItem(
+                action=PostbackAction(
+                    label='🔍 重新搜尋',
+                    data=re_search_data
+                )
+            )
+        ]
+
+        if has_more:
+            from urllib.parse import urlencode
+            next_data = urlencode({
+                'action': 'next_page',
+                'search_type': search_type,
+                'keyword': keyword,
+                'offset': next_offset,
+            })
+            items.append(
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label='➡️ 下一頁',
+                        data=next_data
+                    )
+                )
+            )
+
+        return QuickReply(items=items)
+
+    @staticmethod
     def create_vote_options(attribute):
         """
         產生投票選項的 Quick Reply

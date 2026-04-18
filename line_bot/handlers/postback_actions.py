@@ -16,6 +16,49 @@ from users.views import FavoritesManager
 
 logger = logging.getLogger(__name__)
 
+PAGE_SIZE = 5
+
+
+def _reply_cafe_page(line_bot_api, reply_token, cafes_qs, offset, search_type, keyword, empty_msg, alt_text):
+    """
+    分頁輔助：從 queryset 取指定頁的資料並回覆 carousel + quick_reply。
+
+    Args:
+        cafes_qs: 已過濾 + 排序好的 QuerySet（不含 slice）
+        offset:   本頁起始位置
+        search_type: 'district' / 'pet' / 'pet_friendly' / 'all_pet'
+        keyword:  搜尋關鍵字（用於「下一頁」postback）
+        empty_msg: 無資料時的提示文字
+        alt_text: carousel alt text
+    """
+    cafes = list(cafes_qs[offset:offset + PAGE_SIZE + 1])
+    has_more = len(cafes) > PAGE_SIZE
+    cafes = cafes[:PAGE_SIZE]
+
+    if not cafes:
+        reply_text(line_bot_api, reply_token, empty_msg)
+        return
+
+    flex_messages = [
+        FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
+        for cafe in cafes
+    ]
+    carousel = {'type': 'carousel', 'contents': flex_messages}
+
+    quick_reply = QuickReplyBuilder.create_district_search_actions(
+        search_type, keyword, offset + PAGE_SIZE, has_more
+    )
+
+    flex_msg = FlexMessage(
+        alt_text=alt_text,
+        contents=FlexContainer.from_dict(carousel),
+    )
+    flex_msg.quick_reply = quick_reply
+
+    line_bot_api.reply_message(
+        ReplyMessageRequest(reply_token=reply_token, messages=[flex_msg])
+    )
+
 
 def handle_favorite(line_bot_api, reply_token, user, params):
     """處理收藏動作"""
@@ -363,26 +406,69 @@ MENU_HANDLERS = {
 
 
 def handle_all_pet_search(line_bot_api, reply_token, user, params):
-    """查詢全部有貓貓狗狗的咖啡店（不限地區）"""
-    cafes = Cafe.objects.filter(has_pet='yes').order_by('-favorite_count', '-user_ratings_total')[:5]
+    """查詢全部有貓貓狗狗的咖啡店（不限地區），支援分頁"""
+    offset = int(params.get('offset', 0))
+    cafes_qs = Cafe.objects.filter(has_pet='yes').order_by('-favorite_count', '-user_ratings_total')
 
-    if not cafes.exists():
-        reply_text(line_bot_api, reply_token, '目前資料庫還沒有有貓貓狗狗的咖啡店資料 😢\n歡迎投票回報你知道的店家！')
+    _reply_cafe_page(
+        line_bot_api, reply_token,
+        cafes_qs=cafes_qs,
+        offset=offset,
+        search_type='all_pet',
+        keyword='',
+        empty_msg='目前資料庫還沒有有貓貓狗狗的咖啡店資料 😢\n歡迎投票回報你知道的店家！',
+        alt_text='有貓貓狗狗的咖啡廳',
+    )
+
+
+def handle_next_page(line_bot_api, reply_token, user, params):
+    """處理翻頁動作"""
+    search_type = params.get('search_type')
+    keyword = params.get('keyword', '')
+    offset = int(params.get('offset', 0))
+
+    search_configs = {
+        'district': {
+            'filter': dict(
+                address__icontains=keyword,
+                limited_time__in=['maybe', 'no'],
+                has_socket__in=['yes', 'maybe'],
+            ),
+            'empty_msg': f'「{keyword}」沒有更多工作友善咖啡店了 ☕️',
+            'alt_text': f'{keyword} 工作友善咖啡',
+        },
+        'pet': {
+            'filter': dict(address__icontains=keyword, has_pet='yes'),
+            'empty_msg': f'「{keyword}」沒有更多有貓貓狗狗的咖啡店了 🐈',
+            'alt_text': f'{keyword} 有貓貓狗狗的咖啡廳',
+        },
+        'pet_friendly': {
+            'filter': dict(address__icontains=keyword, pet_friendly='yes'),
+            'empty_msg': f'「{keyword}」沒有更多寵物友善的咖啡店了 🐕',
+            'alt_text': f'{keyword} 寵物友善咖啡廳',
+        },
+        'all_pet': {
+            'filter': dict(has_pet='yes'),
+            'empty_msg': '沒有更多有貓貓狗狗的咖啡店了 🐈',
+            'alt_text': '有貓貓狗狗的咖啡廳',
+        },
+    }
+
+    config = search_configs.get(search_type)
+    if not config:
+        logger.warning(f'Unknown search_type for next_page: {search_type}')
         return
 
-    flex_messages = [
-        FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
-        for cafe in cafes
-    ]
-    carousel = {'type': 'carousel', 'contents': flex_messages}
-    line_bot_api.reply_message(
-        ReplyMessageRequest(
-            reply_token=reply_token,
-            messages=[FlexMessage(
-                alt_text='有貓貓狗狗的咖啡廳',
-                contents=FlexContainer.from_dict(carousel)
-            )]
-        )
+    cafes_qs = Cafe.objects.filter(**config['filter']).order_by('-favorite_count', '-user_ratings_total')
+
+    _reply_cafe_page(
+        line_bot_api, reply_token,
+        cafes_qs=cafes_qs,
+        offset=offset,
+        search_type=search_type,
+        keyword=keyword,
+        empty_msg=config['empty_msg'],
+        alt_text=config['alt_text'],
     )
 
 
@@ -407,4 +493,5 @@ ACTION_HANDLERS = {
     'vote_answer': handle_vote_answer,
     'menu': handle_menu,
     'all_pet_search': handle_all_pet_search,
+    'next_page': handle_next_page,
 }

@@ -334,3 +334,107 @@ class TestMenuPetSearch:
         mock_state.assert_called_once_with(user.line_user_id, UserState.WAITING_PET_DISTRICT)
         call_args = mock_api.reply_message.call_args[0][0]
         assert call_args.messages[0].quick_reply is not None
+
+
+@pytest.mark.django_db
+class TestHandleNextPage:
+    """測試 handle_next_page"""
+
+    def _mock_flex(self):
+        return patch('line_bot.handlers.postback_actions.FlexMessageBuilder.create_shop_flex_message',
+                     return_value=MagicMock()), \
+               patch('line_bot.handlers.postback_actions.FlexContainer.from_dict', return_value=MagicMock()), \
+               patch('line_bot.handlers.postback_actions.FlexMessage', return_value=MagicMock()), \
+               patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock())
+
+    def test_district_next_page_returns_results(self):
+        """search_type=district：回傳下一頁工作友善咖啡"""
+        from line_bot.handlers.postback_actions import handle_next_page
+        for _ in range(3):
+            CafeFactory(address='大安區信義路', limited_time='no', has_socket='yes')
+        user = MagicMock()
+        mock_api = MagicMock()
+
+        with patch('line_bot.handlers.postback_actions.FlexMessageBuilder.create_shop_flex_message',
+                   return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexContainer.from_dict', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexMessage', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
+            handle_next_page(mock_api, 'test_token', user, {
+                'search_type': 'district', 'keyword': '大安區', 'offset': '0'
+            })
+
+        mock_api.reply_message.assert_called_once()
+
+    def test_unknown_search_type_does_not_reply(self):
+        """未知 search_type，不觸發任何回覆"""
+        from line_bot.handlers.postback_actions import handle_next_page
+        user = MagicMock()
+        mock_api = MagicMock()
+
+        handle_next_page(mock_api, 'test_token', user, {
+            'search_type': 'unknown', 'keyword': '大安區', 'offset': '0'
+        })
+
+        mock_api.reply_message.assert_not_called()
+
+    def test_empty_results_replies_empty_msg(self):
+        """無結果時，回覆提示文字"""
+        from line_bot.handlers.postback_actions import handle_next_page
+        user = MagicMock()
+        mock_api = MagicMock()
+
+        handle_next_page(mock_api, 'test_token', user, {
+            'search_type': 'all_pet', 'keyword': '', 'offset': '0'
+        })
+
+        mock_api.reply_message.assert_called_once()
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '貓貓狗狗' in call_args.messages[0].text
+
+
+@pytest.mark.django_db
+class TestReplyCafePage:
+    """測試 _reply_cafe_page 分頁邏輯"""
+
+    def test_has_more_includes_next_page_button(self):
+        """結果超過 PAGE_SIZE 時，quick_reply 包含「下一頁」"""
+        from line_bot.handlers.postback_actions import _reply_cafe_page, PAGE_SIZE
+        for _ in range(PAGE_SIZE + 1):
+            CafeFactory(has_pet='yes')
+        cafes_qs = __import__('cafe.models', fromlist=['Cafe']).Cafe.objects.filter(has_pet='yes')
+        mock_api = MagicMock()
+
+        flex_msg_mock = MagicMock()
+        with patch('line_bot.handlers.postback_actions.FlexMessageBuilder.create_shop_flex_message',
+                   return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexContainer.from_dict', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexMessage', return_value=flex_msg_mock), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.QuickReplyBuilder.create_district_search_actions') as mock_qr:
+            mock_qr.return_value = MagicMock()
+            _reply_cafe_page(mock_api, 'token', cafes_qs, 0, 'all_pet', '', 'empty', 'alt')
+
+        mock_qr.assert_called_once()
+        _, _, _, has_more_arg = mock_qr.call_args[0]
+        assert has_more_arg is True
+
+    def test_no_more_pages_omits_next_button(self):
+        """結果不超過 PAGE_SIZE 時，has_more=False"""
+        from line_bot.handlers.postback_actions import _reply_cafe_page, PAGE_SIZE
+        for _ in range(PAGE_SIZE - 1):
+            CafeFactory(has_pet='yes')
+        cafes_qs = __import__('cafe.models', fromlist=['Cafe']).Cafe.objects.filter(has_pet='yes')
+        mock_api = MagicMock()
+
+        with patch('line_bot.handlers.postback_actions.FlexMessageBuilder.create_shop_flex_message',
+                   return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexContainer.from_dict', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexMessage', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.QuickReplyBuilder.create_district_search_actions') as mock_qr:
+            mock_qr.return_value = MagicMock()
+            _reply_cafe_page(mock_api, 'token', cafes_qs, 0, 'all_pet', '', 'empty', 'alt')
+
+        _, _, _, has_more_arg = mock_qr.call_args[0]
+        assert has_more_arg is False
