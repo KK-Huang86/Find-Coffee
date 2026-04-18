@@ -41,7 +41,15 @@ class FlexMessageBuilder:
         'limited_time': {
             'color': '#055160',
             'backgroundColor': '#CFF4FC',
-        }
+        },
+        'has_pet': {
+            'color': '#6B3A2A',
+            'backgroundColor': '#F5E6D3',
+        },
+        'pet_friendly': {
+            'color': '#5C4B00',
+            'backgroundColor': '#FFF3CD',
+        },
     }
 
     @staticmethod
@@ -152,6 +160,22 @@ class FlexMessageBuilder:
                 tag_type='socket'
             ))
 
+        # 店家是否有貓貓狗狗：yes/maybe 顯示，no 不顯示
+        has_pet = info.get('has_pet')
+        if has_pet in ('yes', 'maybe'):
+            tags.append(FlexMessageBuilder._create_tag_element(
+                text='🐈 有貓貓狗狗',
+                tag_type='has_pet'
+            ))
+
+        # 店家是否為寵物友善：yes/maybe 顯示，no 不顯示
+        pet_friendly = info.get('pet_friendly')
+        if pet_friendly in ('yes', 'maybe'):
+            tags.append(FlexMessageBuilder._create_tag_element(
+                text='🐕 寵物友善',
+                tag_type='pet_friendly'
+            ))
+
         # 限時標籤：根據值顯示不同文字
         limited_time = info.get('limited_time')
         limited_time_text_map = {
@@ -176,7 +200,7 @@ class FlexMessageBuilder:
 
         Args:
             text: 標籤文字
-            tag_type: 標籤類型 ('socket' 或 'limited_time')
+            tag_type: 標籤類型 ('socket','limited_time','has_pet','pet_friendly')
 
         Returns:
             dict: Flex Message text element

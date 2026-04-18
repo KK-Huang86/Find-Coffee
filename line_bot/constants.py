@@ -7,7 +7,7 @@ class UserState:
 
 
 # 投票屬性順序
-VOTE_ATTRIBUTES = ['socket', 'limited_time', 'quiet', 'cheap']
+VOTE_ATTRIBUTES = ['socket', 'limited_time', 'pet_friendly', 'has_pet', 'quiet', 'cheap']
 
 # 投票屬性對應的問題文字
 VOTE_QUESTIONS = {
@@ -15,6 +15,9 @@ VOTE_QUESTIONS = {
     'limited_time': '這間店會限時嗎？⏰',
     'quiet': '這間店安靜嗎？🤫',
     'cheap': '這間店價格如何？💰',
+    'has_pet': '這間店裡面有貓貓狗狗嗎？🐈',
+    'pet_friendly': '這間店歡迎寵物嗎？🐕'
+
 }
 
 # 投票選項對應的值
@@ -43,6 +46,17 @@ VOTE_OPTIONS = {
         ('no', '偏貴'),
         ('unknown', '不確定'),
     ],
+    'has_pet': [
+        ('yes', '有'),
+        ('no', '沒有'),
+        ('unknown', '不確定'),
+    ],
+    'pet_friendly': [
+        ('yes', '歡迎'),
+        ('no', '不歡迎'),
+        ('unknown', '不確定'),
+    ],
+
 }
 
 

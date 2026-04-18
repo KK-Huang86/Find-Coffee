@@ -161,6 +161,41 @@ class TestCreateAttributeTags:
         tags = FlexMessageBuilder._create_attribute_tags({'has_socket': 'yes', 'limited_time': 'no'})
         assert len(tags) == 2
 
+    def test_has_pet_yes_shows_tag(self):
+        """has_pet='yes' 時顯示貓貓狗狗標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'yes'})
+        assert any('🐈' in t['text'] for t in tags)
+
+    def test_has_pet_maybe_shows_tag(self):
+        """has_pet='maybe' 時顯示貓貓狗狗標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'maybe'})
+        assert any('🐈' in t['text'] for t in tags)
+
+    def test_has_pet_no_shows_no_tag(self):
+        """has_pet='no' 時不顯示標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'no'})
+        assert not any('🐈' in t['text'] for t in tags)
+
+    def test_pet_friendly_yes_shows_tag(self):
+        """pet_friendly='yes' 時顯示寵物友善標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'pet_friendly': 'yes'})
+        assert any('🐕' in t['text'] for t in tags)
+
+    def test_pet_friendly_maybe_shows_tag(self):
+        """pet_friendly='maybe' 時顯示寵物友善標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'pet_friendly': 'maybe'})
+        assert any('🐕' in t['text'] for t in tags)
+
+    def test_pet_friendly_no_shows_no_tag(self):
+        """pet_friendly='no' 時不顯示標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'pet_friendly': 'no'})
+        assert not any('🐕' in t['text'] for t in tags)
+
+    def test_all_pet_attributes_return_tags(self):
+        """has_pet 和 pet_friendly 同時為 yes 時，各回傳一個標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'yes', 'pet_friendly': 'yes'})
+        assert any('🐈' in t['text'] for t in tags)
+        assert any('🐕' in t['text'] for t in tags)
 
 
 # FlexMessageBuilder._create_tag_element
