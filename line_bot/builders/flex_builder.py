@@ -966,7 +966,19 @@ class QuickReplyBuilder:
                         label='🏙️ 工作友善咖啡',
                         data=f'action=menu&type={MenuAction.DISTRICT_SEARCH}'
                     )
-                )
+                ),
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label='🐈 有貓貓狗狗的咖啡廳',
+                        data=f'action=menu&type={MenuAction.PET_SEARCH}'
+                    )
+                ),
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label='🐕 寵物友善咖啡廳',
+                        data=f'action=menu&type={MenuAction.PET_FRIENDLY_SEARCH}'
+                    )
+                ),
             ]
         )
 

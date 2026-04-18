@@ -322,6 +322,17 @@ def _menu_district_search(line_bot_api, reply_token, user):
     StateManager.set_state(user.line_user_id, UserState.WAITING_DISTRICT)
     reply_text(line_bot_api, reply_token, '請輸入行政區名稱\n（例如：大安區、信義區）')
 
+def _menu_pet_search(line_bot_api, reply_token, user):
+    """查詢有貓貓狗狗的咖啡廳：設定狀態，等待使用者輸入行政區"""
+    StateManager.set_state(user.line_user_id, UserState.WAITING_PET_DISTRICT)
+    reply_text(line_bot_api, reply_token, '請輸入行政區名稱，我幫你找有貓貓狗狗的咖啡廳 🐈\n（例如：大安區、信義區）')
+
+
+def _menu_pet_friendly_search(line_bot_api, reply_token, user):
+    """查詢寵物友善咖啡廳：設定狀態，等待使用者輸入行政區"""
+    StateManager.set_state(user.line_user_id, UserState.WAITING_PET_FRIENDLY_DISTRICT)
+    reply_text(line_bot_api, reply_token, '請輸入行政區名稱，我幫你找寵物友善的咖啡廳 🐕\n（例如：大安區、信義區）')
+
 
 # Menu Dispatch Table
 MENU_HANDLERS = {
@@ -332,6 +343,8 @@ MENU_HANDLERS = {
     MenuAction.RECENT_SEARCH: _menu_recent_search,
     MenuAction.MORE_INFO: _menu_more_info,
     MenuAction.DISTRICT_SEARCH: _menu_district_search,
+    MenuAction.PET_SEARCH: _menu_pet_search,
+    MenuAction.PET_FRIENDLY_SEARCH: _menu_pet_friendly_search,
 }
 
 
