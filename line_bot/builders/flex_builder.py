@@ -957,6 +957,32 @@ class QuickReplyBuilder:
         return QuickReply(items=items)
 
     @staticmethod
+    def create_more_info_actions():
+        """更多功能的選項"""
+        return QuickReply(
+            items=[
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label='🏙️ 工作友善咖啡',
+                        data=f'action=menu&type={MenuAction.DISTRICT_SEARCH}'
+                    )
+                ),
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label='🐈 有貓貓狗狗的咖啡廳',
+                        data=f'action=menu&type={MenuAction.PET_SEARCH}'
+                    )
+                ),
+                QuickReplyItem(
+                    action=PostbackAction(
+                        label='🐕 寵物友善咖啡廳',
+                        data=f'action=menu&type={MenuAction.PET_FRIENDLY_SEARCH}'
+                    )
+                ),
+            ]
+        )
+
+    @staticmethod
     def create_vote_options(attribute):
         """
         產生投票選項的 Quick Reply

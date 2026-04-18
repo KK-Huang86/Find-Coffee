@@ -172,7 +172,8 @@ class CafeAttributeVote(models.Model):
     SOURCE_CHOICES = [
         ('user', '使用者回報'),
         ('cafenomad', 'CafeNomad API'),
-        ('inferred', '系統推論'),  # 先設計
+        ('google', 'Google Places API'),
+        ('inferred', '系統推論'),
     ]
     cafe = models.ForeignKey(Cafe, on_delete=models.CASCADE, related_name='attribute_votes', verbose_name='咖啡店')
     user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, verbose_name='回報使用者')
