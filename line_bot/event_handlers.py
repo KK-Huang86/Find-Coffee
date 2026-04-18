@@ -122,7 +122,7 @@ def handle_message(event):
 
             cafes = Cafe.objects.filter(
                 address__icontains=district,
-                limited_time='maybe',
+                limited_time__in=['maybe','no'],
                 has_socket__in=['yes', 'maybe']
             ).order_by('-favorite_count', '-user_ratings_total')[:5]
 

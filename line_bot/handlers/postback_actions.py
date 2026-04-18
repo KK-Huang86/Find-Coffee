@@ -3,12 +3,12 @@ Postback Action Handlers - 每個 action 獨立處理
 """
 import logging
 
-from linebot.v3.messaging import ReplyMessageRequest, TextMessage
+from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction
 
 from cafe.models import Cafe, CafeAttributeVote
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
-from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
+from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder, FlexMessageBuilder
 from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.state import StateManager
@@ -323,9 +323,23 @@ def _menu_district_search(line_bot_api, reply_token, user):
     reply_text(line_bot_api, reply_token, '請輸入行政區名稱\n（例如：大安區、信義區）')
 
 def _menu_pet_search(line_bot_api, reply_token, user):
-    """查詢有貓貓狗狗的咖啡廳：設定狀態，等待使用者輸入行政區"""
+    """查詢有貓貓狗狗的咖啡廳：設定狀態，等待使用者輸入行政區（附全部查詢快捷）"""
     StateManager.set_state(user.line_user_id, UserState.WAITING_PET_DISTRICT)
-    reply_text(line_bot_api, reply_token, '請輸入行政區名稱，我幫你找有貓貓狗狗的咖啡廳 🐈\n（例如：大安區、信義區）')
+    quick_reply = QuickReply(items=[
+        QuickReplyItem(action=PostbackAction(
+            label='🐈 查詢全部有貓貓狗狗的店',
+            data='action=all_pet_search'
+        ))
+    ])
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[TextMessage(
+                text='請輸入行政區名稱，我幫你找有貓貓狗狗的咖啡廳 🐈\n（例如：大安區、信義區）\n\n或點下方按鈕查詢全部店家',
+                quick_reply=quick_reply
+            )]
+        )
+    )
 
 
 def _menu_pet_friendly_search(line_bot_api, reply_token, user):
@@ -348,6 +362,30 @@ MENU_HANDLERS = {
 }
 
 
+def handle_all_pet_search(line_bot_api, reply_token, user, params):
+    """查詢全部有貓貓狗狗的咖啡店（不限地區）"""
+    cafes = Cafe.objects.filter(has_pet='yes').order_by('-favorite_count', '-user_ratings_total')[:5]
+
+    if not cafes.exists():
+        reply_text(line_bot_api, reply_token, '目前資料庫還沒有有貓貓狗狗的咖啡店資料 😢\n歡迎投票回報你知道的店家！')
+        return
+
+    flex_messages = [
+        FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
+        for cafe in cafes
+    ]
+    carousel = {'type': 'carousel', 'contents': flex_messages}
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[FlexMessage(
+                alt_text='有貓貓狗狗的咖啡廳',
+                contents=FlexContainer.from_dict(carousel)
+            )]
+        )
+    )
+
+
 def handle_menu(line_bot_api, reply_token, user, params):
     """處理 Rich Menu 選單動作（使用字典分派）"""
     menu_type = params.get('type')
@@ -368,4 +406,5 @@ ACTION_HANDLERS = {
     'vote': handle_vote,
     'vote_answer': handle_vote_answer,
     'menu': handle_menu,
+    'all_pet_search': handle_all_pet_search,
 }

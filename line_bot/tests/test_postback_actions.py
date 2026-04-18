@@ -8,6 +8,7 @@ from line_bot.handlers.postback_actions import (
     handle_view_detail,
     handle_recent_search,
     handle_menu,
+    handle_all_pet_search,
 )
 from line_bot.tests.factories import CafeFactory, UserFactory
 
@@ -263,3 +264,73 @@ class TestHandleMenu:
         handle_menu(mock_api, 'test_token', user, {'type': 'unknown_action'})
 
         mock_api.reply_message.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestHandleAllPetSearch:
+    """測試 handle_all_pet_search"""
+
+    def test_no_cafes_replies_not_found(self):
+        """DB 沒有有貓貓狗狗的店，回覆找不到訊息"""
+        user = UserFactory()
+        mock_api = MagicMock()
+
+        handle_all_pet_search(mock_api, 'test_token', user, {})
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '還沒有' in call_args.messages[0].text
+
+    def test_returns_cafes_with_has_pet_yes(self):
+        """has_pet='yes' 的店出現在結果中"""
+        user = UserFactory()
+        CafeFactory(has_pet='yes')
+        mock_api = MagicMock()
+
+        handle_all_pet_search(mock_api, 'test_token', user, {})
+
+        mock_api.reply_message.assert_called_once()
+
+    def test_cafes_without_has_pet_excluded(self):
+        """has_pet 非 yes 的店不出現"""
+        user = UserFactory()
+        CafeFactory(has_pet='no')
+        CafeFactory(has_pet=None)
+        mock_api = MagicMock()
+
+        handle_all_pet_search(mock_api, 'test_token', user, {})
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '還沒有' in call_args.messages[0].text
+
+    def test_returns_at_most_5_results(self):
+        """最多回傳 5 筆"""
+        user = UserFactory()
+        for _ in range(8):
+            CafeFactory(has_pet='yes')
+        mock_api = MagicMock()
+
+        with patch('line_bot.handlers.postback_actions.FlexMessageBuilder.create_shop_flex_message',
+                   return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexContainer.from_dict', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.FlexMessage', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
+            handle_all_pet_search(mock_api, 'test_token', user, {})
+
+        mock_api.reply_message.assert_called_once()
+
+
+@pytest.mark.django_db
+class TestMenuPetSearch:
+    """測試點選有貓貓狗狗按鈕時，回覆含 QuickReply"""
+
+    def test_pet_search_sets_state_and_shows_quick_reply(self):
+        """點選有貓貓狗狗按鈕，設定 WAITING_PET_DISTRICT 並顯示全部查詢 QuickReply"""
+        user = UserFactory()
+        mock_api = MagicMock()
+
+        with patch('line_bot.handlers.postback_actions.StateManager.set_state') as mock_state:
+            handle_menu(mock_api, 'test_token', user, {'type': MenuAction.PET_SEARCH})
+
+        mock_state.assert_called_once_with(user.line_user_id, UserState.WAITING_PET_DISTRICT)
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert call_args.messages[0].quick_reply is not None
