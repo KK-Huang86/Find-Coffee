@@ -262,14 +262,17 @@ def handle_postback(event):
             reply_text(line_bot_api, event.reply_token, '找不到會員資料，請重新操作')
             return
 
-        if not LockService.acquire(user_id, 'postback'):
-            logger.info(f'User {user_id} throttled, skip processing')
-            return
+        action = params.get('action')
+
+        # vote_answer 由 state machine 保護，不需要 lock（避免快速作答時被擋）
+        if action != 'vote_answer':
+            if not LockService.acquire(user_id, 'postback'):
+                logger.info(f'User {user_id} throttled, skip processing')
+                return
 
         # 顯示打字中動畫
         show_loading(line_bot_api, user_id)
 
-        action = params.get('action')
         handler_func = ACTION_HANDLERS.get(action)
 
         if handler_func:
