@@ -262,14 +262,19 @@ def handle_postback(event):
             reply_text(line_bot_api, event.reply_token, '找不到會員資料，請重新操作')
             return
 
-        if not LockService.acquire(user_id, 'postback'):
+        action = params.get('action')
+
+        # 使用獨立 lock key 避免不同動作互相阻擋（如 vote 阻擋 vote_answer）
+        # vote_answer 縮短 TTL 以提升快速作答體驗，同時防止重複點擊
+        lock_category = f'postback:{action}' if action == 'vote_answer' else 'postback'
+        lock_ttl = 1 if action == 'vote_answer' else 2
+        if not LockService.acquire(user_id, lock_category, ttl=lock_ttl):
             logger.info(f'User {user_id} throttled, skip processing')
             return
 
         # 顯示打字中動畫
         show_loading(line_bot_api, user_id)
 
-        action = params.get('action')
         handler_func = ACTION_HANDLERS.get(action)
 
         if handler_func:
