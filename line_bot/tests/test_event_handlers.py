@@ -394,6 +394,43 @@ class TestHandlePostback:
 
         mock_line_bot_api.reply_message.assert_not_called()
 
+    def test_vote_answer_bypasses_lock_and_dispatches(self):
+        """vote_answer 不受 LockService 限制，仍正常分派給 handler"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=vote_answer&attr=socket&value=yes')
+        mock_handler = MagicMock()
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=False),
+            patch('line_bot.event_handlers.show_loading') as mock_loading,
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'vote_answer': mock_handler}),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_postback(event)
+
+        mock_loading.assert_called_once()
+        mock_handler.assert_called_once()
+
+    def test_vote_answer_does_not_acquire_lock(self):
+        """vote_answer 不呼叫 LockService.acquire"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=vote_answer&attr=socket&value=yes')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire') as mock_lock,
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'vote_answer': MagicMock()}),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_postback(event)
+
+        mock_lock.assert_not_called()
+
 
 @pytest.mark.django_db
 class TestHandleMessageDistrictSearch:
