@@ -12,8 +12,6 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
-    FlexMessage,
-    FlexContainer,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -26,8 +24,8 @@ from linebot.v3.webhooks import (
 
 from integrations.google.api import GoogleAPI
 from line_bot.constants import UserState
-from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FlexMessageBuilder
-from line_bot.handlers.postback_actions import ACTION_HANDLERS
+from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder
+from line_bot.handlers.postback_actions import ACTION_HANDLERS, _reply_cafe_page
 from line_bot.handlers.helpers import reply_text
 from line_bot.services.search_cache import SearchHistoryService
 from line_bot.state import StateManager
@@ -70,7 +68,7 @@ def handle_message(event):
         # 使用者查詢單一咖啡店，回傳結果
         if state == UserState.WAITING_SHOP_NAME:
             # 1. 先查本地 DB
-            cached_cafes = Cafe.objects.filter(name__icontains=text)[:5]
+            cached_cafes = Cafe.objects.filter(name__icontains=text)[:10]
 
             if cached_cafes:
                 now = timezone.now()
@@ -119,117 +117,63 @@ def handle_message(event):
         # 使用者輸入行政區查詢工作友善咖啡
         elif state == UserState.WAITING_DISTRICT:
             district = text.strip()
-
-            cafes = Cafe.objects.filter(
+            cafes_qs = Cafe.objects.work_friendly().filter(
                 address__icontains=district,
-                limited_time__in=['maybe','no'],
-                has_socket__in=['yes', 'maybe']
-            ).order_by('-favorite_count', '-user_ratings_total')[:5]
-
-            if not cafes.exists():
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(
-                            text=(
-                                f'找不到「{district}」不限時且有插座的咖啡店 😢\n\n'
-                                '目前 DB 資料有限，建議先用其他方式搜尋該區店家，累積資料後再試試看！'
-                            )
-                        )]
-                    )
-                )
-            else:
-                flex_messages = [
-                    FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
-                    for cafe in cafes
-                ]
-                carousel = {'type': 'carousel', 'contents': flex_messages}
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[FlexMessage(
-                            alt_text=f'{district} 工作友善咖啡',
-                            contents=FlexContainer.from_dict(carousel)
-                        )]
-                    )
-                )
-
+            ).order_by('-favorite_count', '-user_ratings_total')
+            _reply_cafe_page(
+                line_bot_api, event.reply_token,
+                cafes_qs=cafes_qs,
+                offset=0,
+                search_type='district',
+                keyword=district,
+                empty_msg=(
+                    f'找不到「{district}」不限時且有插座的咖啡店 😢\n\n'
+                    '目前 DB 資料有限，建議先用其他方式搜尋該區店家，累積資料後再試試看！'
+                ),
+                alt_text=f'{district} 工作友善咖啡',
+            )
             StateManager.reset_state(user_id)
             return
 
         elif state == UserState.WAITING_PET_DISTRICT:
             district = text.strip()
-            cafes = Cafe.objects.filter(
+            cafes_qs = Cafe.objects.filter(
                 address__icontains=district,
                 has_pet='yes',
-            ).order_by('-favorite_count', '-user_ratings_total')[:5]
-
-            if not cafes.exists():
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(
-                            text=(
-                                f'找不到「{district}」有貓貓狗狗的咖啡店 🐈\n\n'
-                                '目前 DB 資料有限，建議先用其他方式搜尋該區店家，累積資料後再試試看！'
-                            )
-                        )]
-                    )
-                )
-            else:
-                flex_messages = [
-                    FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
-                    for cafe in cafes
-                ]
-                carousel = {'type': 'carousel', 'contents': flex_messages}
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[FlexMessage(
-                            alt_text=f'{district} 有貓貓狗狗的咖啡廳',
-                            contents=FlexContainer.from_dict(carousel)
-                        )]
-                    )
-                )
-
+            ).order_by('-favorite_count', '-user_ratings_total')
+            _reply_cafe_page(
+                line_bot_api, event.reply_token,
+                cafes_qs=cafes_qs,
+                offset=0,
+                search_type='pet',
+                keyword=district,
+                empty_msg=(
+                    f'找不到「{district}」有貓貓狗狗的咖啡店 🐈\n\n'
+                    '目前 DB 資料有限，建議先用其他方式搜尋該區店家，累積資料後再試試看！'
+                ),
+                alt_text=f'{district} 有貓貓狗狗的咖啡廳',
+            )
             StateManager.reset_state(user_id)
             return
 
         elif state == UserState.WAITING_PET_FRIENDLY_DISTRICT:
             district = text.strip()
-            cafes = Cafe.objects.filter(
+            cafes_qs = Cafe.objects.filter(
                 address__icontains=district,
                 pet_friendly='yes',
-            ).order_by('-favorite_count', '-user_ratings_total')[:5]
-
-            if not cafes.exists():
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(
-                            text=(
-                                f'找不到「{district}」寵物友善的咖啡店 🐕\n\n'
-                                '目前 DB 資料有限，建議先用其他方式搜尋該區店家，累積資料後再試試看！'
-                            )
-                        )]
-                    )
-                )
-            else:
-                flex_messages = [
-                    FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
-                    for cafe in cafes
-                ]
-                carousel = {'type': 'carousel', 'contents': flex_messages}
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[FlexMessage(
-                            alt_text=f'{district} 寵物友善咖啡廳',
-                            contents=FlexContainer.from_dict(carousel)
-                        )]
-                    )
-                )
-
+            ).order_by('-favorite_count', '-user_ratings_total')
+            _reply_cafe_page(
+                line_bot_api, event.reply_token,
+                cafes_qs=cafes_qs,
+                offset=0,
+                search_type='pet_friendly',
+                keyword=district,
+                empty_msg=(
+                    f'找不到「{district}」寵物友善的咖啡店 🐕\n\n'
+                    '目前 DB 資料有限，建議先用其他方式搜尋該區店家，累積資料後再試試看！'
+                ),
+                alt_text=f'{district} 寵物友善咖啡廳',
+            )
             StateManager.reset_state(user_id)
             return
 

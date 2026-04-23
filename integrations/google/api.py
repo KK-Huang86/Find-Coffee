@@ -39,7 +39,7 @@ class GoogleAPI:
         if search_result.get('status') != 'OK' or not search_result.get('results'):
             return {}
 
-        results = search_result['results'][:5]  # 若有多筆資料，僅取前五筆
+        results = search_result['results'][:10]  # 若有多筆資料，僅取前十筆
 
         shops = []
         for shop in results:
@@ -246,7 +246,7 @@ class GoogleAPI:
         # 根據加權評分進行排序
         sorted_places = sorted(weighted_rank, key=lambda x: x['weighted_rating'], reverse=True)
 
-        target_cafes = sorted_places[:5]
+        target_cafes = sorted_places[:10]
 
         shops = [
             {'place_id': shop['place_id'], 'rating': shop['original_rating'],

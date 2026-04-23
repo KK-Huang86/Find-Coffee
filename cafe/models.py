@@ -3,6 +3,15 @@ from django.db.models import F
 
 from users.models import User
 
+
+class CafeQuerySet(models.QuerySet):
+    def work_friendly(self):
+        """不限時且有插座（工作友善）"""
+        return self.filter(
+            limited_time__in=['maybe', 'no'],
+            has_socket__in=['yes', 'maybe'],
+        )
+
 LIMITED_TIME_CHOICES = [
     ("no", "一律不限時"),
     ("maybe", "視情況限時"),
@@ -28,6 +37,8 @@ HAS_PET_CHOICES = [
 # Create your models here.
 
 class Cafe(models.Model):
+    objects = CafeQuerySet.as_manager()
+
     # 唯一key
     place_id = models.CharField(max_length=100, unique=True, db_index=True, verbose_name='Google Place ID')
 
