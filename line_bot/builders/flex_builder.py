@@ -574,7 +574,7 @@ class LineMessageBuilder:
             )
             return
 
-        if 2 <= len(shops) <= 5:
+        if 2 <= len(shops) <= 10:
             # 多筆結果
             flex_messages = []
             for shop in shops:
@@ -1008,7 +1008,6 @@ class QuickReplyBuilder:
         ]
 
         if has_more:
-            from urllib.parse import urlencode
             next_data = urlencode({
                 'action': 'next_page',
                 'search_type': search_type,

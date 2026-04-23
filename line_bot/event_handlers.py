@@ -117,10 +117,8 @@ def handle_message(event):
         # 使用者輸入行政區查詢工作友善咖啡
         elif state == UserState.WAITING_DISTRICT:
             district = text.strip()
-            cafes_qs = Cafe.objects.filter(
+            cafes_qs = Cafe.objects.work_friendly().filter(
                 address__icontains=district,
-                limited_time__in=['maybe', 'no'],
-                has_socket__in=['yes', 'maybe'],
             ).order_by('-favorite_count', '-user_ratings_total')
             _reply_cafe_page(
                 line_bot_api, event.reply_token,

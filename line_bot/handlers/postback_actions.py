@@ -407,7 +407,10 @@ MENU_HANDLERS = {
 
 def handle_all_pet_search(line_bot_api, reply_token, user, params):
     """查詢全部有貓貓狗狗的咖啡店（不限地區），支援分頁"""
-    offset = int(params.get('offset', 0))
+    try:
+        offset = int(params.get('offset', 0))
+    except (ValueError, TypeError):
+        offset = 0
     cafes_qs = Cafe.objects.filter(has_pet='yes').order_by('-favorite_count', '-user_ratings_total')
 
     _reply_cafe_page(
@@ -425,30 +428,29 @@ def handle_next_page(line_bot_api, reply_token, user, params):
     """處理翻頁動作"""
     search_type = params.get('search_type')
     keyword = params.get('keyword', '')
-    offset = int(params.get('offset', 0))
+    try:
+        offset = int(params.get('offset', 0))
+    except (ValueError, TypeError):
+        offset = 0
 
     search_configs = {
         'district': {
-            'filter': dict(
-                address__icontains=keyword,
-                limited_time__in=['maybe', 'no'],
-                has_socket__in=['yes', 'maybe'],
-            ),
+            'queryset': Cafe.objects.work_friendly().filter(address__icontains=keyword),
             'empty_msg': f'「{keyword}」沒有更多工作友善咖啡店了 ☕️',
             'alt_text': f'{keyword} 工作友善咖啡',
         },
         'pet': {
-            'filter': dict(address__icontains=keyword, has_pet='yes'),
+            'queryset': Cafe.objects.filter(address__icontains=keyword, has_pet='yes'),
             'empty_msg': f'「{keyword}」沒有更多有貓貓狗狗的咖啡店了 🐈',
             'alt_text': f'{keyword} 有貓貓狗狗的咖啡廳',
         },
         'pet_friendly': {
-            'filter': dict(address__icontains=keyword, pet_friendly='yes'),
+            'queryset': Cafe.objects.filter(address__icontains=keyword, pet_friendly='yes'),
             'empty_msg': f'「{keyword}」沒有更多寵物友善的咖啡店了 🐕',
             'alt_text': f'{keyword} 寵物友善咖啡廳',
         },
         'all_pet': {
-            'filter': dict(has_pet='yes'),
+            'queryset': Cafe.objects.filter(has_pet='yes'),
             'empty_msg': '沒有更多有貓貓狗狗的咖啡店了 🐈',
             'alt_text': '有貓貓狗狗的咖啡廳',
         },
@@ -459,7 +461,7 @@ def handle_next_page(line_bot_api, reply_token, user, params):
         logger.warning(f'Unknown search_type for next_page: {search_type}')
         return
 
-    cafes_qs = Cafe.objects.filter(**config['filter']).order_by('-favorite_count', '-user_ratings_total')
+    cafes_qs = config['queryset'].order_by('-favorite_count', '-user_ratings_total')
 
     _reply_cafe_page(
         line_bot_api, reply_token,
