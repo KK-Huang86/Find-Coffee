@@ -394,8 +394,8 @@ class TestHandlePostback:
 
         mock_line_bot_api.reply_message.assert_not_called()
 
-    def test_vote_answer_bypasses_lock_and_dispatches(self):
-        """vote_answer 不受 LockService 限制，仍正常分派給 handler"""
+    def test_vote_answer_uses_independent_lock_key(self):
+        """vote_answer 使用獨立的 lock key（postback:vote_answer），不與其他 postback 共用"""
         user = UserFactory()
         event = self._make_event(user.line_user_id, 'action=vote_answer&attr=socket&value=yes')
         mock_handler = MagicMock()
@@ -403,33 +403,32 @@ class TestHandlePostback:
         with (
             patch('line_bot.event_handlers.ApiClient'),
             patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
-            patch('line_bot.event_handlers.LockService.acquire', return_value=False),
-            patch('line_bot.event_handlers.show_loading') as mock_loading,
-            patch('line_bot.event_handlers.ACTION_HANDLERS', {'vote_answer': mock_handler}),
-        ):
-            mock_line_bot_api = MagicMock()
-            mock_messaging_cls.return_value = mock_line_bot_api
-            handle_postback(event)
-
-        mock_loading.assert_called_once()
-        mock_handler.assert_called_once()
-
-    def test_vote_answer_does_not_acquire_lock(self):
-        """vote_answer 不呼叫 LockService.acquire"""
-        user = UserFactory()
-        event = self._make_event(user.line_user_id, 'action=vote_answer&attr=socket&value=yes')
-
-        with (
-            patch('line_bot.event_handlers.ApiClient'),
-            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
-            patch('line_bot.event_handlers.LockService.acquire') as mock_lock,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True) as mock_lock,
             patch('line_bot.event_handlers.show_loading'),
-            patch('line_bot.event_handlers.ACTION_HANDLERS', {'vote_answer': MagicMock()}),
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'vote_answer': mock_handler}),
         ):
             mock_messaging_cls.return_value = MagicMock()
             handle_postback(event)
 
-        mock_lock.assert_not_called()
+        mock_lock.assert_called_once_with(user.line_user_id, 'postback:vote_answer', ttl=1)
+        mock_handler.assert_called_once()
+
+    def test_non_vote_answer_uses_shared_lock_key(self):
+        """一般 postback action 使用共用的 lock key（postback），TTL 為 2 秒"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=favorite&place_id=abc')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True) as mock_lock,
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'favorite': MagicMock()}),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_postback(event)
+
+        mock_lock.assert_called_once_with(user.line_user_id, 'postback', ttl=2)
 
 
 @pytest.mark.django_db

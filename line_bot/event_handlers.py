@@ -264,11 +264,13 @@ def handle_postback(event):
 
         action = params.get('action')
 
-        # vote_answer 由 state machine 保護，不需要 lock（避免快速作答時被擋）
-        if action != 'vote_answer':
-            if not LockService.acquire(user_id, 'postback'):
-                logger.info(f'User {user_id} throttled, skip processing')
-                return
+        # 使用獨立 lock key 避免不同動作互相阻擋（如 vote 阻擋 vote_answer）
+        # vote_answer 縮短 TTL 以提升快速作答體驗，同時防止重複點擊
+        lock_category = f'postback:{action}' if action == 'vote_answer' else 'postback'
+        lock_ttl = 1 if action == 'vote_answer' else 2
+        if not LockService.acquire(user_id, lock_category, ttl=lock_ttl):
+            logger.info(f'User {user_id} throttled, skip processing')
+            return
 
         # 顯示打字中動畫
         show_loading(line_bot_api, user_id)
