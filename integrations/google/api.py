@@ -17,10 +17,11 @@ class GoogleAPI:
         #  Text Search 取得 place_id
         search_url = f'{GoogleAPI.BASE_URL}/textsearch/json'
         params = {
-            'query': f'{shop_name} 咖啡店',
+            'query': shop_name,
             'type': 'cafe',
             'key': GoogleAPI.GOOGLE_API_KEY,
-            'language': 'zh-TW'
+            'language': 'zh-TW',
+            'region': 'tw',
         }
 
         try:
@@ -30,14 +31,14 @@ class GoogleAPI:
 
         except Timeout:
             logger.warning('Google API 請求逾時')
-            return {}
+            return []
 
         except RequestException as e:
             logger.error(f'Google API 請求失敗: {e}')
-            return {}
+            return []
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
-            return {}
+            return []
 
         results = search_result['results'][:10]  # 若有多筆資料，僅取前十筆
 
