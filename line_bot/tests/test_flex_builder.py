@@ -2,8 +2,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from linebot.v3.messaging import (
-    FlexMessage,
-    TextMessage,
     QuickReply,
     LocationAction,
 )
@@ -14,7 +12,7 @@ from line_bot.builders.flex_builder import (
     QuickReplyBuilder,
 )
 from line_bot.constants import MenuAction
-from line_bot.tests.factories import CafeFactory, UserFactory
+from line_bot.tests.factories import CafeFactory
 
 
 

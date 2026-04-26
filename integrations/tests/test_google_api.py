@@ -47,7 +47,7 @@ class TestSearchCoffeeShops:
             ]
         }
         mock_response.raise_for_status = MagicMock()
-        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=mock_response)
+        mocker.patch('integrations.google.api.requests.get', return_value=mock_response)
 
         result = GoogleAPI.search_coffee_shops('星巴克')
 

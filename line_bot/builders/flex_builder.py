@@ -12,7 +12,6 @@ from linebot.v3.messaging import (
     FlexContainer,
     TemplateMessage,
     FlexMessage,
-    FlexCarousel,
     FlexBubble,
     QuickReply,
     QuickReplyItem,
@@ -20,7 +19,6 @@ from linebot.v3.messaging import (
     PostbackAction,
 )
 
-from users.models import User
 from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS
 from line_bot.services.search_cache import SearchHistoryService
