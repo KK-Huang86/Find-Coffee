@@ -201,37 +201,38 @@ class TestHandleMenu:
         call_args = mock_api.reply_message.call_args[0][0]
         assert '沒有收藏' in call_args.messages[0].text
 
-    def test_favorites_few_shows_carousel(self):
-        """FAVORITES 收藏 <=5 時（邊界值 5），顯示 carousel"""
+    def test_favorites_shows_list_bubble(self):
+        """FAVORITES 有收藏時，回傳列表 bubble"""
         user = UserFactory()
-        for cafe in [CafeFactory() for _ in range(5)]:
+        for cafe in [CafeFactory() for _ in range(3)]:
             user.favorites.create(cafe=cafe)
         mock_api = MagicMock()
 
-        with (
-            patch('line_bot.handlers.postback_actions.FavoritesMessageBuilder.show_favorites_carousel') as mock_carousel,
-            patch('line_bot.handlers.postback_actions.ReplyMessageRequest'),
-        ):
-            mock_carousel.return_value = MagicMock()
+        with patch('line_bot.handlers.postback_actions.FavoritesPageBuilder.build_page_message',
+                   return_value=MagicMock()) as mock_build, \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
             handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
 
-        mock_carousel.assert_called_once_with(user.line_user_id)
+        mock_build.assert_called_once()
+        mock_api.reply_message.assert_called_once()
 
-    def test_favorites_many_shows_list(self):
-        """FAVORITES 收藏 >5 時，顯示清單"""
+    def test_favorites_next_page_button_shown_when_more(self):
+        """收藏超過 FAVORITES_PAGE_SIZE 時，has_more=True 傳給 create_district_search_actions"""
+        from line_bot.handlers.postback_actions import FAVORITES_PAGE_SIZE
         user = UserFactory()
-        for cafe in [CafeFactory() for _ in range(6)]:
+        for cafe in [CafeFactory() for _ in range(FAVORITES_PAGE_SIZE + 1)]:
             user.favorites.create(cafe=cafe)
         mock_api = MagicMock()
 
-        with (
-            patch('line_bot.handlers.postback_actions.FavoritesMessageBuilder.show_favorites_list') as mock_list,
-            patch('line_bot.handlers.postback_actions.ReplyMessageRequest'),
-        ):
-            mock_list.return_value = MagicMock()
+        with patch('line_bot.handlers.postback_actions.FavoritesPageBuilder.build_page_message',
+                   return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()), \
+             patch('line_bot.handlers.postback_actions.QuickReplyBuilder.create_district_search_actions') as mock_qr:
+            mock_qr.return_value = MagicMock()
             handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
 
-        mock_list.assert_called_once_with(user.line_user_id)
+        _, _, _, has_more_arg = mock_qr.call_args[0]
+        assert has_more_arg is True
 
     def test_recent_search_no_history_replies_prompt(self):
         """RECENT_SEARCH 無紀錄時，回覆提示訊息"""

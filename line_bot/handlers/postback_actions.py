@@ -8,7 +8,7 @@ from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, 
 from cafe.models import Cafe, CafeAttributeVote
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
-from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder, FlexMessageBuilder
+from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FlexMessageBuilder, FavoritesPageBuilder
 from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.state import StateManager
@@ -17,6 +17,7 @@ from users.views import FavoritesManager
 logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 5
+FAVORITES_PAGE_SIZE = 15
 
 
 def _reply_cafe_page(line_bot_api, reply_token, cafes_qs, offset, search_type, keyword, empty_msg, alt_text):
@@ -310,20 +311,36 @@ def _menu_share_location(line_bot_api, reply_token, user):
     )
 
 
-def _menu_favorites(line_bot_api, reply_token, user):
-    """處理收藏清單"""
-    favorite_count = user.favorites.count()
+def _reply_favorites_page(line_bot_api, reply_token, user, offset):
+    """列表 bubble 分頁，每頁 FAVORITES_PAGE_SIZE 筆，依收藏時間倒序"""
+    favorites = list(
+        user.favorites.select_related('cafe').order_by('-created_at')[offset:offset + FAVORITES_PAGE_SIZE + 1]
+    )
+    has_more = len(favorites) > FAVORITES_PAGE_SIZE
+    favorites = favorites[:FAVORITES_PAGE_SIZE]
 
-    if favorite_count == 0:
-        message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
-    elif favorite_count <= 5:
-        message = FavoritesMessageBuilder.show_favorites_carousel(user.line_user_id)
-    else:
-        message = FavoritesMessageBuilder.show_favorites_list(user.line_user_id)
+    if not favorites:
+        reply_text(line_bot_api, reply_token, '沒有更多收藏了 ❤️')
+        return
+
+    page_num = offset // FAVORITES_PAGE_SIZE + 1
+    flex_msg = FavoritesPageBuilder.build_page_message(favorites, page_num)
+    flex_msg.quick_reply = QuickReplyBuilder.create_district_search_actions(
+        'favorites', '', offset + FAVORITES_PAGE_SIZE, has_more
+    )
 
     line_bot_api.reply_message(
-        ReplyMessageRequest(reply_token=reply_token, messages=[message])
+        ReplyMessageRequest(reply_token=reply_token, messages=[flex_msg])
     )
+
+
+def _menu_favorites(line_bot_api, reply_token, user):
+    """處理收藏清單"""
+    if not user.favorites.exists():
+        reply_text(line_bot_api, reply_token, '您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
+        return
+
+    _reply_favorites_page(line_bot_api, reply_token, user, offset=0)
 
 
 def _menu_recent_search(line_bot_api, reply_token, user):
@@ -432,6 +449,10 @@ def handle_next_page(line_bot_api, reply_token, user, params):
         offset = int(params.get('offset', 0))
     except (ValueError, TypeError):
         offset = 0
+
+    if search_type == 'favorites':
+        _reply_favorites_page(line_bot_api, reply_token, user, offset)
+        return
 
     search_configs = {
         'district': {
