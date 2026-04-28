@@ -13,6 +13,7 @@
 - [系統架構圖](#系統架構圖)
 - [操作流程](#操作流程)
 - [使用技術](#使用技術)
+- [快速啟動](#快速啟動)
 - [專案架構](#專案架構)
 - [技術亮點](#技術亮點)
 - [未竟之事](#未竟之事)
@@ -49,7 +50,33 @@
 
 ## 系統架構圖
 
-> 流程圖製作中，後續補上。
+```mermaid
+flowchart TD
+    User["使用者\n(LINE App)"]
+    LINE["LINE Platform"]
+    Nginx["Nginx\n(Reverse Proxy)"]
+    Django["Django + Gunicorn\n(Webhook / 業務邏輯)"]
+    Redis["Redis\n(對話狀態 / 分散式鎖 / 搜尋快取)"]
+    PG["PostgreSQL\n(咖啡店資料 / 使用者 / 投票)"]
+    Google["Google Places API\n(搜尋 / 詳情 / 地理編碼)"]
+    Celery["Celery Worker\n(非同步任務)"]
+    S3["AWS S3"]
+    CF["CloudFront CDN"]
+
+    User -- "傳訊息 / 點選按鈕" --> LINE
+    LINE -- "Webhook (HTTPS)" --> Nginx
+    Nginx --> Django
+    Django -- "讀寫" --> PG
+    Django -- "狀態管理 / 加鎖" --> Redis
+    Django -- "店名 / 位置搜尋" --> Google
+    Django -- "觸發非同步任務" --> Celery
+    Celery -- "下載照片" --> Google
+    Celery -- "上傳照片" --> S3
+    S3 -- "CDN 快取" --> CF
+    CF -- "照片 URL 嵌入 Flex Message" --> Django
+    Django -- "Reply Message" --> LINE
+    LINE --> User
+```
 
 ---
 
@@ -82,6 +109,61 @@
 | 網頁伺服器 | Nginx + Gunicorn |
 | 套件管理 | uv |
 | 測試 | pytest / pytest-django |
+| CI | GitHub Actions |
+
+---
+
+## 快速啟動
+
+### 環境需求
+
+- Python 3.13+
+- Docker / Docker Compose
+- uv
+
+### 環境變數
+
+複製 `.env.example` 並填入對應的值：
+
+```bash
+cp .env.example .env
+```
+
+主要需設定的變數：
+
+```
+LINE_CHANNEL_ACCESS_TOKEN=
+LINE_CHANNEL_SECRET=
+GOOGLE_API_KEY=
+DATABASE_URL=
+REDIS_URL=
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET_NAME=
+CLOUDFRONT_DOMAIN=
+```
+
+### 以 Docker Compose 啟動
+
+```bash
+docker compose up --build
+```
+
+### 本地開發
+
+```bash
+# 安裝依賴
+uv sync
+
+# 執行 migration
+uv run python manage.py migrate
+
+# 啟動開發伺服器
+uv run python manage.py runserver
+
+# 執行測試
+uv run pytest
+```
 
 ---
 
@@ -163,12 +245,14 @@ class LockService:
 
 ### 4. 貝葉斯加權評分排序
 
-附近搜尋的排序不單純使用 Google 評分，而是引入貝葉斯平均，對評論數較少的店家給予懲罰，避免只有少數高分評論的店排在前面。
+位置搜尋（分享座標 / 輸入地址）呼叫 Google Places Nearby Search 後，回傳結果不直接以 Google 評分排序，而是引入貝葉斯平均，對評論數較少的店家給予懲罰，避免只有少數高分評論的店排在前面，最終取加權評分最高的前 10 筆回傳。
 
 ```
 weighted_rating = (C * m + n * r) / (C + n)
 # C: 最低評論門檻，m: 全體平均評分，n: 實際評論數，r: 實際評分
 ```
+
+本地資料庫的查詢排序（行政區搜尋、篩選結果）則依 `favorite_count`、`user_ratings_total` 排序，兩者為不同情境。
 
 ### 5. 咖啡店資料快取與自動刷新
 
@@ -182,7 +266,11 @@ weighted_rating = (C * m + n * r) / (C + n)
 
 使用者可對插座、限時、安靜程度、寵物友善等屬性投票，資料存於 `CafeAttributeVote`。`VoteService` 彙整多筆投票後更新咖啡店屬性，並設有唯一約束防止重複投票。
 
-### 8. 自訂 QuerySet Manager
+### 8. API 用量追蹤與使用者限流
+
+針對會呼叫付費外部 API 的操作（如 Google Places 搜尋），以資料庫記錄每位使用者的呼叫次數與時間。當單一使用者在特定時間窗內超過用量門檻時，拒絕後續請求並回傳提示，避免 API 成本被單一使用者過度消耗，也防止惡意濫用。此機制與防止 Webhook 重送的 `LockService` 為不同層次的保護：前者針對使用者行為，後者針對系統事件。
+
+### 9. 自訂 QuerySet Manager
 
 `CafeQuerySet` 封裝常用過濾條件，讓業務邏輯不散落在各處 handler：
 
