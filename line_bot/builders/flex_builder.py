@@ -12,7 +12,6 @@ from linebot.v3.messaging import (
     FlexContainer,
     TemplateMessage,
     FlexMessage,
-    FlexCarousel,
     FlexBubble,
     QuickReply,
     QuickReplyItem,
@@ -20,7 +19,6 @@ from linebot.v3.messaging import (
     PostbackAction,
 )
 
-from users.models import User
 from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS
 from line_bot.services.search_cache import SearchHistoryService
@@ -670,66 +668,28 @@ class PostbackBuilder:
         return button_message
 
 
-class FavoritesMessageBuilder:
-
-    def show_favorites_carousel(user_id):
-        """顯示使用者的收藏清單為 Carousel Message(收藏間數小於五間)"""
-
-        user = User.objects.filter(line_user_id=user_id).first()
-        if not user:
-            return TextMessage(text='找不到會員，請重新操作')
-
-        favorites = user.favorites.select_related('cafe').all()
-        if not favorites:
-            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
-
-        bubbles = []
-        for fav in favorites[:5]:  # Carousel 最多 5 個
-
-            # 轉換成 info_d 格式
-            info_d = fav.cafe.to_dict()
-
-            flex_data = FlexMessageBuilder.create_shop_flex_message(
-                info_d,
-                is_multiple=True
-            )
-
-            bubbles.append(FlexBubble.from_dict(flex_data))
-
-        carousel = FlexCarousel(contents=bubbles)
-        return FlexMessage(alt_text='我的收藏清單', contents=carousel)
+class FavoritesPageBuilder:
 
     @staticmethod
-    def show_favorites_list(user_id):
-        """列表式顯示收藏"""
-        user = User.objects.get(line_user_id=user_id)
-        favorites = user.favorites.select_related('cafe').all()
+    def build_page_message(favorites, page_num=1):
+        """
+        以列表 bubble 呈現一頁收藏（最多 15 筆）。
+        每一列可點擊，觸發 view_detail postback。
+        """
+        title = '❤️ 我的收藏' if page_num == 1 else f'❤️ 我的收藏（第 {page_num} 頁）'
 
-        if not favorites:
-            return TextMessage(text='您還沒有收藏任何咖啡店喔～')
-
-        # 建立列表內容
         contents = [
-            {
-                'type': 'text',
-                'text': '❤️ 我的收藏',
-                'weight': 'bold',
-                'size': 'xl',
-                'margin': 'md',
-            },
-            {
-                'type': 'separator',
-                'margin': 'xxl'
-            }
+            {'type': 'text', 'text': title, 'weight': 'bold', 'size': 'xl', 'margin': 'md'},
+            {'type': 'separator', 'margin': 'lg'},
         ]
 
         for i, fav in enumerate(favorites, 1):
-            # 每間咖啡店
+            today_hours = FlexMessageBuilder.format_opening_hours(fav.cafe.opening_hours)
             shop_box = {
                 'type': 'box',
                 'layout': 'vertical',
                 'margin': 'lg',
-                'spacing': 'sm',
+                'spacing': 'xs',
                 'contents': [
                     {
                         'type': 'box',
@@ -741,96 +701,60 @@ class FavoritesMessageBuilder:
                                 'text': f'{i}.',
                                 'size': 'sm',
                                 'color': '#aaaaaa',
-                                'flex': 0
+                                'flex': 0,
                             },
                             {
                                 'type': 'text',
                                 'text': fav.cafe.name,
                                 'weight': 'bold',
-                                'size': 'md',
+                                'size': 'sm',
                                 'wrap': True,
-                                'flex': 1
-                            }
-                        ]
-                    },
-
-                    {
-                        'type': 'box',
-                        'layout': 'baseline',
-                        'spacing': 'sm',
-                        'contents': [
-                            {
-                                'type': 'text',
-                                'text': fav.cafe.address,
-                                'size': 'sm',
-                                'color': '#aaaaaa',
-                                'flex': 0
-                            }
-                        ]
-                    },
-
-                    {
-                        'type': 'box',
-                        'layout': 'baseline',
-                        'spacing': 'sm',
-                        'contents': [
-                            {
-                                'type': 'text',
-                                'text': '⭐',
-                                'size': 'sm',
-                                'flex': 0
-                            },
-                            {
-                                'type': 'text',
-                                'text': str(fav.cafe.rating or 'N/A'),
-                                'size': 'sm',
-                                'color': '#999999',
-                                'flex': 1
+                                'flex': 1,
                             },
                         ]
                     },
-
                     {
-                        'type': 'box',
-                        'layout': 'baseline',
-                        'spacing': 'sm',
-                        'contents': [
-                            {
-                                'type': 'text',
-                                'text': f'今日營業時間: {FlexMessageBuilder.format_opening_hours(fav.cafe.opening_hours)}',
-                                'wrap': True,
-                                'size': 'sm',
-                                'color': '#aaaaaa'
-                            },
-                        ]
+                        'type': 'text',
+                        'text': fav.cafe.address or '',
+                        'size': 'xs',
+                        'color': '#aaaaaa',
+                        'wrap': True,
+                    },
+                    {
+                        'type': 'text',
+                        'text': f'⭐ {fav.cafe.rating if fav.cafe.rating is not None else "N/A"}',                        'size': 'xs',
+                        'color': '#999999',
+                    },
+                    {
+                        'type': 'text',
+                        'text': f'今日營業時間: {today_hours}',
+                        'size': 'xs',
+                        'color': '#aaaaaa',
+                        'wrap': True,
                     },
                 ],
                 'action': {
                     'type': 'postback',
-                    'data': f'action=view_detail&place_id={fav.cafe.place_id}'
+                    'data': f'action=view_detail&place_id={fav.cafe.place_id}',
                 }
             }
             contents.append(shop_box)
-
-            # 分隔線
             if i < len(favorites):
-                contents.append({
-                    'type': 'separator',
-                    'margin': 'md'
-                })
+                contents.append({'type': 'separator', 'margin': 'sm'})
 
-        flex_message = {
+        flex_dict = {
             'type': 'bubble',
             'body': {
                 'type': 'box',
                 'layout': 'vertical',
-                'contents': contents
+                'contents': contents,
             }
         }
 
+        alt_text = '我的收藏清單' if page_num == 1 else f'我的收藏清單（第 {page_num} 頁）'
         return FlexMessage(
-            alt_text='我的收藏清單',
-            contents=FlexBubble.from_dict(flex_message)
+            alt_text=alt_text,
+            contents=FlexBubble.from_dict(flex_dict),
         )
 
 
@@ -995,6 +919,7 @@ class QuickReplyBuilder:
             'pet': f'action=menu&type={MenuAction.PET_SEARCH}',
             'pet_friendly': f'action=menu&type={MenuAction.PET_FRIENDLY_SEARCH}',
             'all_pet': 'action=all_pet_search',
+            'favorites': f'action=menu&type={MenuAction.FAVORITES}',
         }
         re_search_data = re_search_map.get(search_type, f'action=menu&type={MenuAction.SEARCH_SHOP_NAME}')
 
