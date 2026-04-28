@@ -110,6 +110,7 @@ flowchart TD
 | 套件管理 | uv |
 | 測試 | pytest / pytest-django |
 | CI | GitHub Actions |
+| 程式碼風格 | pre-commit（trailing whitespace / end-of-file / line ending） |
 
 ---
 
