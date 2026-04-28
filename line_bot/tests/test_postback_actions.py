@@ -217,22 +217,38 @@ class TestHandleMenu:
         mock_api.reply_message.assert_called_once()
 
     def test_favorites_next_page_button_shown_when_more(self):
-        """收藏超過 FAVORITES_PAGE_SIZE 時，has_more=True 傳給 create_district_search_actions"""
+        """收藏超過 FAVORITES_PAGE_SIZE 時，quick_reply 包含「下一頁」"""
         from line_bot.handlers.postback_actions import FAVORITES_PAGE_SIZE
         user = UserFactory()
         for cafe in [CafeFactory() for _ in range(FAVORITES_PAGE_SIZE + 1)]:
             user.favorites.create(cafe=cafe)
         mock_api = MagicMock()
 
+        flex_msg_mock = MagicMock()
         with patch('line_bot.handlers.postback_actions.FavoritesPageBuilder.build_page_message',
-                   return_value=MagicMock()), \
-             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()), \
-             patch('line_bot.handlers.postback_actions.QuickReplyBuilder.create_district_search_actions') as mock_qr:
-            mock_qr.return_value = MagicMock()
+                   return_value=flex_msg_mock), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
             handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
 
-        _, _, _, has_more_arg = mock_qr.call_args[0]
-        assert has_more_arg is True
+        # quick_reply 被設定到 flex_msg_mock 上
+        assert flex_msg_mock.quick_reply is not None
+
+    def test_favorites_no_next_page_button_when_exact_fit(self):
+        """收藏剛好等於 FAVORITES_PAGE_SIZE 時，不顯示「下一頁」"""
+        from line_bot.handlers.postback_actions import FAVORITES_PAGE_SIZE
+        user = UserFactory()
+        for cafe in [CafeFactory() for _ in range(FAVORITES_PAGE_SIZE)]:
+            user.favorites.create(cafe=cafe)
+        mock_api = MagicMock()
+
+        flex_msg_mock = MagicMock()
+        flex_msg_mock.quick_reply = None
+        with patch('line_bot.handlers.postback_actions.FavoritesPageBuilder.build_page_message',
+                   return_value=flex_msg_mock), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
+            handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
+
+        assert flex_msg_mock.quick_reply is None
 
     def test_recent_search_no_history_replies_prompt(self):
         """RECENT_SEARCH 無紀錄時，回覆提示訊息"""

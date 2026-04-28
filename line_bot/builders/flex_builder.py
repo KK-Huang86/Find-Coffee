@@ -722,8 +722,7 @@ class FavoritesPageBuilder:
                     },
                     {
                         'type': 'text',
-                        'text': f'⭐ {fav.cafe.rating or "N/A"}',
-                        'size': 'xs',
+                        'text': f'⭐ {fav.cafe.rating if fav.cafe.rating is not None else "N/A"}',                        'size': 'xs',
                         'color': '#999999',
                     },
                     {
@@ -752,8 +751,9 @@ class FavoritesPageBuilder:
             }
         }
 
+        alt_text = '我的收藏清單' if page_num == 1 else f'我的收藏清單（第 {page_num} 頁）'
         return FlexMessage(
-            alt_text='我的收藏清單',
+            alt_text=alt_text,
             contents=FlexBubble.from_dict(flex_dict),
         )
 

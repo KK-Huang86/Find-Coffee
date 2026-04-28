@@ -2,6 +2,7 @@
 Postback Action Handlers - 每個 action 獨立處理
 """
 import logging
+from urllib.parse import urlencode
 
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction
 
@@ -325,9 +326,16 @@ def _reply_favorites_page(line_bot_api, reply_token, user, offset):
 
     page_num = offset // FAVORITES_PAGE_SIZE + 1
     flex_msg = FavoritesPageBuilder.build_page_message(favorites, page_num)
-    flex_msg.quick_reply = QuickReplyBuilder.create_district_search_actions(
-        'favorites', '', offset + FAVORITES_PAGE_SIZE, has_more
-    )
+
+    if has_more:
+        next_data = urlencode({
+            'action': 'next_page',
+            'search_type': 'favorites',
+            'offset': offset + FAVORITES_PAGE_SIZE,
+        })
+        flex_msg.quick_reply = QuickReply(items=[
+            QuickReplyItem(action=PostbackAction(label='➡️ 下一頁', data=next_data))
+        ])
 
     line_bot_api.reply_message(
         ReplyMessageRequest(reply_token=reply_token, messages=[flex_msg])
