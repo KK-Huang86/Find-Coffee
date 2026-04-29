@@ -50,33 +50,7 @@
 
 ## 系統架構圖
 
-```mermaid
-flowchart TD
-    User["使用者\n(LINE App)"]
-    LINE["LINE Platform"]
-    Nginx["Nginx\n(Reverse Proxy)"]
-    Django["Django + Gunicorn\n(Webhook / 業務邏輯)"]
-    Redis["Redis\n(對話狀態 / 分散式鎖 / 搜尋快取)"]
-    PG["PostgreSQL\n(咖啡店資料 / 使用者 / 投票)"]
-    Google["Google Places API\n(搜尋 / 詳情 / 地理編碼)"]
-    Celery["Celery Worker\n(非同步任務)"]
-    S3["AWS S3"]
-    CF["CloudFront CDN"]
-
-    User -- "傳訊息 / 點選按鈕" --> LINE
-    LINE -- "Webhook (HTTPS)" --> Nginx
-    Nginx --> Django
-    Django -- "讀寫" --> PG
-    Django -- "狀態管理 / 加鎖" --> Redis
-    Django -- "店名 / 位置搜尋" --> Google
-    Django -- "觸發非同步任務" --> Celery
-    Celery -- "下載照片" --> Google
-    Celery -- "上傳照片" --> S3
-    S3 -- "CDN 快取" --> CF
-    CF -- "照片 URL 嵌入 Flex Message" --> Django
-    Django -- "Reply Message" --> LINE
-    LINE --> User
-```
+![系統架構圖](static/find_coffee_system_architecture.drawio.png)
 
 ---
 
