@@ -50,7 +50,79 @@
 
 ## 系統架構圖
 
-![系統架構圖](static/find_coffee_system_architecture.drawio.png)
+```mermaid
+graph TB
+    User([使用者])
+
+    subgraph LINE["LINE Platform"]
+        LINEAPP[LINE App]
+        LINEAPI[LINE Messaging API]
+    end
+
+    subgraph AppServer["應用伺服器（Nginx + Gunicorn）"]
+        Webhook["Webhook 入口\nviews.py"]
+
+        subgraph Core["核心處理層"]
+            Lock["LockService\n防 Webhook 重送（Redis SETNX）"]
+            EventHandler["Event Handler\n訊息 / 位置 / Postback 事件"]
+            State["StateManager\n多步驟對話狀態機（Redis）"]
+            Dispatch["Postback Dispatch Table\nACTION_HANDLERS"]
+        end
+
+        subgraph Services["業務邏輯層"]
+            SearchSvc["搜尋服務\n店名 / 地址 / GPS 位置"]
+            FavSvc["收藏服務\n加入 / 移除 / 分頁"]
+            VoteSvc["投票服務\n插座 / 限時 / 寵物友善"]
+            SearchCache["搜尋歷史快取\nRedis"]
+        end
+
+        FlexBuilder["Flex Message Builder\nCarousel / Quick Reply"]
+    end
+
+    subgraph DataLayer["資料層"]
+        PG[("PostgreSQL\nCafe · User · Favorite\nCafeAttributeVote · CafeNomadCache")]
+        Redis[("Redis\n對話狀態 · 搜尋歷史 · 分散式鎖")]
+    end
+
+    subgraph Celery["非同步任務（Celery Worker）"]
+        PhotoTask["照片 Pipeline\n下載 Google 照片 → 上傳 S3"]
+        RefreshTask["資料刷新\n30 天更新店家資料\n180 天重抓照片"]
+    end
+
+    subgraph External["外部 API"]
+        GoogleAPI["Google Places API\nText Search · Nearby Search\nGeocoding · Place Details"]
+    end
+
+    subgraph AWS["AWS（Terraform 管理）"]
+        S3["S3 Bucket\n咖啡店照片原始檔"]
+        CF["CloudFront CDN\n穩定長效圖片 URL（快取 1 年）"]
+    end
+
+    User -->|傳送訊息 / 分享位置| LINEAPP
+    LINEAPP <-->|Messaging API| LINEAPI
+    LINEAPI -->|Webhook POST| Webhook
+    Webhook --> Lock
+    Lock <-->|SETNX TTL| Redis
+    Webhook --> EventHandler
+    EventHandler --> State
+    State <-->|讀寫狀態| Redis
+    EventHandler --> Dispatch
+    Dispatch --> SearchSvc & FavSvc & VoteSvc
+    Dispatch --> SearchCache
+    SearchCache <-->|歷史紀錄| Redis
+    SearchSvc -->|Text Search / Geocoding / Nearby| GoogleAPI
+    SearchSvc <-->|讀取快取 / 寫入新資料| PG
+    FavSvc <--> PG
+    VoteSvc <--> PG
+    PG -->|資料過期 → 觸發| Celery
+    PhotoTask -->|下載照片| GoogleAPI
+    PhotoTask -->|上傳| S3
+    RefreshTask -->|重新呼叫 API| GoogleAPI
+    S3 --> CF
+    CF -->|穩定圖片 URL| FlexBuilder
+    FlexBuilder -->|Flex Message / Carousel| LINEAPI
+    LINEAPI -->|推送回覆| LINEAPP
+```
 
 ---
 
