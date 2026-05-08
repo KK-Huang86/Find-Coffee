@@ -63,65 +63,54 @@ graph TB
         Webhook["Webhook 入口\nviews.py"]
 
         subgraph Core["核心處理層"]
-            Lock["LockService\n防 Webhook 重送（Redis SETNX）"]
-            EventHandler["Event Handler\n訊息 / 位置 / Postback 事件"]
-            State["StateManager\n多步驟對話狀態機（Redis）"]
-            Dispatch["Postback Dispatch Table\nACTION_HANDLERS"]
+            Lock["LockService\n防 Webhook 重送"]
+            EventHandler["Event Handler\n訊息 / 位置 / Postback"]
+            State["StateManager\n對話狀態機"]
+            Dispatch["Postback Dispatch Table"]
         end
 
         subgraph Services["業務邏輯層"]
-            SearchSvc["搜尋服務\n店名 / 地址 / GPS 位置"]
-            FavSvc["收藏服務\n加入 / 移除 / 分頁"]
-            VoteSvc["投票服務\n插座 / 限時 / 寵物友善"]
-            SearchCache["搜尋歷史快取\nRedis"]
+            SearchSvc["搜尋服務\n店名 / 地址 / GPS"]
+            FavSvc["收藏服務"]
+            VoteSvc["投票服務"]
+            SearchCache["搜尋歷史快取"]
         end
 
         FlexBuilder["Flex Message Builder\nCarousel / Quick Reply"]
     end
 
     subgraph DataLayer["資料層"]
-        PG[("PostgreSQL\nCafe · User · Favorite\nCafeAttributeVote · CafeNomadCache")]
+        PG[("PostgreSQL\nCafe · User · Favorite\nVote · CafeNomadCache")]
         Redis[("Redis\n對話狀態 · 搜尋歷史 · 分散式鎖")]
     end
 
     subgraph Celery["非同步任務（Celery Worker）"]
-        PhotoTask["照片 Pipeline\n下載 Google 照片 → 上傳 S3"]
-        RefreshTask["資料刷新\n30 天更新店家資料\n180 天重抓照片"]
+        PhotoTask["照片 Pipeline\n下載 → 上傳 S3"]
+        RefreshTask["資料刷新\n30 天 / 180 天"]
     end
 
-    subgraph External["外部 API"]
-        GoogleAPI["Google Places API\nText Search · Nearby Search\nGeocoding · Place Details"]
-    end
+    GoogleAPI["Google Places API\nText Search · Nearby\nGeocoding · Details"]
 
     subgraph AWS["AWS（Terraform 管理）"]
-        S3["S3 Bucket\n咖啡店照片原始檔"]
-        CF["CloudFront CDN\n穩定長效圖片 URL（快取 1 年）"]
+        S3["S3 Bucket"]
+        CF["CloudFront CDN\n快取 1 年"]
     end
 
     User -->|傳送訊息 / 分享位置| LINEAPP
     LINEAPP <-->|Messaging API| LINEAPI
     LINEAPI -->|Webhook POST| Webhook
-    Webhook --> Lock
-    Lock <-->|SETNX TTL| Redis
-    Webhook --> EventHandler
-    EventHandler --> State
-    State <-->|讀寫狀態| Redis
-    EventHandler --> Dispatch
-    Dispatch --> SearchSvc & FavSvc & VoteSvc
-    Dispatch --> SearchCache
-    SearchCache <-->|歷史紀錄| Redis
-    SearchSvc -->|Text Search / Geocoding / Nearby| GoogleAPI
-    SearchSvc <-->|讀取快取 / 寫入新資料| PG
-    FavSvc <--> PG
-    VoteSvc <--> PG
-    PG -->|資料過期 → 觸發| Celery
-    PhotoTask -->|下載照片| GoogleAPI
-    PhotoTask -->|上傳| S3
-    RefreshTask -->|重新呼叫 API| GoogleAPI
+    Webhook --> Lock & EventHandler
+    EventHandler --> State & Dispatch
+    Lock & State & SearchCache --> Redis
+    Dispatch --> SearchSvc & FavSvc & VoteSvc & SearchCache
+    SearchSvc --> GoogleAPI
+    SearchSvc & FavSvc & VoteSvc --> PG
+    PG -->|資料過期 → 觸發| PhotoTask & RefreshTask
+    PhotoTask & RefreshTask --> GoogleAPI
+    PhotoTask --> S3
     S3 --> CF
     CF -->|穩定圖片 URL| FlexBuilder
-    FlexBuilder -->|Flex Message / Carousel| LINEAPI
-    LINEAPI -->|推送回覆| LINEAPP
+    FlexBuilder -->|Flex Message| LINEAPI
 ```
 
 ---
