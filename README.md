@@ -74,15 +74,15 @@ graph TB
             FavSvc["收藏服務"]
             VoteSvc["投票服務"]
             SearchCache["搜尋歷史快取"]
+            DBCheck{DB 有快取?}
         end
 
         FlexBuilder["Flex Message Builder\nCarousel / Quick Reply"]
     end
 
-    subgraph DataLayer["資料層"]
-        PG[("PostgreSQL\nCafe · User · Favorite\nVote · CafeNomadCache")]
-        Redis[("Redis\n對話狀態 · 搜尋歷史 · 分散式鎖")]
-    end
+    Redis[("Redis\n對話狀態 · 搜尋歷史 · 分散式鎖")]
+
+    PG[("PostgreSQL\nCafe · User · Favorite\nVote · CafeNomadCache")]
 
     subgraph Celery["非同步任務（Celery Worker）"]
         PhotoTask["照片 Pipeline\n下載 → 上傳 S3"]
@@ -99,17 +99,23 @@ graph TB
     User -->|傳送訊息 / 分享位置| LINEAPP
     LINEAPP <-->|Messaging API| LINEAPI
     LINEAPI -->|Webhook POST| Webhook
-    Webhook --> Lock & EventHandler
-    EventHandler --> State & Dispatch
-    Lock & State & SearchCache --> Redis
-    Dispatch --> SearchSvc & FavSvc & VoteSvc & SearchCache
-    SearchSvc --> GoogleAPI
-    SearchSvc & FavSvc & VoteSvc --> PG
-    PG -->|資料過期 → 觸發| PhotoTask & RefreshTask
-    PhotoTask & RefreshTask --> GoogleAPI
-    PhotoTask --> S3
+    Webhook --> EventHandler
+    EventHandler --> Lock & State & Dispatch & SearchCache
+    Lock & State & SearchCache <-->|讀寫| Redis
+    Dispatch --> SearchSvc & FavSvc & VoteSvc
+    SearchSvc -->|查詢快取| DBCheck
+    DBCheck -->|命中，讀取資料| PG
+    DBCheck -->|未命中| GoogleAPI
+    GoogleAPI -->|寫入 DB| PG
+    PG -->|讀取資料| FlexBuilder
+    FavSvc & VoteSvc <-->|讀寫| PG
+    SearchSvc -->|資料過期| RefreshTask
+    RefreshTask -->|呼叫 API| GoogleAPI
+    RefreshTask --> PhotoTask
+    PhotoTask -->|下載照片| GoogleAPI
+    PhotoTask -->|上傳| S3
     S3 --> CF
-    CF -->|穩定圖片 URL| FlexBuilder
+    PhotoTask -->|寫入圖片 URL| PG
     FlexBuilder -->|Flex Message| LINEAPI
 ```
 
