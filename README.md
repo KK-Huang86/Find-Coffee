@@ -126,6 +126,7 @@ graph LR
     PhotoTask -->|下載照片| GoogleAPI
     PhotoTask -->|上傳| S3
     S3 --> CF
+    CF -->|提供圖片| LINEAPP
     PhotoTask -->|寫入圖片 URL| PG
     FlexBuilder -->|Flex Message| LINEAPI
     Developer -->|push / PR| Lint
