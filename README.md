@@ -103,10 +103,12 @@ graph TB
     EventHandler --> Lock & State & Dispatch & SearchCache
     Lock & State & SearchCache <-->|讀寫| Redis
     Dispatch --> SearchSvc & FavSvc & VoteSvc
+    Dispatch -->|查看詳情| GoogleAPI
     SearchSvc -->|查詢快取| DBCheck
-    DBCheck -->|命中，讀取資料| PG
+    DBCheck -->|命中| PG
     DBCheck -->|未命中| GoogleAPI
-    GoogleAPI -->|寫入 DB| PG
+    GoogleAPI -->|搜尋結果| FlexBuilder
+    GoogleAPI -->|詳情寫入 DB| PG
     PG -->|讀取資料| FlexBuilder
     FavSvc & VoteSvc <-->|讀寫| PG
     SearchSvc -->|資料過期| RefreshTask
