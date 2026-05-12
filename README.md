@@ -51,7 +51,7 @@
 ## 系統架構圖
 
 ```mermaid
-graph TB
+graph LR
     User([使用者])
 
     subgraph LINE["LINE Platform"]
@@ -96,14 +96,23 @@ graph TB
         CF["CloudFront CDN\n快取 1 年"]
     end
 
+    Developer([開發者])
+
+    subgraph CI["GitHub Actions CI"]
+        Lint["Ruff Lint"]
+        Tests["pytest + Coverage"]
+        Codecov["Codecov"]
+    end
+
     User -->|傳送訊息 / 分享位置| LINEAPP
     LINEAPP <-->|Messaging API| LINEAPI
     LINEAPI -->|Webhook POST| Webhook
     Webhook --> EventHandler
-    EventHandler --> Lock & State & Dispatch & SearchCache
+    EventHandler --> Lock & State & Dispatch & SearchCache & SearchSvc
     Lock & State & SearchCache <-->|讀寫| Redis
-    Dispatch --> SearchSvc & FavSvc & VoteSvc
-    Dispatch -->|查看詳情| GoogleAPI
+    Dispatch -->|寫入 State| State
+    Dispatch --> FavSvc & VoteSvc
+    Dispatch -->|查看詳情| DBCheck
     SearchSvc -->|查詢快取| DBCheck
     DBCheck -->|命中| PG
     DBCheck -->|未命中| GoogleAPI
@@ -119,6 +128,9 @@ graph TB
     S3 --> CF
     PhotoTask -->|寫入圖片 URL| PG
     FlexBuilder -->|Flex Message| LINEAPI
+    Developer -->|push / PR| Lint
+    Lint --> Tests
+    Tests -->|coverage.xml| Codecov
 ```
 
 ---
