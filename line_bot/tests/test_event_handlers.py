@@ -393,3 +393,172 @@ class TestHandlePostback:
             handle_postback(event)
 
         mock_line_bot_api.reply_message.assert_not_called()
+
+    def test_vote_answer_uses_independent_lock_key(self):
+        """vote_answer 使用獨立的 lock key（postback:vote_answer），不與其他 postback 共用"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=vote_answer&attr=socket&value=yes')
+        mock_handler = MagicMock()
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True) as mock_lock,
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'vote_answer': mock_handler}),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_postback(event)
+
+        mock_lock.assert_called_once_with(user.line_user_id, 'postback:vote_answer', ttl=1)
+        mock_handler.assert_called_once()
+
+    def test_non_vote_answer_uses_shared_lock_key(self):
+        """一般 postback action 使用共用的 lock key（postback），TTL 為 2 秒"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, 'action=favorite&place_id=abc')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True) as mock_lock,
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.ACTION_HANDLERS', {'favorite': MagicMock()}),
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_postback(event)
+
+        mock_lock.assert_called_once_with(user.line_user_id, 'postback', ttl=2)
+
+
+@pytest.mark.django_db
+class TestHandleMessageDistrictSearch:
+    """測試 WAITING_DISTRICT / WAITING_PET_DISTRICT / WAITING_PET_FRIENDLY_DISTRICT 狀態"""
+
+    def _make_event(self, user_id, text, reply_token='test_token'):
+        event = MagicMock()
+        event.source.user_id = user_id
+        event.message.text = text
+        event.reply_token = reply_token
+        return event
+
+    def _run(self, user, text, state):
+        event = self._make_event(user.line_user_id, text)
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=state),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+        ):
+            mock_api = MagicMock()
+            mock_cls.return_value = mock_api
+            handle_message(event)
+        return mock_api
+
+    # ── WAITING_DISTRICT ──────────────────────────────────────────────────
+
+    def test_district_no_results_replies_not_found(self):
+        """大安區沒有符合條件的店，回覆找不到訊息"""
+        user = UserFactory()
+        mock_api = self._run(user, '大安區', UserState.WAITING_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text
+
+    def test_district_limited_time_no_included(self):
+        """limited_time='no' 的店納入工作友善搜尋"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', limited_time='no', has_socket='yes')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_DISTRICT)
+
+        mock_api.reply_message.assert_called_once()
+
+    def test_district_limited_time_maybe_included(self):
+        """limited_time='maybe' 的店也納入工作友善搜尋（種入資料預設值）"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', limited_time='maybe', has_socket='yes')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_DISTRICT)
+
+        mock_api.reply_message.assert_called_once()
+
+    def test_district_limited_time_yes_excluded(self):
+        """limited_time='yes' 的店不納入工作友善搜尋"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', limited_time='yes', has_socket='yes')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text
+
+    def test_district_no_socket_excluded(self):
+        """has_socket='no' 的店不納入工作友善搜尋"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', limited_time='no', has_socket='no')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text
+
+    # ── WAITING_PET_DISTRICT ─────────────────────────────────────────────
+
+    def test_pet_district_has_pet_yes_found(self):
+        """has_pet='yes' 的店出現在貓貓狗狗搜尋結果"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', has_pet='yes')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_PET_DISTRICT)
+
+        mock_api.reply_message.assert_called_once()
+
+    def test_pet_district_has_pet_no_not_found(self):
+        """has_pet='no' 的店不出現在貓貓狗狗搜尋結果"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', has_pet='no')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_PET_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text
+
+    def test_pet_district_no_results_replies_not_found(self):
+        """沒有符合條件的店，回覆找不到訊息"""
+        user = UserFactory()
+        mock_api = self._run(user, '北投區', UserState.WAITING_PET_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text
+
+    # ── WAITING_PET_FRIENDLY_DISTRICT ────────────────────────────────────
+
+    def test_pet_friendly_district_yes_found(self):
+        """pet_friendly='yes' 的店出現在寵物友善搜尋結果"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', pet_friendly='yes')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_PET_FRIENDLY_DISTRICT)
+
+        mock_api.reply_message.assert_called_once()
+
+    def test_pet_friendly_district_no_not_found(self):
+        """pet_friendly='no' 的店不出現在寵物友善搜尋結果"""
+        user = UserFactory()
+        CafeFactory(address='台北市大安區仁愛路', pet_friendly='no')
+
+        mock_api = self._run(user, '大安區', UserState.WAITING_PET_FRIENDLY_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text
+
+    def test_pet_friendly_district_no_results_replies_not_found(self):
+        """沒有符合條件的店，回覆找不到訊息"""
+        user = UserFactory()
+        mock_api = self._run(user, '北投區', UserState.WAITING_PET_FRIENDLY_DISTRICT)
+
+        call_args = mock_api.reply_message.call_args[0][0]
+        assert '找不到' in call_args.messages[0].text

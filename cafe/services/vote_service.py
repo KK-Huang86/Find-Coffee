@@ -16,11 +16,13 @@ class VoteService:
     ATTRIBUTE_TO_FIELD = {
         'socket': 'has_socket',
         'limited_time': 'limited_time',
+        'pet_friendly': 'pet_friendly',
+        'has_pet': 'has_pet',
         # 'quiet': 'is_quiet',   # TODO: 需要新增 Cafe 欄位
         # 'cheap': 'is_cheap',   # TODO: 需要新增 Cafe 欄位
     }
 
-    VALID_ATTRIBUTES = {'socket', 'limited_time', 'quiet', 'cheap'}
+    VALID_ATTRIBUTES = {'socket', 'limited_time', 'pet_friendly', 'has_pet', 'quiet', 'cheap'}
     VALID_VALUES = {'yes', 'no', 'maybe', 'unknown'}
 
     @classmethod
