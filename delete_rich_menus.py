@@ -5,8 +5,8 @@ import os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
-from line_bot.views import configuration
-from linebot.v3.messaging import ApiClient, MessagingApi
+from line_bot.views import configuration  # noqa: E402
+from linebot.v3.messaging import ApiClient, MessagingApi  # noqa: E402
 
 with ApiClient(configuration) as api_client:
     api = MessagingApi(api_client)
