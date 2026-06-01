@@ -120,8 +120,18 @@ def rich_menu():
 
         existing_menus = line_bot_api.get_rich_menu_list().richmenus or []
         for menu in existing_menus:
-            line_bot_api.delete_rich_menu(rich_menu_id=menu.rich_menu_id)
-            time.sleep(0.5)
+            for attempt in range(5):
+                try:
+                    line_bot_api.delete_rich_menu(rich_menu_id=menu.rich_menu_id)
+                    time.sleep(2)
+                    break
+                except Exception as e:
+                    if '429' in str(e):
+                        wait = 60 * (attempt + 1)
+                        print(f"Rate limited, waiting {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        raise
 
         rich_menu_id = line_bot_api.create_rich_menu(
             rich_menu_request=rich_menu_create
