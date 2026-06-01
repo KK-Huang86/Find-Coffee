@@ -25,7 +25,8 @@ terraform.tfvars
 
 # 測試 & 文件
 tests/
-*.md
+CONTRIBUTING.md
+CHANGELOG.md
 
 # 其他
 db.sqlite3

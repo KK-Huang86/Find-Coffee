@@ -1,6 +1,7 @@
 # Create your views here.
 import logging
 import os
+import time
 from decouple import config
 
 import certifi
@@ -116,6 +117,11 @@ def rich_menu():
                 )
             ]
         )
+
+        existing_menus = line_bot_api.get_rich_menu_list().richmenus or []
+        for menu in existing_menus:
+            line_bot_api.delete_rich_menu(rich_menu_id=menu.rich_menu_id)
+            time.sleep(0.5)
 
         rich_menu_id = line_bot_api.create_rich_menu(
             rich_menu_request=rich_menu_create
