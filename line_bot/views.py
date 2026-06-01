@@ -1,6 +1,7 @@
 # Create your views here.
 import logging
 import os
+import time
 from decouple import config
 
 import certifi
@@ -12,6 +13,7 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.messaging.exceptions import ApiException
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -131,5 +133,22 @@ def rich_menu():
         line_bot_api.set_default_rich_menu(
             rich_menu_id=rich_menu_id
         )
+
+        existing_menus = line_bot_api.get_rich_menu_list().richmenus or []
+        for menu in existing_menus:
+            if menu.rich_menu_id == rich_menu_id:
+                continue
+            for attempt in range(5):
+                try:
+                    line_bot_api.delete_rich_menu(rich_menu_id=menu.rich_menu_id)
+                    time.sleep(2)
+                    break
+                except ApiException as e:
+                    if e.status == 429:
+                        wait = 60 * (attempt + 1)
+                        print(f"Rate limited, waiting {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        raise
 
 # rich_menu()  # 需要時手動呼叫，不要自動執行
