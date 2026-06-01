@@ -12,7 +12,8 @@ from django.views.decorators.csrf import csrf_exempt
 os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
-from linebot.v3.exceptions import InvalidSignatureError, ApiException
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.messaging.exceptions import ApiException
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
