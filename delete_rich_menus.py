@@ -7,6 +7,7 @@ django.setup()
 
 from line_bot.views import configuration  # noqa: E402
 from linebot.v3.messaging import ApiClient, MessagingApi  # noqa: E402
+from linebot.v3.exceptions import ApiException  # noqa: E402
 
 with ApiClient(configuration) as api_client:
     api = MessagingApi(api_client)
@@ -23,8 +24,8 @@ with ApiClient(configuration) as api_client:
                 time.sleep(1)
                 success = True
                 break
-            except Exception as e:
-                if '429' in str(e):
+            except ApiException as e:
+                if e.status == 429:
                     print(f"[{i+1}/{total}] Rate limited，等 30 秒...")
                     time.sleep(30)
                 else:
