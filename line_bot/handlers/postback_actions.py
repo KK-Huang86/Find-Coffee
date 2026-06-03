@@ -2,9 +2,9 @@
 Postback Action Handlers - 每個 action 獨立處理
 """
 import logging
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
-from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction
+from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction, TemplateMessage
 
 from cafe.models import Cafe, CafeAttributeVote
 from cafe.services.vote_service import VoteService
@@ -87,6 +87,51 @@ def handle_unfavorite(line_bot_api, reply_token, user, params):
     info_d = cafe.to_dict()
     ok, msg = FavoritesManager.remove_favorite(user, info_d)
     reply_text(line_bot_api, reply_token, msg)
+
+
+def handle_share(line_bot_api, reply_token, user, params):
+    """處理分享動作：回傳 Google Maps 連結 + LINE 分享按鈕"""
+    place_id = params.get('place_id')
+    if not place_id:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    info_d, _ = get_or_create_cafe_info(place_id)
+    if not info_d:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    cafe_name = info_d.get('name', '咖啡店')
+    if len(cafe_name) > 100:
+        cafe_name = cafe_name[:97] + '...'
+    maps_url = f'https://www.google.com/maps/place/?q=place_id:{place_id}'
+    line_share_url = f'https://social-plugins.line.me/lineit/share?url={quote(maps_url)}'
+
+    share_template = {
+        'type': 'template',
+        'altText': f'分享「{cafe_name}」',
+        'template': {
+            'type': 'buttons',
+            'text': f'分享「{cafe_name}」',
+            'actions': [
+                {
+                    'type': 'uri',
+                    'label': '分享到 LINE',
+                    'uri': line_share_url
+                }
+            ]
+        }
+    }
+
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[
+                TextMessage(text=f'📍 {cafe_name}\n\n長按以下連結即可複製：\n{maps_url}'),
+                TemplateMessage.from_dict(share_template)
+            ]
+        )
+    )
 
 
 def handle_view_detail(line_bot_api, reply_token, user, params):
@@ -518,6 +563,7 @@ def handle_menu(line_bot_api, reply_token, user, params):
 ACTION_HANDLERS = {
     'favorite': handle_favorite,
     'unfavorite': handle_unfavorite,
+    'share': handle_share,
     'view_detail': handle_view_detail,
     'recent_search': handle_recent_search,
     'vote': handle_vote,
