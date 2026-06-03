@@ -92,6 +92,9 @@ def handle_unfavorite(line_bot_api, reply_token, user, params):
 def handle_share(line_bot_api, reply_token, user, params):
     """處理分享動作：回傳 Google Maps 連結 + LINE 分享按鈕"""
     place_id = params.get('place_id')
+    if not place_id:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
 
     info_d, _ = get_or_create_cafe_info(place_id)
     if not info_d:
@@ -99,6 +102,8 @@ def handle_share(line_bot_api, reply_token, user, params):
         return
 
     cafe_name = info_d.get('name', '咖啡店')
+    if len(cafe_name) > 100:
+        cafe_name = cafe_name[:97] + '...'
     maps_url = f'https://www.google.com/maps/place/?q=place_id:{place_id}'
     line_share_url = f'https://social-plugins.line.me/lineit/share?url={quote(maps_url)}'
 
