@@ -7,7 +7,7 @@ from urllib.parse import urlencode, quote
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction, TemplateMessage
 
 from cafe.models import Cafe, CafeAttributeVote
-from integrations.gemini.api import GeminiAPI
+from integrations.groq.api import GroqAPI
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FlexMessageBuilder, FavoritesPageBuilder
@@ -153,11 +153,15 @@ def handle_ask_ai(line_bot_api, reply_token, user, params):
     result = cache.get(cache_key)
 
     if not result:
-        result = GeminiAPI.review_cafe(
+        detail = GoogleAPI.get_shop_detail(place_id)
+        reviews = detail.get('reviews', [])
+
+        result = GroqAPI.review_cafe(
             name=info_d.get('name', ''),
             address=info_d.get('address', ''),
             rating=info_d.get('rating'),
             user_ratings_total=info_d.get('user_ratings_total', 0),
+            reviews=reviews,
         )
         if not result:
             reply_text(line_bot_api, reply_token, 'AI 評價暫時無法使用，請稍後再試')
