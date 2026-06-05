@@ -7,6 +7,7 @@ from urllib.parse import urlencode, quote
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction, TemplateMessage
 
 from cafe.models import Cafe, CafeAttributeVote
+from integrations.gemini.api import GeminiAPI
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FlexMessageBuilder, FavoritesPageBuilder
@@ -132,6 +133,38 @@ def handle_share(line_bot_api, reply_token, user, params):
             ]
         )
     )
+
+
+def handle_ask_ai(line_bot_api, reply_token, user, params):
+    """呼叫 Gemini 對咖啡店進行 AI 評價，結果以 Redis 快取避免重複呼叫"""
+    from django.core.cache import cache
+
+    place_id = params.get('place_id')
+    if not place_id:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    info_d, _ = get_or_create_cafe_info(place_id)
+    if not info_d:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    cache_key = f'ai_review:{place_id}'
+    result = cache.get(cache_key)
+
+    if not result:
+        result = GeminiAPI.review_cafe(
+            name=info_d.get('name', ''),
+            address=info_d.get('address', ''),
+            rating=info_d.get('rating'),
+            user_ratings_total=info_d.get('user_ratings_total', 0),
+        )
+        if not result:
+            reply_text(line_bot_api, reply_token, 'AI 評價暫時無法使用，請稍後再試')
+            return
+        cache.set(cache_key, result, timeout=60 * 60 * 24 * 7)  # 快取 7 天
+
+    reply_text(line_bot_api, reply_token, f'🤖 AI 評價｜{info_d.get("name", "")}\n\n{result}')
 
 
 def handle_view_detail(line_bot_api, reply_token, user, params):
@@ -564,6 +597,7 @@ ACTION_HANDLERS = {
     'favorite': handle_favorite,
     'unfavorite': handle_unfavorite,
     'share': handle_share,
+    'ask_ai': handle_ask_ai,
     'view_detail': handle_view_detail,
     'recent_search': handle_recent_search,
     'vote': handle_vote,
