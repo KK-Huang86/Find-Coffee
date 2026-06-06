@@ -136,7 +136,7 @@ def handle_share(line_bot_api, reply_token, user, params):
 
 
 def handle_ask_ai(line_bot_api, reply_token, user, params):
-    """呼叫 Gemini 對咖啡店進行 AI 評價，結果以 Redis 快取避免重複呼叫"""
+    """呼叫 Groq 對咖啡店進行 AI 評價，結果以 Redis 快取避免重複呼叫"""
     from django.core.cache import cache
 
     place_id = params.get('place_id')

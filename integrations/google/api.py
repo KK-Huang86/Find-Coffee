@@ -108,9 +108,7 @@ class GoogleAPI:
         photo_reference = photos[0].get('photo_reference') if photos else ''
 
         raw_reviews = result.get('reviews', [])
-        print(raw_reviews)
-        reviews = [r.get('text', '') for r in raw_reviews[:3] if r.get('text')]
-        print(reviews)
+        reviews = [r.get('text', '') for r in raw_reviews[:5] if r.get('text')]
 
         info = {
             'place_id': place_id,
