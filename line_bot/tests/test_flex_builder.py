@@ -491,7 +491,7 @@ class TestPostbackBuilderCreateCafeActionPostback:
         assert '⭐ 收藏' in labels
         assert '🔗 分享' in labels
         assert '⭐ 評價' in labels
-        assert '🤖 問問AI' in labels
+        assert '🤖 問問AI的評價' in labels
 
 
 
