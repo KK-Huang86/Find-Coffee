@@ -77,7 +77,7 @@ class GoogleAPI:
             'place_id': place_id,
             'key': GoogleAPI.GOOGLE_API_KEY,
             'language': 'zh-TW',
-            'fields': 'name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,geometry,url,website,photo'
+            'fields': 'name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,geometry,url,website,photo,reviews'
         }
 
         try:
@@ -107,6 +107,9 @@ class GoogleAPI:
         photos = result.get('photos', [])
         photo_reference = photos[0].get('photo_reference') if photos else ''
 
+        raw_reviews = result.get('reviews', [])
+        reviews = [r.get('text', '') for r in raw_reviews[:5] if r.get('text')]
+
         info = {
             'place_id': place_id,
             'name': result.get('name'),
@@ -119,7 +122,8 @@ class GoogleAPI:
             'opening_hours': result.get('opening_hours', {}).get('weekday_text', []),
             'google_maps': result.get('url'),
             'website': result.get('website', '無提供'),
-            'photo_reference': photo_reference
+            'photo_reference': photo_reference,
+            'reviews': reviews,
         }
         return info
 
