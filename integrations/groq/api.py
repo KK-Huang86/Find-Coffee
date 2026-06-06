@@ -18,20 +18,22 @@ Google 評分：{rating}（{user_ratings_total} 則評論）
 
 
 class GroqAPI:
+    _client = None
 
-    @staticmethod
-    def review_cafe(name: str, address: str, rating: float, user_ratings_total: int, reviews: list) -> str | None:
+    @classmethod
+    def review_cafe(cls, name: str, address: str, rating: float, user_ratings_total: int, reviews: list) -> str | None:
         try:
-            client = Groq(api_key=config('GROQ_API_KEY'))
+            if cls._client is None:
+                cls._client = Groq(api_key=config('GROQ_API_KEY'))
             reviews_text = '\n'.join(f'- {r}' for r in reviews) if reviews else '無用戶評論'
             prompt = CAFE_REVIEW_PROMPT.format(
                 name=name,
                 address=address,
-                rating=rating or '無資料',
-                user_ratings_total=user_ratings_total or 0,
+                rating=rating if rating is not None else '無資料',
+                user_ratings_total=user_ratings_total if user_ratings_total is not None else 0,
                 reviews=reviews_text,
             )
-            response = client.chat.completions.create(
+            response = cls._client.chat.completions.create(
                 model='llama-3.3-70b-versatile',
                 messages=[{'role': 'user', 'content': prompt}],
             )
