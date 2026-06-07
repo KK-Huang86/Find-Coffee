@@ -656,7 +656,7 @@ class PostbackBuilder:
                     },
                     {
                         'type': 'postback',
-                        'label': '🤖 看看AI的怎麼說',
+                        'label': '🤖 看看AI怎麼說',
                         'data': f'action=ask_ai&place_id={place_id}'
                     }
                 ]
