@@ -116,6 +116,8 @@ class TestCafeModel:
         assert result['opening_hours'] == ['週一: 09:00-21:00']
         assert result['limited_time'] == 'no'
         assert result['has_socket'] == 'yes'
+        assert result['pet_friendly'] is None
+        assert result['has_pet'] is None
         assert result['photo_reference'] == 'photo_ref_123'
         assert result['photo_s3_url'] == 'https://s3.amazonaws.com/test.jpg'
         assert result['last_refreshed'] is None

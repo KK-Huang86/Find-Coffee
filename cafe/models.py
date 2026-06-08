@@ -3,6 +3,15 @@ from django.db.models import F
 
 from users.models import User
 
+
+class CafeQuerySet(models.QuerySet):
+    def work_friendly(self):
+        """不限時且有插座（工作友善）"""
+        return self.filter(
+            limited_time__in=['maybe', 'no'],
+            has_socket__in=['yes', 'maybe'],
+        )
+
 LIMITED_TIME_CHOICES = [
     ("no", "一律不限時"),
     ("maybe", "視情況限時"),
@@ -13,11 +22,23 @@ SOCKET_CHOICES = [
     ("maybe", "視座位"),
     ("yes", "很多"),
 ]
+PET_FRIENDLY_CHOICES = [
+    ("no", "不歡迎寵物"),
+    ("maybe", "視情況"),
+    ("yes", "歡迎寵物"),
+]
+HAS_PET_CHOICES = [
+    ("no", "沒有"),
+    ("maybe", "有時有"),
+    ("yes", "有貓貓狗狗"),
+]
 
 
 # Create your models here.
 
 class Cafe(models.Model):
+    objects = CafeQuerySet.as_manager()
+
     # 唯一key
     place_id = models.CharField(max_length=100, unique=True, db_index=True, verbose_name='Google Place ID')
 
@@ -49,6 +70,10 @@ class Cafe(models.Model):
     has_socket = models.CharField(max_length=10, null=True, blank=True, choices=SOCKET_CHOICES,
                                   verbose_name='是否有插座')
     attributes_last_calculated_at = models.DateTimeField(null=True)
+    pet_friendly = models.CharField(max_length=10, null=True, blank=True, choices=PET_FRIENDLY_CHOICES,
+                                    verbose_name='寵物友善')
+    has_pet = models.CharField(max_length=10, null=True, blank=True, choices=HAS_PET_CHOICES,
+                               verbose_name='店內有貓貓狗狗')
 
     # photo
     photo_reference = models.CharField(blank=True, default='', verbose_name='Google Photo Reference')
@@ -96,6 +121,8 @@ class Cafe(models.Model):
             'opening_hours': self.opening_hours,
             'limited_time': self.limited_time,
             'has_socket': self.has_socket,
+            'pet_friendly': self.pet_friendly,
+            'has_pet': self.has_pet,
             'photo_reference': self.photo_reference,
             'photo_s3_url': self.photo_s3_url,
             'last_refreshed': self.last_refreshed.isoformat() if self.last_refreshed else None,
@@ -142,6 +169,8 @@ class CafeAttributeVote(models.Model):
         ('limited_time', "限時"),
         ('cheap', '價格'),
         ('quiet', '安靜'),
+        ('pet_friendly', '寵物友善'),
+        ('has_pet', '有貓貓狗狗')
     ]
 
     VALUE_CHOICES = [
@@ -154,7 +183,8 @@ class CafeAttributeVote(models.Model):
     SOURCE_CHOICES = [
         ('user', '使用者回報'),
         ('cafenomad', 'CafeNomad API'),
-        ('inferred', '系統推論'),  # 先設計
+        ('google', 'Google Places API'),
+        ('inferred', '系統推論'),
     ]
     cafe = models.ForeignKey(Cafe, on_delete=models.CASCADE, related_name='attribute_votes', verbose_name='咖啡店')
     user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, verbose_name='回報使用者')

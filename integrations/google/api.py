@@ -17,10 +17,11 @@ class GoogleAPI:
         #  Text Search 取得 place_id
         search_url = f'{GoogleAPI.BASE_URL}/textsearch/json'
         params = {
-            'query': f'{shop_name} 咖啡店',
+            'query': shop_name,
             'type': 'cafe',
             'key': GoogleAPI.GOOGLE_API_KEY,
-            'language': 'zh-TW'
+            'language': 'zh-TW',
+            'region': 'tw',
         }
 
         try:
@@ -30,16 +31,16 @@ class GoogleAPI:
 
         except Timeout:
             logger.warning('Google API 請求逾時')
-            return {}
+            return []
 
         except RequestException as e:
             logger.error(f'Google API 請求失敗: {e}')
-            return {}
+            return []
 
         if search_result.get('status') != 'OK' or not search_result.get('results'):
-            return {}
+            return []
 
-        results = search_result['results'][:5]  # 若有多筆資料，僅取前五筆
+        results = search_result['results'][:10]  # 若有多筆資料，僅取前十筆
 
         shops = []
         for shop in results:
@@ -76,7 +77,7 @@ class GoogleAPI:
             'place_id': place_id,
             'key': GoogleAPI.GOOGLE_API_KEY,
             'language': 'zh-TW',
-            'fields': 'name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,geometry,url,website,photo'
+            'fields': 'name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,geometry,url,website,photo,reviews'
         }
 
         try:
@@ -106,6 +107,9 @@ class GoogleAPI:
         photos = result.get('photos', [])
         photo_reference = photos[0].get('photo_reference') if photos else ''
 
+        raw_reviews = result.get('reviews', [])
+        reviews = [r.get('text', '') for r in raw_reviews[:5] if r.get('text')]
+
         info = {
             'place_id': place_id,
             'name': result.get('name'),
@@ -118,7 +122,8 @@ class GoogleAPI:
             'opening_hours': result.get('opening_hours', {}).get('weekday_text', []),
             'google_maps': result.get('url'),
             'website': result.get('website', '無提供'),
-            'photo_reference': photo_reference
+            'photo_reference': photo_reference,
+            'reviews': reviews,
         }
         return info
 
@@ -246,7 +251,7 @@ class GoogleAPI:
         # 根據加權評分進行排序
         sorted_places = sorted(weighted_rank, key=lambda x: x['weighted_rating'], reverse=True)
 
-        target_cafes = sorted_places[:5]
+        target_cafes = sorted_places[:10]
 
         shops = [
             {'place_id': shop['place_id'], 'name': shop['name'], 'rating': shop['original_rating'],

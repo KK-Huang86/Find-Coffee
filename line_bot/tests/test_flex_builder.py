@@ -2,8 +2,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from linebot.v3.messaging import (
-    FlexMessage,
-    TextMessage,
     QuickReply,
     LocationAction,
 )
@@ -11,11 +9,10 @@ from linebot.v3.messaging import (
 from line_bot.builders.flex_builder import (
     FlexMessageBuilder,
     PostbackBuilder,
-    FavoritesMessageBuilder,
     QuickReplyBuilder,
 )
 from line_bot.constants import MenuAction
-from line_bot.tests.factories import CafeFactory, UserFactory
+from line_bot.tests.factories import CafeFactory
 
 
 
@@ -161,6 +158,41 @@ class TestCreateAttributeTags:
         tags = FlexMessageBuilder._create_attribute_tags({'has_socket': 'yes', 'limited_time': 'no'})
         assert len(tags) == 2
 
+    def test_has_pet_yes_shows_tag(self):
+        """has_pet='yes' 時顯示貓貓狗狗標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'yes'})
+        assert any('🐈' in t['text'] for t in tags)
+
+    def test_has_pet_maybe_shows_tag(self):
+        """has_pet='maybe' 時顯示貓貓狗狗標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'maybe'})
+        assert any('🐈' in t['text'] for t in tags)
+
+    def test_has_pet_no_shows_no_tag(self):
+        """has_pet='no' 時不顯示標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'no'})
+        assert not any('🐈' in t['text'] for t in tags)
+
+    def test_pet_friendly_yes_shows_tag(self):
+        """pet_friendly='yes' 時顯示寵物友善標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'pet_friendly': 'yes'})
+        assert any('🐕' in t['text'] for t in tags)
+
+    def test_pet_friendly_maybe_shows_tag(self):
+        """pet_friendly='maybe' 時顯示寵物友善標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'pet_friendly': 'maybe'})
+        assert any('🐕' in t['text'] for t in tags)
+
+    def test_pet_friendly_no_shows_no_tag(self):
+        """pet_friendly='no' 時不顯示標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'pet_friendly': 'no'})
+        assert not any('🐕' in t['text'] for t in tags)
+
+    def test_all_pet_attributes_return_tags(self):
+        """has_pet 和 pet_friendly 同時為 yes 時，各回傳一個標籤"""
+        tags = FlexMessageBuilder._create_attribute_tags({'has_pet': 'yes', 'pet_friendly': 'yes'})
+        assert any('🐈' in t['text'] for t in tags)
+        assert any('🐕' in t['text'] for t in tags)
 
 
 # FlexMessageBuilder._create_tag_element
@@ -459,99 +491,7 @@ class TestPostbackBuilderCreateCafeActionPostback:
         assert '⭐ 收藏' in labels
         assert '🔗 分享' in labels
         assert '⭐ 評價' in labels
-        assert '🤖 問問AI' in labels
-
-
-
-# FavoritesMessageBuilder.show_favorites_carousel
-
-
-@pytest.mark.django_db
-class TestFavoritesMessageBuilderShowFavoritesCarousel:
-    """測試 FavoritesMessageBuilder.show_favorites_carousel"""
-
-    def test_user_not_found_returns_error_text(self):
-        """找不到使用者時，回傳錯誤 TextMessage"""
-        result = FavoritesMessageBuilder.show_favorites_carousel('nonexistent_user_id')
-        assert isinstance(result, TextMessage)
-        assert '找不到會員' in result.text
-
-    def test_no_favorites_returns_prompt(self):
-        """使用者無收藏時，回傳提示 TextMessage"""
-        user = UserFactory()
-        result = FavoritesMessageBuilder.show_favorites_carousel(user.line_user_id)
-        assert isinstance(result, TextMessage)
-        assert '沒有收藏' in result.text
-
-    def test_shows_flex_message_with_favorites(self):
-        """有收藏時，回傳 FlexMessage"""
-        user = UserFactory()
-        cafes = [CafeFactory() for _ in range(3)]
-        for cafe in cafes:
-            user.favorites.create(cafe=cafe)
-
-        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL):
-            result = FavoritesMessageBuilder.show_favorites_carousel(user.line_user_id)
-
-        assert isinstance(result, FlexMessage)
-        assert result.alt_text == '我的收藏清單'
-
-    def test_carousel_limited_to_five_bubbles(self):
-        """收藏超過 5 間時，carousel 最多顯示 5 個 bubble"""
-        user = UserFactory()
-        cafes = [CafeFactory() for _ in range(7)]
-        for cafe in cafes:
-            user.favorites.create(cafe=cafe)
-
-        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL):
-            result = FavoritesMessageBuilder.show_favorites_carousel(user.line_user_id)
-
-        assert isinstance(result, FlexMessage)
-        # FlexCarousel contents 最多 5 個
-        assert len(result.contents.contents) <= 5
-
-
-
-# FavoritesMessageBuilder.show_favorites_list
-
-
-@pytest.mark.django_db
-class TestFavoritesMessageBuilderShowFavoritesList:
-    """測試 FavoritesMessageBuilder.show_favorites_list"""
-
-    def test_no_favorites_returns_prompt(self):
-        """使用者無收藏時，回傳提示 TextMessage"""
-        user = UserFactory()
-        result = FavoritesMessageBuilder.show_favorites_list(user.line_user_id)
-        assert isinstance(result, TextMessage)
-        assert '沒有收藏' in result.text
-
-    def test_shows_flex_message_with_favorites(self):
-        """有收藏時，回傳 FlexMessage"""
-        user = UserFactory()
-        cafes = [CafeFactory() for _ in range(3)]
-        for cafe in cafes:
-            user.favorites.create(cafe=cafe)
-
-        with patch.object(FlexMessageBuilder, 'format_opening_hours', return_value='09:00 – 21:00'):
-            result = FavoritesMessageBuilder.show_favorites_list(user.line_user_id)
-
-        assert isinstance(result, FlexMessage)
-        assert result.alt_text == '我的收藏清單'
-
-    def test_list_contains_shop_postback_action(self):
-        """收藏清單中每間咖啡店有 postback action 連結"""
-        user = UserFactory()
-        cafe = CafeFactory(place_id='test_pid_001')
-        user.favorites.create(cafe=cafe)
-
-        with patch.object(FlexMessageBuilder, 'format_opening_hours', return_value='09:00 – 21:00'):
-            result = FavoritesMessageBuilder.show_favorites_list(user.line_user_id)
-
-        flex_dict = result.contents.to_dict()
-        body_contents = flex_dict['body']['contents']
-        shop_boxes = [c for c in body_contents if c.get('type') == 'box' and 'action' in c]
-        assert any('test_pid_001' in box['action']['data'] for box in shop_boxes)
+        assert '🤖 看看AI怎麼說' in labels
 
 
 

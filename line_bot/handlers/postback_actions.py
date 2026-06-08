@@ -2,20 +2,66 @@
 Postback Action Handlers - 每個 action 獨立處理
 """
 import logging
+from urllib.parse import urlencode, quote
 
-from linebot.v3.messaging import ReplyMessageRequest, TextMessage
+from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction, TemplateMessage
 
 from cafe.models import Cafe, CafeAttributeVote
+from integrations.groq.api import GroqAPI
 from cafe.services.vote_service import VoteService
 from integrations.google.api import GoogleAPI
 from integrations.services import ApiUsageService
-from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FavoritesMessageBuilder
+from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder, FlexMessageBuilder,FavoritesPageBuilder
 from line_bot.constants import UserState, MenuAction, VOTE_ATTRIBUTES, VOTE_QUESTIONS, VOTE_OPTIONS, QUOTA_EXCEEDED
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.state import StateManager
 from users.views import FavoritesManager
 
 logger = logging.getLogger(__name__)
+
+PAGE_SIZE = 5
+FAVORITES_PAGE_SIZE = 15
+
+
+def _reply_cafe_page(line_bot_api, reply_token, cafes_qs, offset, search_type, keyword, empty_msg, alt_text):
+    """
+    分頁輔助：從 queryset 取指定頁的資料並回覆 carousel + quick_reply。
+
+    Args:
+        cafes_qs: 已過濾 + 排序好的 QuerySet（不含 slice）
+        offset:   本頁起始位置
+        search_type: 'district' / 'pet' / 'pet_friendly' / 'all_pet'
+        keyword:  搜尋關鍵字（用於「下一頁」postback）
+        empty_msg: 無資料時的提示文字
+        alt_text: carousel alt text
+    """
+    cafes = list(cafes_qs[offset:offset + PAGE_SIZE + 1])
+    has_more = len(cafes) > PAGE_SIZE
+    cafes = cafes[:PAGE_SIZE]
+
+    if not cafes:
+        reply_text(line_bot_api, reply_token, empty_msg)
+        return
+
+    flex_messages = [
+        FlexMessageBuilder.create_shop_flex_message(cafe.to_dict(), is_multiple=True)
+        for cafe in cafes
+    ]
+    carousel = {'type': 'carousel', 'contents': flex_messages}
+
+    quick_reply = QuickReplyBuilder.create_district_search_actions(
+        search_type, keyword, offset + PAGE_SIZE, has_more
+    )
+
+    flex_msg = FlexMessage(
+        alt_text=alt_text,
+        contents=FlexContainer.from_dict(carousel),
+    )
+    flex_msg.quick_reply = quick_reply
+
+    line_bot_api.reply_message(
+        ReplyMessageRequest(reply_token=reply_token, messages=[flex_msg])
+    )
 
 
 def handle_favorite(line_bot_api, reply_token, user, params):
@@ -46,6 +92,87 @@ def handle_unfavorite(line_bot_api, reply_token, user, params):
     info_d = cafe.to_dict()
     ok, msg = FavoritesManager.remove_favorite(user, info_d)
     reply_text(line_bot_api, reply_token, msg)
+
+
+def handle_share(line_bot_api, reply_token, user, params):
+    """處理分享動作：回傳 Google Maps 連結 + LINE 分享按鈕"""
+    place_id = params.get('place_id')
+    if not place_id:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    info_d, _ = get_or_create_cafe_info(place_id)
+    if not info_d:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    cafe_name = info_d.get('name', '咖啡店')
+    if len(cafe_name) > 100:
+        cafe_name = cafe_name[:97] + '...'
+    maps_url = f'https://www.google.com/maps/place/?q=place_id:{place_id}'
+    line_share_url = f'https://social-plugins.line.me/lineit/share?url={quote(maps_url)}'
+
+    share_template = {
+        'type': 'template',
+        'altText': f'分享「{cafe_name}」',
+        'template': {
+            'type': 'buttons',
+            'text': f'分享「{cafe_name}」',
+            'actions': [
+                {
+                    'type': 'uri',
+                    'label': '分享到 LINE',
+                    'uri': line_share_url
+                }
+            ]
+        }
+    }
+
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[
+                TextMessage(text=f'📍 {cafe_name}\n\n長按以下連結即可複製：\n{maps_url}'),
+                TemplateMessage.from_dict(share_template)
+            ]
+        )
+    )
+
+
+def handle_ask_ai(line_bot_api, reply_token, user, params):
+    """呼叫 Groq 對咖啡店進行 AI 評價，結果以 Redis 快取避免重複呼叫"""
+    from django.core.cache import cache
+
+    place_id = params.get('place_id')
+    if not place_id:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    info_d, _ = get_or_create_cafe_info(place_id)
+    if not info_d:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+        return
+
+    cache_key = f'ai_review:{place_id}'
+    result = cache.get(cache_key)
+
+    if not result:
+        detail = GoogleAPI.get_shop_detail(place_id)
+        reviews = detail.get('reviews', [])
+
+        result = GroqAPI.review_cafe(
+            name=info_d.get('name', ''),
+            address=info_d.get('address', ''),
+            rating=info_d.get('rating'),
+            user_ratings_total=info_d.get('user_ratings_total', 0),
+            reviews=reviews,
+        )
+        if not result:
+            reply_text(line_bot_api, reply_token, 'AI 評價暫時無法使用，請稍後再試')
+            return
+        cache.set(cache_key, result, timeout=60 * 60 * 24 * 7)  # 快取 7 天
+
+    reply_text(line_bot_api, reply_token, f'🤖 AI 評價｜{info_d.get("name", "")}\n\n{result}')
 
 
 def handle_view_detail(line_bot_api, reply_token, user, params):
@@ -285,20 +412,43 @@ def _menu_share_location(line_bot_api, reply_token, user):
     )
 
 
-def _menu_favorites(line_bot_api, reply_token, user):
-    """處理收藏清單"""
-    favorite_count = user.favorites.count()
+def _reply_favorites_page(line_bot_api, reply_token, user, offset):
+    """列表 bubble 分頁，每頁 FAVORITES_PAGE_SIZE 筆，依收藏時間倒序"""
+    favorites = list(
+        user.favorites.select_related('cafe').order_by('-created_at')[offset:offset + FAVORITES_PAGE_SIZE + 1]
+    )
+    has_more = len(favorites) > FAVORITES_PAGE_SIZE
+    favorites = favorites[:FAVORITES_PAGE_SIZE]
 
-    if favorite_count == 0:
-        message = TextMessage(text='您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
-    elif favorite_count <= 5:
-        message = FavoritesMessageBuilder.show_favorites_carousel(user.line_user_id)
-    else:
-        message = FavoritesMessageBuilder.show_favorites_list(user.line_user_id)
+    if not favorites:
+        reply_text(line_bot_api, reply_token, '沒有更多收藏了 ❤️')
+        return
+
+    page_num = offset // FAVORITES_PAGE_SIZE + 1
+    flex_msg = FavoritesPageBuilder.build_page_message(favorites, page_num)
+
+    if has_more:
+        next_data = urlencode({
+            'action': 'next_page',
+            'search_type': 'favorites',
+            'offset': offset + FAVORITES_PAGE_SIZE,
+        })
+        flex_msg.quick_reply = QuickReply(items=[
+            QuickReplyItem(action=PostbackAction(label='➡️ 下一頁', data=next_data))
+        ])
 
     line_bot_api.reply_message(
-        ReplyMessageRequest(reply_token=reply_token, messages=[message])
+        ReplyMessageRequest(reply_token=reply_token, messages=[flex_msg])
     )
+
+
+def _menu_favorites(line_bot_api, reply_token, user):
+    """處理收藏清單"""
+    if not user.favorites.exists():
+        reply_text(line_bot_api, reply_token, '您還沒有收藏任何咖啡店喔～\n快去探索喜歡的店家吧！❤️')
+        return
+
+    _reply_favorites_page(line_bot_api, reply_token, user, offset=0)
 
 
 def _menu_recent_search(line_bot_api, reply_token, user):
@@ -320,8 +470,50 @@ def _menu_recent_search(line_bot_api, reply_token, user):
 
 
 def _menu_more_info(line_bot_api, reply_token, user):
-    """處理更多資訊，後續開發中"""
-    reply_text(line_bot_api, reply_token, '更多資訊功能開發中...')
+    """更多功能選單"""
+    quick_reply = QuickReplyBuilder.create_more_info_actions()
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[
+                TextMessage(
+                    text='請選擇功能 ☕️',
+                    quick_reply=quick_reply
+                )
+            ]
+        )
+    )
+
+
+def _menu_district_search(line_bot_api, reply_token, user):
+    """處理工作友善咖啡查詢：設定狀態，等待使用者輸入行政區"""
+    StateManager.set_state(user.line_user_id, UserState.WAITING_DISTRICT)
+    reply_text(line_bot_api, reply_token, '請輸入行政區名稱\n（例如：大安區、信義區）')
+
+def _menu_pet_search(line_bot_api, reply_token, user):
+    """查詢有貓貓狗狗的咖啡廳：設定狀態，等待使用者輸入行政區（附全部查詢快捷）"""
+    StateManager.set_state(user.line_user_id, UserState.WAITING_PET_DISTRICT)
+    quick_reply = QuickReply(items=[
+        QuickReplyItem(action=PostbackAction(
+            label='🐈 查詢全部有貓貓狗狗的店',
+            data='action=all_pet_search'
+        ))
+    ])
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=reply_token,
+            messages=[TextMessage(
+                text='請輸入行政區名稱，我幫你找有貓貓狗狗的咖啡廳 🐈\n（例如：大安區、信義區）\n\n或點下方按鈕查詢全部店家',
+                quick_reply=quick_reply
+            )]
+        )
+    )
+
+
+def _menu_pet_friendly_search(line_bot_api, reply_token, user):
+    """查詢寵物友善咖啡廳：設定狀態，等待使用者輸入行政區"""
+    StateManager.set_state(user.line_user_id, UserState.WAITING_PET_FRIENDLY_DISTRICT)
+    reply_text(line_bot_api, reply_token, '請輸入行政區名稱，我幫你找寵物友善的咖啡廳 🐕\n（例如：大安區、信義區）')
 
 
 # Menu Dispatch Table
@@ -332,7 +524,83 @@ MENU_HANDLERS = {
     MenuAction.FAVORITES: _menu_favorites,
     MenuAction.RECENT_SEARCH: _menu_recent_search,
     MenuAction.MORE_INFO: _menu_more_info,
+    MenuAction.DISTRICT_SEARCH: _menu_district_search,
+    MenuAction.PET_SEARCH: _menu_pet_search,
+    MenuAction.PET_FRIENDLY_SEARCH: _menu_pet_friendly_search,
 }
+
+
+def handle_all_pet_search(line_bot_api, reply_token, user, params):
+    """查詢全部有貓貓狗狗的咖啡店（不限地區），支援分頁"""
+    try:
+        offset = int(params.get('offset', 0))
+    except (ValueError, TypeError):
+        offset = 0
+    cafes_qs = Cafe.objects.filter(has_pet='yes').order_by('-favorite_count', '-user_ratings_total')
+
+    _reply_cafe_page(
+        line_bot_api, reply_token,
+        cafes_qs=cafes_qs,
+        offset=offset,
+        search_type='all_pet',
+        keyword='',
+        empty_msg='目前資料庫還沒有有貓貓狗狗的咖啡店資料 😢\n歡迎投票回報你知道的店家！',
+        alt_text='有貓貓狗狗的咖啡廳',
+    )
+
+
+def handle_next_page(line_bot_api, reply_token, user, params):
+    """處理翻頁動作"""
+    search_type = params.get('search_type')
+    keyword = params.get('keyword', '')
+    try:
+        offset = int(params.get('offset', 0))
+    except (ValueError, TypeError):
+        offset = 0
+
+    if search_type == 'favorites':
+        _reply_favorites_page(line_bot_api, reply_token, user, offset)
+        return
+
+    search_configs = {
+        'district': {
+            'queryset': Cafe.objects.work_friendly().filter(address__icontains=keyword),
+            'empty_msg': f'「{keyword}」沒有更多工作友善咖啡店了 ☕️',
+            'alt_text': f'{keyword} 工作友善咖啡',
+        },
+        'pet': {
+            'queryset': Cafe.objects.filter(address__icontains=keyword, has_pet='yes'),
+            'empty_msg': f'「{keyword}」沒有更多有貓貓狗狗的咖啡店了 🐈',
+            'alt_text': f'{keyword} 有貓貓狗狗的咖啡廳',
+        },
+        'pet_friendly': {
+            'queryset': Cafe.objects.filter(address__icontains=keyword, pet_friendly='yes'),
+            'empty_msg': f'「{keyword}」沒有更多寵物友善的咖啡店了 🐕',
+            'alt_text': f'{keyword} 寵物友善咖啡廳',
+        },
+        'all_pet': {
+            'queryset': Cafe.objects.filter(has_pet='yes'),
+            'empty_msg': '沒有更多有貓貓狗狗的咖啡店了 🐈',
+            'alt_text': '有貓貓狗狗的咖啡廳',
+        },
+    }
+
+    config = search_configs.get(search_type)
+    if not config:
+        logger.warning(f'Unknown search_type for next_page: {search_type}')
+        return
+
+    cafes_qs = config['queryset'].order_by('-favorite_count', '-user_ratings_total')
+
+    _reply_cafe_page(
+        line_bot_api, reply_token,
+        cafes_qs=cafes_qs,
+        offset=offset,
+        search_type=search_type,
+        keyword=keyword,
+        empty_msg=config['empty_msg'],
+        alt_text=config['alt_text'],
+    )
 
 
 def handle_menu(line_bot_api, reply_token, user, params):
@@ -350,9 +618,13 @@ def handle_menu(line_bot_api, reply_token, user, params):
 ACTION_HANDLERS = {
     'favorite': handle_favorite,
     'unfavorite': handle_unfavorite,
+    'share': handle_share,
+    'ask_ai': handle_ask_ai,
     'view_detail': handle_view_detail,
     'recent_search': handle_recent_search,
     'vote': handle_vote,
     'vote_answer': handle_vote_answer,
     'menu': handle_menu,
+    'all_pet_search': handle_all_pet_search,
+    'next_page': handle_next_page,
 }
