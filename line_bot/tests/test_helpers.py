@@ -58,7 +58,7 @@ class TestGetOrCreateCafeInfo:
     def test_returns_quota_exceeded_when_quota_exceeded(self):
         """API 額度不足，回傳 (QUOTA_EXCEEDED, None) 且不呼叫 Google API"""
         with (
-            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use') as mock_check,
+            patch('line_bot.handlers.helpers.ApiUsageService.try_increment_detail_calls') as mock_check,
             patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
         ):
             mock_check.return_value = False
@@ -81,8 +81,7 @@ class TestGetOrCreateCafeInfo:
         }
 
         with (
-            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use', return_value=True),
-            patch('line_bot.handlers.helpers.ApiUsageService.increment_detail_calls') as mock_increment,
+            patch('line_bot.handlers.helpers.ApiUsageService.try_increment_detail_calls', return_value=True) as mock_increment,
             patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
             patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
         ):
@@ -98,7 +97,7 @@ class TestGetOrCreateCafeInfo:
     def test_returns_none_when_google_api_fails(self):
         """Google API 回傳 None，回傳 (None, None)"""
         with (
-            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use', return_value=True),
+            patch('line_bot.handlers.helpers.ApiUsageService.try_increment_detail_calls', return_value=True),
             patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
         ):
             mock_google.return_value = None
@@ -110,7 +109,7 @@ class TestGetOrCreateCafeInfo:
     def test_returns_none_when_google_data_missing_place_id(self):
         """Google API 回傳資料缺少 place_id，回傳 (None, None)"""
         with (
-            patch('line_bot.handlers.helpers.ApiUsageService.check_can_use', return_value=True),
+            patch('line_bot.handlers.helpers.ApiUsageService.try_increment_detail_calls', return_value=True),
             patch('line_bot.handlers.helpers.GoogleAPI.get_shop_detail') as mock_google,
         ):
             mock_google.return_value = {'name': '咖啡店'}

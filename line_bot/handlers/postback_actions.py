@@ -101,9 +101,9 @@ def handle_share(line_bot_api, reply_token, user, params):
         reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
 
-    info_d, _ = get_or_create_cafe_info(place_id)
-    if not info_d:
-        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+    info_d, _ = get_or_create_cafe_info(place_id, user.id)
+    if not info_d or info_d is QUOTA_EXCEEDED:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店' if info_d is not QUOTA_EXCEEDED else '本月 API 查詢額度已達上限 😢')
         return
 
     cafe_name = info_d.get('name', '咖啡店')
@@ -148,9 +148,9 @@ def handle_ask_ai(line_bot_api, reply_token, user, params):
         reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
 
-    info_d, _ = get_or_create_cafe_info(place_id)
-    if not info_d:
-        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
+    info_d, _ = get_or_create_cafe_info(place_id, user.id)
+    if not info_d or info_d is QUOTA_EXCEEDED:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店' if info_d is not QUOTA_EXCEEDED else '本月 API 查詢額度已達上限 😢')
         return
 
     cache_key = f'ai_review:{place_id}'
@@ -352,11 +352,10 @@ def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, 
 
     # 3. 都沒有的話直接打 Google API 進行查詢
     else:
-        if not ApiUsageService.check_can_use(user.id):
+        if not ApiUsageService.try_increment_search_calls(user.id):
             reply_text(line_bot_api, reply_token, '本月搜尋次數已達上限，無法繼續查詢 😢')
             return
         shops = GoogleAPI.search_coffee_shops(keyword)
-        ApiUsageService.increment_search_calls(user.id)
 
     LineMessageBuilder.send_shop_result(
         line_bot_api,
@@ -369,11 +368,10 @@ def _handle_shop_name_search(line_bot_api, reply_token, user, user_id, keyword, 
 
 def _handle_address_search(line_bot_api, reply_token, user, user_id, keyword):
     """處理地址搜尋"""
-    if not ApiUsageService.check_can_use(user.id):
+    if not ApiUsageService.try_increment_search_calls(user.id):
         reply_text(line_bot_api, reply_token, '本月搜尋次數已達上限，無法繼續查詢 😢')
         return
     shops = GoogleAPI.search_nearby_coffee_shops(address=keyword)
-    ApiUsageService.increment_search_calls(user.id)
 
     LineMessageBuilder.send_shop_result(
         line_bot_api,

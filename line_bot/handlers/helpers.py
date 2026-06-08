@@ -59,7 +59,7 @@ def get_or_create_cafe_info(place_id, user_id):
 
 
     # 2. DB 沒有，先確認 API 額度，再呼叫 Google API
-    if not ApiUsageService.check_can_use(user_id):
+    if not ApiUsageService.try_increment_detail_calls(user_id):
         logger.warning(f'User {user_id} 超過 API 額度，無法查詢 {place_id}')
         return QUOTA_EXCEEDED, None
 
@@ -70,9 +70,6 @@ def get_or_create_cafe_info(place_id, user_id):
 
     if not info_d.get('place_id'):
         logger.error('缺少 place_id，無法建立店家資料')
-        return None, None
-
-    ApiUsageService.increment_detail_calls(user_id)
 
     # 3. 存入 DB
     try:
