@@ -559,12 +559,22 @@ class LineMessageBuilder:
             return
 
         if 2 <= len(shops) <= 5:
-            # 多筆結果
+            # 多筆結果：先批次查 DB，減少 Google API 呼叫次數
+            from cafe.models import Cafe
+            place_ids = [shop['place_id'] for shop in shops]
+            cached_cafes = {
+                cafe.place_id: cafe.to_dict()
+                for cafe in Cafe.objects.filter(place_id__in=place_ids)
+            }
+
             flex_messages = []
             for shop in shops:
                 place_id = shop['place_id']
 
-                info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
+                if place_id in cached_cafes:
+                    info_d = cached_cafes[place_id]
+                else:
+                    info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
                 if info_d is QUOTA_EXCEEDED:
                     line_bot_api.reply_message(
