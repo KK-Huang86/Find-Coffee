@@ -21,14 +21,20 @@ class ApiUsageService:
             user_id=user_id,
             year_month=year_month,
         )
+
+        # 透過 updated_count 判斷是否還可以使用 API 餘額
+
         updated_count = ApiUsageRecord.objects.filter(
             pk=record.pk,
             can_use=True,
-            total_api_calls__lt=F('monthly_limit'),
+            total_api_calls__lt=F('monthly_limit'), # 使用 lt total_api_calls < monthly_limit，+1 並不會阻礙更新
         ).update(
             **{field_name: F(field_name) + 1},
             total_api_calls=F('total_api_calls') + 1,
         )
+
+        # if updated_count == 0 代表沒有可用 API 餘額
+
         if updated_count == 0:
             ApiUsageRecord.objects.filter(pk=record.pk, can_use=True).update(can_use=False)
             return False
