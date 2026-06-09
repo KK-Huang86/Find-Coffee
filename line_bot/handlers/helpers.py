@@ -70,6 +70,7 @@ def get_or_create_cafe_info(place_id, user_id):
 
     if not info_d.get('place_id'):
         logger.error('缺少 place_id，無法建立店家資料')
+        return None, None
 
     # 3. 存入 DB
     try:

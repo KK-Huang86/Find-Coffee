@@ -41,13 +41,3 @@ class ApiUsageRecord(models.Model):
 
     def __str__(self):
         return f'{self.user.display_name or self.user.line_user_id[:8]} - {self.year_month} ({self.total_api_calls}/{self.monthly_limit})'
-
-    def check_limit(self):
-        """檢查是否超過限制"""
-        if not self.can_use:
-            return False
-        if self.total_api_calls >= self.monthly_limit:
-            self.can_use = False
-            self.save(update_fields=['can_use'])
-            return False
-        return True
