@@ -157,6 +157,10 @@ def handle_ask_ai(line_bot_api, reply_token, user, params):
     result = cache.get(cache_key)
 
     if not result:
+        if not ApiUsageService.try_increment_ai_calls(user.id):
+            reply_text(line_bot_api, reply_token, '本月 AI 評價額度已達上限 😢')
+            return
+
         detail = GoogleAPI.get_shop_detail(place_id)
         reviews = detail.get('reviews', [])
 

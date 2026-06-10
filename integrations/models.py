@@ -25,6 +25,11 @@ class ApiUsageRecord(models.Model):
     # 額度限制（從 config 取得，但儲存在這裡方便查詢）
     monthly_limit = models.IntegerField(default=100, verbose_name='當月額度')
 
+    # AI (Groq) 使用次數統計
+    ai_calls = models.IntegerField(default=0, verbose_name='AI API 次數')
+    can_use_ai = models.BooleanField(default=True, verbose_name='是否可使用 AI')
+    monthly_ai_limit = models.IntegerField(default=50, verbose_name='當月 AI 額度')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
