@@ -435,7 +435,6 @@ class TestSearchNearbyCoffeeShops:
         result = GoogleAPI.search_nearby_coffee_shops(lat=25.033, lng=121.564)
 
         assert 'place_id' in result[0]
+        assert 'name' in result[0]
         assert 'rating' in result[0]
         assert 'weighted_rating' in result[0]
-        # 回傳不應包含 name（只有 place_id, rating, weighted_rating）
-        assert 'name' not in result[0]

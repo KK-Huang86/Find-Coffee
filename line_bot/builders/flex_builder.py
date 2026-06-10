@@ -20,7 +20,7 @@ from linebot.v3.messaging import (
 )
 
 from line_bot.utils import parse_opening_hours
-from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS
+from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS, QUOTA_EXCEEDED
 from line_bot.services.search_cache import SearchHistoryService
 
 logger = logging.getLogger(__name__)
@@ -505,13 +505,13 @@ class FlexMessageBuilder:
 class LineMessageBuilder:
 
     @staticmethod
-    def _get_or_create_shop_info(place_id):
+    def _get_or_create_shop_info(place_id, user_id):
         """
         嘗試從資料庫取得店家資訊，若無，則從 Google API 取得資料並寫入資料庫。
         委託給 helpers.get_or_create_cafe_info 統一處理。
         """
         from line_bot.handlers.helpers import get_or_create_cafe_info
-        return get_or_create_cafe_info(place_id)
+        return get_or_create_cafe_info(place_id, user_id)
 
     @staticmethod
     def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
@@ -528,11 +528,19 @@ class LineMessageBuilder:
             return
 
         if len(shops) == 1:
-            # 單筆結果
+            # 單筆結果：才需要取得完整詳細資訊
             place_id = shops[0]['place_id']
 
-            info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id)
+            info_d, cafe = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
+            if info_d is QUOTA_EXCEEDED:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text='本月 API 查詢額度已達上限，無法取得店家資訊 😢')]
+                    )
+                )
+                return
             if not info_d:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -573,13 +581,31 @@ class LineMessageBuilder:
             return
 
         if 2 <= len(shops) <= 10:
-            # 多筆結果
+            # 多筆結果：先批次查 DB，減少 Google API 呼叫次數
+            from cafe.models import Cafe
+            place_ids = [shop['place_id'] for shop in shops]
+            cached_cafes = {
+                cafe.place_id: cafe.to_dict()
+                for cafe in Cafe.objects.filter(place_id__in=place_ids)
+            }
+
             flex_messages = []
             for shop in shops:
                 place_id = shop['place_id']
 
-                info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id)
+                if place_id in cached_cafes:
+                    info_d = cached_cafes[place_id]
+                else:
+                    info_d, _ = LineMessageBuilder._get_or_create_shop_info(place_id, user.id)
 
+                if info_d is QUOTA_EXCEEDED:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=reply_token,
+                            messages=[TextMessage(text='本月 API 查詢額度已達上限，無法取得店家資訊 😢')]
+                        )
+                    )
+                    return
                 if info_d:
                     flex_data = FlexMessageBuilder.create_shop_flex_message(info_d, is_multiple=True)
                     flex_messages.append(flex_data)

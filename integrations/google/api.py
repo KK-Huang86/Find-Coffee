@@ -254,7 +254,7 @@ class GoogleAPI:
         target_cafes = sorted_places[:10]
 
         shops = [
-            {'place_id': shop['place_id'], 'rating': shop['original_rating'],
+            {'place_id': shop['place_id'], 'name': shop['name'], 'rating': shop['original_rating'],
              'weighted_rating': shop['weighted_rating']}
             for shop in target_cafes
         ]

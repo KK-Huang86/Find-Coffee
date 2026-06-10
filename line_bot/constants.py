@@ -1,3 +1,7 @@
+# Sentinel：代表 get_or_create_cafe_info 因額度不足而回傳，讓呼叫端顯示對應訊息
+QUOTA_EXCEEDED = object() # 隨機生產一個物件並存放在某一個記憶體的位置
+
+
 class UserState:
     NORMAL = '初始'
     WAITING_SHOP_NAME = '等待查詢店名'
