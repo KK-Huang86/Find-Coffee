@@ -89,6 +89,7 @@ def get_or_create_cafe_info(place_id, user_id):
             lat=info_d.get('lat') or 0.0,
             lng=info_d.get('lng') or 0.0,
             opening_hours=opening_hours_d,
+            reviews=info_d.get('reviews') or [],
             photo_reference=info_d.get('photo_reference') or '',
             last_refreshed=timezone.now(),
         )

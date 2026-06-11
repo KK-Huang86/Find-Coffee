@@ -175,7 +175,8 @@ def refresh_cafe_data(cafe_id):
         'user_ratings_total': result.get('user_ratings_total'),
         'website': result.get('website'),
         'google_maps': result.get('google_maps'),
-        'photo_reference': result.get('photo_reference')  # 但只有在照片時間超過180天時才會重新拉新的圖片
+        'photo_reference': result.get('photo_reference'),  # 但只有在照片時間超過180天時才會重新拉新的圖片
+        'reviews': result.get('reviews') or [],
     }
 
     for key, value in update_data.items():

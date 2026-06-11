@@ -56,6 +56,7 @@ class Cafe(models.Model):
 
     # 營業資訊
     opening_hours = models.JSONField(default=list, blank=True, verbose_name='營業時間')
+    reviews = models.JSONField(default=list, blank=True, verbose_name='用戶評論')
     website = models.URLField(blank=True, null=True, verbose_name='官方網站')
     google_maps = models.URLField(blank=True, null=True, verbose_name='Google Maps 連結')
 
@@ -119,6 +120,7 @@ class Cafe(models.Model):
             'lat': float(self.lat),
             'lng': float(self.lng),
             'opening_hours': self.opening_hours,
+            'reviews': self.reviews,
             'limited_time': self.limited_time,
             'has_socket': self.has_socket,
             'pet_friendly': self.pet_friendly,
