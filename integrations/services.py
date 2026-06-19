@@ -50,3 +50,36 @@ class ApiUsageService:
     def try_increment_search_calls(user_id):
         """嘗試遞增 search API 呼叫次數，超過額度回傳 False"""
         return ApiUsageService._try_increment_usage(user_id, 'search_calls')
+
+    @staticmethod
+    def try_increment_ai_calls(user_id):
+        """嘗試遞增 AI (Groq) 呼叫次數，超過額度回傳 False"""
+        year_month = ApiUsageService._get_year_month()
+        record, _ = ApiUsageRecord.objects.get_or_create(
+            user_id=user_id,
+            year_month=year_month,
+        )
+
+        if not record.can_use_ai:
+            return False
+
+        updated_count = ApiUsageRecord.objects.filter(
+            pk=record.pk,
+            can_use_ai=True,
+            ai_calls__lt=F('monthly_ai_limit'),
+        ).update(ai_calls=F('ai_calls') + 1)
+
+        if updated_count == 0:
+            return False
+        logger.info(f'User {user_id} ai_calls +1 ({year_month})')
+        return True
+
+    @staticmethod
+    def revert_ai_call(user_id):
+        """當 AI 呼叫失敗時，退回一次額度"""
+        year_month = ApiUsageService._get_year_month()
+        ApiUsageRecord.objects.filter(
+            user_id=user_id,
+            year_month=year_month,
+            ai_calls__gt=0,
+        ).update(ai_calls=F('ai_calls') - 1)
