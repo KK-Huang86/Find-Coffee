@@ -624,15 +624,13 @@ class LineMessageBuilder:
                     contents=FlexContainer.from_dict(carousel)
                 )
 
-                flex_message.quick_reply = quick_reply
-
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=reply_token,
                         messages=[
                             TextMessage(text=f'找到 {len(flex_messages)} 間咖啡店，為你列出結果 ☕'),
                             flex_message,
-                            TextMessage(text='今天想選擇哪一間咖啡店呢？')
+                            TextMessage(text='今天想選擇哪一間咖啡店呢？', quick_reply=quick_reply)
                         ]
                     )
                 )
