@@ -23,6 +23,9 @@ from line_bot.utils import parse_opening_hours
 from line_bot.constants import MenuText, MenuAction, VOTE_OPTIONS, QUOTA_EXCEEDED
 from line_bot.services.search_cache import SearchHistoryService
 
+from cafe.tasks import download_and_upload_cafe_photo
+from cafe.models import Cafe
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,9 +105,6 @@ class FlexMessageBuilder:
             place_id: Google Places ID
         """
         try:
-            from cafe.tasks import download_and_upload_cafe_photo
-            from cafe.models import Cafe
-
             # 取得 cafe 物件
             cafe = Cafe.objects.filter(place_id=place_id).first()
             if cafe and not cafe.photo_s3_url:
@@ -582,7 +582,6 @@ class LineMessageBuilder:
 
         if 2 <= len(shops) <= 10:
             # 多筆結果：先批次查 DB，減少 Google API 呼叫次數
-            from cafe.models import Cafe
             place_ids = [shop['place_id'] for shop in shops]
             cached_cafes = {
                 cafe.place_id: cafe.to_dict()
@@ -630,7 +629,11 @@ class LineMessageBuilder:
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=reply_token,
-                        messages=[flex_message]
+                        messages=[
+                            TextMessage(text=f'找到 {len(flex_messages)} 間咖啡店，為你列出結果 ☕'),
+                            flex_message,
+                            TextMessage(text='今天想選擇哪一間咖啡店呢？')
+                        ]
                     )
                 )
 
