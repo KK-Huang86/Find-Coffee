@@ -52,6 +52,13 @@
 - 工作友善：過濾不限時且有插座的店家，支援依行政區搜尋
 - 寵物相關：篩選店內有貓貓狗狗，或寵物友善的店家
 
+**AI 評價**
+- 串接 Groq API（llama-3.3-70b-versatile），根據 Google Places 評論自動生成咖啡店 AI 摘要
+- AI 評價結果以 Redis 快取 7 天，相同店家重複查詢不消耗額度
+- 每位使用者有獨立的月用量限制，防止濫用
+
+![AI 評價](static/ai_comment.png)
+
 **資料維護**
 - 咖啡店資料定期刷新（30 天），照片每 180 天重新拉取
 - 近鄰搜尋使用貝葉斯加權評分排序，避免評論數過少的店家排名過高
@@ -161,6 +168,7 @@ graph LR
 9. 歷史查詢紀錄
 10. 查詢區域工作友善咖啡店
 11. 針對個別咖啡店進行評論
+12. 查看 AI 評價摘要
 
 ---
 
@@ -174,6 +182,7 @@ graph LR
 | 非同步任務 | Celery |
 | LINE Bot SDK | line-bot-sdk-python v3 (Messaging API) |
 | 外部 API | Google Places API（Text Search、Nearby Search、Geocoding、Place Details） |
+| AI | Groq API（llama-3.3-70b-versatile） |
 | 雲端儲存 | AWS S3 + CloudFront |
 | 基礎設施 | Terraform |
 | 容器化 | Docker / Docker Compose |
@@ -342,7 +351,11 @@ weighted_rating = (C * m + n * r) / (C + n)
 
 針對會呼叫付費外部 API 的操作（如 Google Places 搜尋），以資料庫記錄每位使用者的呼叫次數與時間。當單一使用者在特定時間窗內超過用量門檻時，拒絕後續請求並回傳提示，避免 API 成本被單一使用者過度消耗，也防止惡意濫用。此機制與防止 Webhook 重送的 `LockService` 為不同層次的保護：前者針對使用者行為，後者針對系統事件。
 
-### 9. 自訂 QuerySet Manager
+### 9. Groq AI 評價與 Redis 快取
+
+串接 Groq API 對咖啡店進行 AI 摘要評價。為避免重複呼叫 API，評價結果以 Redis 快取 7 天，同一間店在快取期間內無論多少人查詢都不消耗額度。使用者另有獨立的月用量上限，超過後回傳提示而非靜默失敗。若 Groq 呼叫失敗，`revert_ai_call` 會退回已扣的額度，確保用量統計的準確性。
+
+### 10. 自訂 QuerySet Manager
 
 `CafeQuerySet` 封裝常用過濾條件，讓業務邏輯不散落在各處 handler：
 
