@@ -169,6 +169,7 @@ def handle_ask_ai(line_bot_api, reply_token, user, params):
             reviews=info_d.get('reviews', []),
         )
         if not result:
+            ApiUsageService.revert_ai_call(user.id)
             reply_text(line_bot_api, reply_token, 'AI 評價暫時無法使用，請稍後再試')
             return
         cache.set(cache_key, result, timeout=60 * 60 * 24 * 7)  # 快取 7 天
