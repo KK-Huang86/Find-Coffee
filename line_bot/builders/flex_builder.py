@@ -220,21 +220,25 @@ class FlexMessageBuilder:
 
     @staticmethod
     def _create_tags_box(tags: list) -> dict:
-        """
-        創建標籤容器 box
-
-        Args:
-            tags: 標籤元素列表
-
-        Returns:
-            dict: Flex Message box element
-        """
+        if len(tags) <= 2:
+            return {
+                'type': 'box',
+                'layout': 'horizontal',
+                'spacing': 'sm',
+                'margin': 'md',
+                'contents': tags
+            }
+        rows = [tags[i:i + 2] for i in range(0, len(tags), 2)]
+        row_boxes = [
+            {'type': 'box', 'layout': 'horizontal', 'spacing': 'sm', 'contents': row}
+            for row in rows
+        ]
         return {
             'type': 'box',
-            'layout': 'horizontal',
+            'layout': 'vertical',
             'spacing': 'sm',
             'margin': 'md',
-            'contents': tags
+            'contents': row_boxes
         }
 
     # 處理營業時間格式

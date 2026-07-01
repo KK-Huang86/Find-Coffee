@@ -237,12 +237,41 @@ class TestCreateTagsBox:
     """測試 FlexMessageBuilder._create_tags_box"""
 
     def test_creates_horizontal_box(self):
-        """回傳 horizontal layout 的 box"""
+        """1 個 tag 時回傳 horizontal layout 的 box"""
         tags = [{'type': 'text', 'text': 'tag1'}]
         box = FlexMessageBuilder._create_tags_box(tags)
         assert box['type'] == 'box'
         assert box['layout'] == 'horizontal'
         assert box['contents'] == tags
+
+    def test_two_tags_creates_horizontal_box(self):
+        """2 個 tag 時維持 horizontal layout 單列"""
+        tags = [{'type': 'text', 'text': 'tag1'}, {'type': 'text', 'text': 'tag2'}]
+        box = FlexMessageBuilder._create_tags_box(tags)
+        assert box['layout'] == 'horizontal'
+        assert box['contents'] == tags
+
+    def test_three_tags_creates_vertical_box_with_two_rows(self):
+        """3 個 tag 時回傳 vertical box，第一列 2 個、第二列 1 個"""
+        tags = [{'type': 'text', 'text': f'tag{i}'} for i in range(3)]
+        box = FlexMessageBuilder._create_tags_box(tags)
+        assert box['type'] == 'box'
+        assert box['layout'] == 'vertical'
+        assert len(box['contents']) == 2
+        assert box['contents'][0]['layout'] == 'horizontal'
+        assert len(box['contents'][0]['contents']) == 2
+        assert box['contents'][1]['layout'] == 'horizontal'
+        assert len(box['contents'][1]['contents']) == 1
+
+    def test_four_tags_creates_vertical_box_with_two_rows(self):
+        """4 個 tag 時回傳 vertical box，兩列各 2 個"""
+        tags = [{'type': 'text', 'text': f'tag{i}'} for i in range(4)]
+        box = FlexMessageBuilder._create_tags_box(tags)
+        assert box['type'] == 'box'
+        assert box['layout'] == 'vertical'
+        assert len(box['contents']) == 2
+        assert len(box['contents'][0]['contents']) == 2
+        assert len(box['contents'][1]['contents']) == 2
 
 
 
