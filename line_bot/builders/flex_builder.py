@@ -221,20 +221,36 @@ class FlexMessageBuilder:
     @staticmethod
     def _create_tags_box(tags: list) -> dict:
         """
-        創建標籤容器 box
+        創建標籤容器 box。
+        當標籤數量小於或等於每列最大限制時，使用單一水平列顯示；
+        當標籤數量超過限制時，自動分成多列並以垂直 box 包裹。
 
         Args:
-            tags: 標籤元素列表
+            tags: 標籤元素列表，呼叫端須確保非空
 
         Returns:
-            dict: Flex Message box element
+            dict: Flex Message box 元素
         """
+        max_tags_per_row = 2
+        if len(tags) <= max_tags_per_row:
+            return {
+                'type': 'box',
+                'layout': 'horizontal',
+                'spacing': 'sm',
+                'margin': 'md',
+                'contents': tags
+            }
+        rows = [tags[i:i + max_tags_per_row] for i in range(0, len(tags), max_tags_per_row)]
+        row_boxes = [
+            {'type': 'box', 'layout': 'horizontal', 'spacing': 'sm', 'contents': row}
+            for row in rows
+        ]
         return {
             'type': 'box',
-            'layout': 'horizontal',
+            'layout': 'vertical',
             'spacing': 'sm',
             'margin': 'md',
-            'contents': tags
+            'contents': row_boxes
         }
 
     # 處理營業時間格式
