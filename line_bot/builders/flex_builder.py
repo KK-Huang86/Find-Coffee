@@ -226,14 +226,12 @@ class FlexMessageBuilder:
         當標籤數量超過限制時，自動分成多列並以垂直 box 包裹。
 
         Args:
-            tags: 標籤元素列表
+            tags: 標籤元素列表，呼叫端須確保非空
 
         Returns:
             dict: Flex Message box 元素
         """
         max_tags_per_row = 2
-        if not tags:
-            return {}
         if len(tags) <= max_tags_per_row:
             return {
                 'type': 'box',
