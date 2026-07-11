@@ -10,6 +10,7 @@ from line_bot.event_handlers import (
     handle_postback,
 )
 from line_bot.tests.factories import UserFactory, CafeFactory
+from integrations.google.api import OutOfServiceAreaError
 
 
 class TestParsePostbackData:
@@ -205,6 +206,29 @@ class TestHandleMessage:
         mock_google.assert_called_once_with(address='信義路')
         mock_history.assert_called_once_with(user.line_user_id, '信義路', search_type='address')
 
+    def test_waiting_address_out_of_service_area_replies_message(self):
+        """WAITING_ADDRESS 時輸入範圍外地址，回覆服務範圍提示"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, '台中市中區')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_ADDRESS),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search'),
+            patch('line_bot.event_handlers.GoogleAPI.search_nearby_coffee_shops', side_effect=OutOfServiceAreaError),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_message(event)
+
+        mock_line_bot_api.reply_message.assert_called_once()
+        call_args = mock_line_bot_api.reply_message.call_args[0][0]
+        assert '超出服務範圍' in call_args.messages[0].text
+
     def test_unknown_state_replies_prompt(self):
         """NORMAL 狀態下輸入文字，回覆引導使用選單的提示"""
         user = UserFactory()
@@ -291,6 +315,26 @@ class TestHandleLocationMessage:
         mock_line_bot_api.reply_message.assert_called_once()
         call_args = mock_line_bot_api.reply_message.call_args[0][0]
         assert '找不到咖啡店' in call_args.messages[0].text
+
+    def test_out_of_service_area_replies_service_area_message(self):
+        """GPS 位置在服務範圍外時，回覆服務範圍提示"""
+        user = UserFactory()
+        event = self._make_event(user.line_user_id, lat=24.147, lng=120.673)
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.GoogleAPI.search_nearby_coffee_shops', side_effect=OutOfServiceAreaError),
+        ):
+            mock_line_bot_api = MagicMock()
+            mock_messaging_cls.return_value = mock_line_bot_api
+            handle_location_message(event)
+
+        mock_line_bot_api.reply_message.assert_called_once()
+        call_args = mock_line_bot_api.reply_message.call_args[0][0]
+        assert '超出服務範圍' in call_args.messages[0].text
 
     def test_shops_found_sends_result(self):
         """找到咖啡店時，呼叫 send_shop_result"""

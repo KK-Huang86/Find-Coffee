@@ -22,7 +22,7 @@ from linebot.v3.webhooks import (
 
 )
 
-from integrations.google.api import GoogleAPI
+from integrations.google.api import GoogleAPI, OutOfServiceAreaError
 from line_bot.constants import UserState
 from line_bot.builders.flex_builder import LineMessageBuilder, QuickReplyBuilder
 from line_bot.handlers.postback_actions import ACTION_HANDLERS, _reply_cafe_page
@@ -103,7 +103,20 @@ def handle_message(event):
             # 紀錄 Cache
             SearchHistoryService.add_search(user_id, text, search_type='address')
 
-            shops = GoogleAPI.search_nearby_coffee_shops(address=text)
+            try:
+                shops = GoogleAPI.search_nearby_coffee_shops(address=text)
+            except OutOfServiceAreaError:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=(
+                            f'「{text}」超出服務範圍 📍\n\n'
+                            '本服務目前僅提供台北、新北、基隆地區搜尋，請輸入上述地區的地址。'
+                        ))]
+                    )
+                )
+                StateManager.reset_state(user_id)
+                return
             LineMessageBuilder.send_shop_result(
                 line_bot_api,
                 event.reply_token,
@@ -210,7 +223,20 @@ def handle_location_message(event):
         # 顯示打字中動畫
         show_loading(line_bot_api, user_id)
 
-        shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
+        try:
+            shops = GoogleAPI.search_nearby_coffee_shops(lat=lat, lng=lng)
+        except OutOfServiceAreaError:
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=(
+                        '您目前的位置超出服務範圍 📍\n\n'
+                        '本服務目前僅提供台北、新北、基隆地區\n'
+                        '請分享上述地區的位置，或輸入地址搜尋。'
+                    ))]
+                )
+            )
+            return
         logger.info(shops)
 
         if not shops:

@@ -8,9 +8,30 @@ from requests.exceptions import RequestException, Timeout
 logger = logging.getLogger(__name__)
 
 
+class OutOfServiceAreaError(Exception):
+    pass
+    # 不符合搜尋範圍者
+
+
 class GoogleAPI:
     GOOGLE_API_KEY = config('GOOGLE_API_KEY')
     BASE_URL = 'https://maps.googleapis.com/maps/api/place'
+
+    # 台北、新北、基隆的邊界框
+    AREA_BOUNDS = {
+        'sw': {'lat': 24.84, 'lng': 121.28},
+        'ne': {'lat': 25.30, 'lng': 122.05},
+    }
+
+    @staticmethod
+    def _is_within_service_area(lat, lng):
+
+        if lat is None or lng is None:
+            return False
+
+        bounds = GoogleAPI.AREA_BOUNDS
+        return (bounds['sw']['lat'] <= lat <= bounds['ne']['lat'] and
+                bounds['sw']['lng'] <= lng <= bounds['ne']['lng'])
 
     @staticmethod
     def search_coffee_shops(shop_name):
@@ -22,6 +43,8 @@ class GoogleAPI:
             'key': GoogleAPI.GOOGLE_API_KEY,
             'language': 'zh-TW',
             'region': 'tw',
+            'location': '25.05,121.55',
+            'radius': 40000,
         }
 
         try:
@@ -44,6 +67,11 @@ class GoogleAPI:
 
         shops = []
         for shop in results:
+            location = shop.get('geometry', {}).get('location', {})
+            lat = location.get('lat')
+            lng = location.get('lng')
+            if not GoogleAPI._is_within_service_area(lat, lng):
+                continue
             shops.append({
                 'name': shop.get('name'),
                 'place_id': shop.get('place_id'),
@@ -183,6 +211,10 @@ class GoogleAPI:
 
             lat = coords['lat']
             lng = coords['lng']
+
+        if not GoogleAPI._is_within_service_area(lat, lng):
+            logger.warning(f'位置 ({lat}, {lng}) 超出服務範圍（台北、新北、基隆）')
+            raise OutOfServiceAreaError
 
         search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
         params = {
