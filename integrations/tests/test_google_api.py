@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 from requests.exceptions import RequestException, Timeout
 
-from integrations.google.api import GoogleAPI
+from integrations.google.api import GoogleAPI, OutOfServiceAreaError
 
 
 class TestCleanTaiwanAddress:
@@ -42,8 +42,8 @@ class TestSearchCoffeeShops:
         mock_response.json.return_value = {
             'status': 'OK',
             'results': [
-                {'name': '星巴克', 'place_id': 'ChIJ001'},
-                {'name': '路易莎', 'place_id': 'ChIJ002'},
+                {'name': '星巴克', 'place_id': 'ChIJ001', 'geometry': {'location': {'lat': 25.033, 'lng': 121.564}}},
+                {'name': '路易莎', 'place_id': 'ChIJ002', 'geometry': {'location': {'lat': 25.040, 'lng': 121.570}}},
             ]
         }
         mock_response.raise_for_status = MagicMock()
@@ -74,7 +74,7 @@ class TestSearchCoffeeShops:
         mock_response.json.return_value = {
             'status': 'OK',
             'results': [
-                {'name': f'咖啡店{i}', 'place_id': f'ChIJ{i:03d}'}
+                {'name': f'咖啡店{i}', 'place_id': f'ChIJ{i:03d}', 'geometry': {'location': {'lat': 25.033, 'lng': 121.564}}}
                 for i in range(12)
             ]
         }
@@ -438,3 +438,97 @@ class TestSearchNearbyCoffeeShops:
         assert 'name' in result[0]
         assert 'rating' in result[0]
         assert 'weighted_rating' in result[0]
+
+
+class TestIsWithinServiceArea:
+    """測試 GoogleAPI._is_within_service_area"""
+
+    def test_taipei_center_is_within(self):
+        assert GoogleAPI._is_within_service_area(25.033, 121.564) is True
+
+    def test_keelung_is_within(self):
+        assert GoogleAPI._is_within_service_area(25.128, 121.740) is True
+
+    def test_new_taipei_is_within(self):
+        assert GoogleAPI._is_within_service_area(25.012, 121.465) is True
+
+    def test_taichung_is_outside(self):
+        assert GoogleAPI._is_within_service_area(24.147, 120.673) is False
+
+    def test_australia_is_outside(self):
+        assert GoogleAPI._is_within_service_area(-33.868, 151.209) is False
+
+
+class TestSearchCoffeeShopsServiceArea:
+    """測試 search_coffee_shops 的服務範圍過濾"""
+
+    def test_filters_out_results_outside_service_area(self, mocker):
+        """台北以外的結果被過濾掉"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'OK',
+            'results': [
+                {'name': '台北店', 'place_id': 'ChIJ001', 'geometry': {'location': {'lat': 25.033, 'lng': 121.564}}},
+                {'name': '台中店', 'place_id': 'ChIJ002', 'geometry': {'location': {'lat': 24.147, 'lng': 120.673}}},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mocker.patch('integrations.google.api.requests.get', return_value=mock_response)
+
+        result = GoogleAPI.search_coffee_shops('咖啡')
+
+        assert len(result) == 1
+        assert result[0]['place_id'] == 'ChIJ001'
+
+    def test_returns_empty_when_all_results_outside_service_area(self, mocker):
+        """全部結果都在範圍外時回傳空列表"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'OK',
+            'results': [
+                {'name': '澳洲店', 'place_id': 'ChIJ001', 'geometry': {'location': {'lat': -33.868, 'lng': 151.209}}},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mocker.patch('integrations.google.api.requests.get', return_value=mock_response)
+
+        result = GoogleAPI.search_coffee_shops('咖啡')
+
+        assert result == []
+
+    def test_result_without_geometry_is_filtered_out(self, mocker):
+        """沒有 geometry 的結果被過濾掉"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'status': 'OK',
+            'results': [
+                {'name': '無座標店', 'place_id': 'ChIJ001'},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mocker.patch('integrations.google.api.requests.get', return_value=mock_response)
+
+        result = GoogleAPI.search_coffee_shops('咖啡')
+
+        assert result == []
+
+
+class TestSearchNearbyCoffeeShopsServiceArea:
+    """測試 search_nearby_coffee_shops 的服務範圍驗證"""
+
+    def test_raises_out_of_service_area_error_for_taichung(self):
+        """台中座標直接拋出 OutOfServiceAreaError"""
+        import pytest
+        with pytest.raises(OutOfServiceAreaError):
+            GoogleAPI.search_nearby_coffee_shops(lat=24.147, lng=120.673)
+
+    def test_raises_out_of_service_area_error_when_geocode_returns_outside_area(self, mocker):
+        """geocode 回傳的座標在範圍外時拋出 OutOfServiceAreaError"""
+        import pytest
+        mocker.patch.object(
+            GoogleAPI, '_geocode_address',
+            return_value={'lat': 24.147, 'lng': 120.673}
+        )
+
+        with pytest.raises(OutOfServiceAreaError):
+            GoogleAPI.search_nearby_coffee_shops(address='台中市中區')

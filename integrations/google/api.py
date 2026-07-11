@@ -8,6 +8,11 @@ from requests.exceptions import RequestException, Timeout
 logger = logging.getLogger(__name__)
 
 
+class OutOfServiceAreaError(Exception):
+    pass
+    # 不符合搜尋範圍者
+
+
 class GoogleAPI:
     GOOGLE_API_KEY = config('GOOGLE_API_KEY')
     BASE_URL = 'https://maps.googleapis.com/maps/api/place'
@@ -205,7 +210,7 @@ class GoogleAPI:
 
         if not GoogleAPI._is_within_service_area(lat, lng):
             logger.warning(f'位置 ({lat}, {lng}) 超出服務範圍（台北、新北、基隆）')
-            return []
+            raise OutOfServiceAreaError
 
         search_url = f'{GoogleAPI.BASE_URL}/nearbysearch/json'
         params = {
