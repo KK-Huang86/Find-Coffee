@@ -25,6 +25,10 @@ class GoogleAPI:
 
     @staticmethod
     def _is_within_service_area(lat, lng):
+
+        if lat is None or lng is None:
+            return False
+
         bounds = GoogleAPI.AREA_BOUNDS
         return (bounds['sw']['lat'] <= lat <= bounds['ne']['lat'] and
                 bounds['sw']['lng'] <= lng <= bounds['ne']['lng'])
@@ -66,7 +70,7 @@ class GoogleAPI:
             location = shop.get('geometry', {}).get('location', {})
             lat = location.get('lat')
             lng = location.get('lng')
-            if not lat or not lng or not GoogleAPI._is_within_service_area(lat, lng):
+            if not GoogleAPI._is_within_service_area(lat, lng):
                 continue
             shops.append({
                 'name': shop.get('name'),
