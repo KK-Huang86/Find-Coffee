@@ -9,7 +9,8 @@ def liveness(request):
 # readinessProbe
 def readiness(request):
     try:
-        connection.ensure_connection()
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
     except Exception:
         return JsonResponse({'status': 'error', 'detail': 'db unavailable'}, status=503)
     return JsonResponse({'status': 'ok'})
