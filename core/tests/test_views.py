@@ -21,7 +21,7 @@ class TestReadiness:
 
     def test_returns_503_when_db_unavailable(self, mocker):
         mocker.patch(
-            'django.db.connection.cursor',
+            'core.views.connection.cursor',
             side_effect=Exception('db connection failed'),
         )
         client = Client()
