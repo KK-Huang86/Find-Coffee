@@ -8,3 +8,15 @@ db.sqlite3
 .DS_Store
 *.pdf
 staticfiles/
+.idea/
+.sql/
+backup.sql
+
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+terraform.tfvars
+
+.coverage
+coverage.xml

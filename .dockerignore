@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# 環境變數（機密資訊）
+.env
+
+# 開發工具
+.idea/
+.DS_Store
+
+# Terraform（不需要進 image）
+terraform/
+*.tfstate
+*.tfstate.backup
+.terraform/
+terraform.tfvars
+
+# 測試 & 文件
+tests/
+CONTRIBUTING.md
+CHANGELOG.md
+
+# 其他
+db.sqlite3
+staticfiles/

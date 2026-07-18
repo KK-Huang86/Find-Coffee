@@ -10,12 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
-import os
 from pathlib import Path
-
-from dotenv import load_dotenv
-
-load_dotenv()
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,14 +27,12 @@ STATICFILES_DIRS = [
 ]
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = [
-    '*'
-]
+ALLOWED_HOSTS = [host.strip() for host in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',') if host.strip()]
 
 # Application definition
 
@@ -49,7 +43,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'line_bot'
+    'line_bot',
+    'users',
+    'cafe',
+    'integrations'
+
 ]
 
 MIDDLEWARE = [
@@ -87,8 +85,21 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': config('DB_ENGINE'),
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT'),
+    }
+}
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'KEY_PREFIX': 'linebot',
+        'TIMEOUT': 3600 * 24,  # 預設 24 小時
     }
 }
 
@@ -130,3 +141,41 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Celery
+
+ENVIRONMENT = config('ENVIRONMENT', default='development')
+
+# Broker 設定（根據環境切換）
+if ENVIRONMENT == 'production':
+    # ===== 生產環境：使用 SQS =====
+    CELERY_BROKER_URL = 'sqs://'
+    CELERY_BROKER_TRANSPORT_OPTIONS = {
+        'region': config('AWS_REGION', default='ap-northeast-1'),
+        'queue_name_prefix': 'find-coffee-',
+        'visibility_timeout': 3600,  # 1 小時（需 > 最長任務時間）
+        'polling_interval': 1,  # 每秒檢查一次
+    }
+else:
+    # ===== 開發環境：使用 Redis =====
+    CELERY_BROKER_URL = config(
+        'CELERY_BROKER_URL',
+        default='redis://localhost:6379/0'
+    )
+
+# 不追蹤任務結果（fire and forget）
+CELERY_RESULT_BACKEND = None
+
+# 通用設定
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Taipei'
+
+# 任務設定
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 分鐘硬超時
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 分鐘軟超時
+
+# 可靠性設定
+CELERY_TASK_ACKS_LATE = True  # 任務完成後才確認（失敗會重試）
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # 一次只拿一個任務
+CELERY_TASK_REJECT_ON_WORKER_LOST = True  # Worker 掛掉時重新排隊

@@ -1,6 +1,8 @@
 # Create your views here.
 import logging
 import os
+import time
+from decouple import config
 
 import certifi
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -10,38 +12,30 @@ from django.views.decorators.csrf import csrf_exempt
 os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
-from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.messaging.exceptions import ApiException
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
     MessagingApi,
-    ReplyMessageRequest,
-    TextMessage,
-    ButtonsTemplate,
+    MessagingApiBlob,
+    RichMenuArea,
+    RichMenuBounds,
+    RichMenuSize,
+    RichMenuRequest,
     PostbackAction,
-    TemplateMessage,
-    Emoji,
-    VideoMessage,
-    LocationMessage,
-    StickerMessage,
-    ImageMessage,
 )
-from linebot.v3.webhooks import (
-    MessageEvent,
-    FollowEvent,
-    TextMessageContent,
-    PostbackEvent
-)
+
+from .event_handlers import handler
+from .constants import MenuText, MenuAction
 
 logger = logging.getLogger(__name__)
 
 # 初始化設定
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+LINE_CHANNEL_ACCESS_TOKEN = config('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = config('LINE_CHANNEL_SECRET')
 
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
 @csrf_exempt
@@ -54,82 +48,107 @@ def callback(request):
 
     # 取得 request body
     body = request.body.decode('utf-8')
-    logger.info("Request body: " + body)
+    logger.info('Request body: ' + body)
 
     # 處理 webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        logger.error("Invalid signature. Please check your channel access token/channel secret.")
+        logger.error('Invalid signature. Please check your channel access token/channel secret.')
         return HttpResponseBadRequest()
 
     return HttpResponse('OK')
 
 
-@handler.add(FollowEvent)
-def handle_follow(event):
-    print('加入')
-
-
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_message(event):
+def rich_menu():
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        text = event.message.text
+        line_bot_blob_api = MessagingApiBlob(api_client)
 
-        if text == 'postback':
-            button_template = ButtonsTemplate(
-                titile='嗨',
-                text='postback action',
-                actions=[
-                    PostbackAction(label='Postback action', text='postback action button clicked', data='postback')
-                ])
-            template_message = TemplateMessage(
-                alt_text='postback action',
-                template=button_template,
-            )
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[template_message]
+        rich_menu_create = RichMenuRequest(
+            size=RichMenuSize(
+                width=2500,
+                height=1686
+            ),
+            selected=True,
+            name='richmenu',
+            chat_bar_text='點我查看更多',
+            areas=[
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=0, width=833, height=843),
+                    action=PostbackAction(
+                        label=MenuText.SEARCH_SHOP_NAME,
+                        data=f'action=menu&type={MenuAction.SEARCH_SHOP_NAME}'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=834, y=0, width=833, height=843),
+                    action=PostbackAction(
+                        label=MenuText.SEARCH_ADDRESS,
+                        data=f'action=menu&type={MenuAction.SEARCH_ADDRESS}'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=1666, y=0, width=834, height=843),
+                    action=PostbackAction(
+                        label=MenuText.SHARE_LOCATION,
+                        data=f'action=menu&type={MenuAction.SHARE_LOCATION}'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=844, width=833, height=842),
+                    action=PostbackAction(
+                        label=MenuText.FAVORITES,
+                        data=f'action=menu&type={MenuAction.FAVORITES}'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=834, y=844, width=833, height=842),
+                    action=PostbackAction(
+                        label=MenuText.RECENT_SEARCH,
+                        data=f'action=menu&type={MenuAction.RECENT_SEARCH}'
+                    )
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=1666, y=844, width=834, height=842),
+                    action=PostbackAction(
+                        label=MenuText.MORE_INFO,
+                        data=f'action=menu&type={MenuAction.MORE_INFO}'
+                    )
                 )
-            )
-
-        elif text == '貼圖':
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[StickerMessage(package_id='446', sticker_id='1998')]
-                )
-            )
-
-        elif text == '表情符號':
-            emojis = [
-                Emoji(index=0, product_id='5ac1bfd5040ab15980c9b435', emoji_id='001'),
-                Emoji(index=6, product_id='5ac1bfd5040ab15980c9b435', emoji_id='002')
             ]
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text='$LINE~$ 表情', emojis=emojis)]
-                )
+        )
+
+        rich_menu_id = line_bot_api.create_rich_menu(
+            rich_menu_request=rich_menu_create
+        ).rich_menu_id
+
+        with open('static/rich_menu.png', 'rb') as image:
+            line_bot_blob_api.set_rich_menu_image(
+                rich_menu_id=rich_menu_id,
+                _headers={'Content-Type': 'image/jpeg'},
+                body=bytearray(image.read())
             )
 
-        elif text =='圖片':
-            url=os.getenv('image_url')
-            logger.info("Image URL: " + url)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[ImageMessage(original_content_url=url, preview_image_url=url)]
-                )
-            )
+        line_bot_api.set_default_rich_menu(
+            rich_menu_id=rich_menu_id
+        )
 
-        else:
-            result = line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=event.message.text)]
-                )
-            )
-            print('result', result.status_code)
+        existing_menus = line_bot_api.get_rich_menu_list().richmenus or []
+        for menu in existing_menus:
+            if menu.rich_menu_id == rich_menu_id:
+                continue
+            for attempt in range(5):
+                try:
+                    line_bot_api.delete_rich_menu(rich_menu_id=menu.rich_menu_id)
+                    time.sleep(2)
+                    break
+                except ApiException as e:
+                    if e.status == 429:
+                        wait = 60 * (attempt + 1)
+                        print(f"Rate limited, waiting {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        raise
+
+# rich_menu()  # 需要時手動呼叫，不要自動執行

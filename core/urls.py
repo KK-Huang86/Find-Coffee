@@ -16,8 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from core.views import liveness, readiness
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('health/live/', liveness),
+    path('health/ready/', readiness),
     path('', include('line_bot.urls')),
 ]
