@@ -1,7 +1,10 @@
 name: Publish Docker Image
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - main
       - develop
@@ -10,10 +13,13 @@ jobs:
   publish:
     name: Build and Push to Docker Hub
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set short SHA
         id: vars
