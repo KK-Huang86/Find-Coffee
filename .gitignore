@@ -20,3 +20,5 @@ terraform.tfvars
 
 .coverage
 coverage.xml
+.spectra/
+openspec/.vector-search.db*
