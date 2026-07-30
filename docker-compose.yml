@@ -5,12 +5,12 @@ x-app: &x-app
     - .:/app
     - /app/.venv
   depends_on:
-    - db
+    - pgbouncer
     - redis
   env_file:
     - .env
   environment:
-    - DB_HOST=db
+    - DB_HOST=pgbouncer
     - REDIS_URL=redis://redis:6379/0
     - CELERY_BROKER_URL=redis://redis:6379/0
   networks:
@@ -25,10 +25,30 @@ services:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: md5
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    networks:
+      - find_coffee_network
+    restart: always
+
+  pgbouncer:
+    container_name: find-coffee-pgbouncer
+    image: edoburu/pgbouncer:latest
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - POOL_MODE=transaction
+      - MAX_DB_CONNECTIONS=20
+      - DEFAULT_POOL_SIZE=10
+      - AUTH_TYPE=md5
+    depends_on:
+      - db
     networks:
       - find_coffee_network
     restart: always

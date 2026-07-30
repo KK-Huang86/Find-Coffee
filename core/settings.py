@@ -91,6 +91,7 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT'),
+        'CONN_MAX_AGE': 0,  # PgBouncer transaction mode 下必須為 0
     }
 }
 
