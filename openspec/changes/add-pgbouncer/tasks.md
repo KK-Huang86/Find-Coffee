@@ -1,12 +1,12 @@
 ## 1. Django Settings 調整
 
 - [x] 1.1 將 `core/settings.py` 的 `CONN_MAX_AGE` 設為 0，並從環境變數讀取 `DB_HOST`（讓 pgbouncer 可替換 postgres）
-- [x] 1.2 確認 `DB_PORT` 從環境變數讀取，預設值維持 5432
+- [x] 1.2 確認 `DB_PORT` 從環境變數讀取，設定 `default='5432'`
 
 ## 2. 本地開發：Docker Compose 加入 PgBouncer
 
-- [x] 2.1 在 `docker-compose.yml` 新增 pgbouncer service（使用 bitnami/pgbouncer image）
-- [x] 2.2 設定 pgbouncer 環境變數：`POSTGRESQL_HOST`、`POSTGRESQL_PORT`、`POSTGRESQL_USERNAME`、`POSTGRESQL_PASSWORD`、`POSTGRESQL_DATABASE`、`PGBOUNCER_POOL_MODE=transaction`、`PGBOUNCER_MAX_DB_CONNECTIONS=20`
+- [x] 2.1 在 `docker-compose.yml` 新增 pgbouncer service（使用 edoburu/pgbouncer:v1.25.2-p0 image）
+- [x] 2.2 設定 pgbouncer 環境變數：`DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME`、`POOL_MODE=transaction`、`MAX_DB_CONNECTIONS=20`、`AUTH_TYPE=md5`
 - [x] 2.3 將 web 與 celery service 的 `DB_HOST` 改為 `pgbouncer`，並加入 `depends_on: pgbouncer`
 - [x] 2.4 本地啟動 Docker Compose，驗證 Django 可正常查詢 DB（透過 pgbouncer）
 

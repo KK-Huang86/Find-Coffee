@@ -36,7 +36,7 @@ services:
 
   pgbouncer:
     container_name: find-coffee-pgbouncer
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.25.2-p0
     environment:
       - DB_HOST=db
       - DB_PORT=5432

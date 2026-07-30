@@ -90,8 +90,9 @@ DATABASES = {
         'USER': config('DB_USER'),
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
-        'CONN_MAX_AGE': 0,  # PgBouncer transaction mode 下必須為 0
+        'PORT': config('DB_PORT', default='5432'),
+        'CONN_MAX_AGE': 0,
+        'DISABLE_SERVER_SIDE_CURSORS': True,
     }
 }
 
