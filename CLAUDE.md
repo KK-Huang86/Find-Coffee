@@ -66,3 +66,17 @@ cd terraform && terraform plan
 - Commit 訊息使用繁體中文
 - 圖片存放於 S3，透過 CloudFront 存取
 - 環境變數放在 .env (不要 commit)
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`KK-Huang86/Find_Coffee`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Using default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` at repo root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
