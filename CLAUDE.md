@@ -146,3 +146,17 @@ terraform -chdir=terraform plan
    - 同時執行 `/spectra-drift` 檢查該 change 與目前程式碼現狀是否已產生落差。
    - 若 verify 或 drift 回報落差，必須先處理（修正實作或回頭 `ingest` 調整 spec），確認一致後才能建議使用者開 PR。
    - 這一層是流程約定，仰賴我主動執行，不是 CI 保證；若程式碼是透過我以外的方式修改，此規則不會被觸發。
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`KK-Huang86/Find_Coffee`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Using default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` at repo root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
