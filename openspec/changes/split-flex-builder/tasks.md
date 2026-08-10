@@ -17,13 +17,13 @@
 
 ## 3. 拆分 QuickReplyBuilder（無跨類別依賴，既有行為搬移）
 
-- [ ] 3.1 建立 `line_bot/builders/quick_reply.py`，搬移 `QuickReplyBuilder` 類別與其所需 import（`QuickReply`、`QuickReplyItem`、`LocationAction`、`PostbackAction`、`MenuText`、`MenuAction`、`VOTE_OPTIONS`、`SearchHistoryService` 等）。
-- [ ] 3.2 建立 `line_bot/tests/builders/test_quick_reply.py`，搬移 `test_flex_builder.py` 中所有 `TestQuickReplyBuilder*` 測試類別，import 改為 `from line_bot.builders.quick_reply import QuickReplyBuilder`，不修改任何斷言；同步將 `patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', ...)` 改為 `patch('line_bot.builders.quick_reply.SearchHistoryService.get_search_history', ...)`（僅調整 mock 的 lookup location，不改變測試驗證的行為，見 design.md Decision 5）。
-- [ ] 3.3 從 `line_bot/tests/test_flex_builder.py` 移除已搬移的 `TestQuickReplyBuilder*` 測試類別。
-- [ ] 3.4 於 `flex_builder.py` 中移除 `QuickReplyBuilder` 類別本體，改為 `from line_bot.builders.quick_reply import QuickReplyBuilder`。
-- [ ] 3.5 執行 `uv run pytest line_bot/tests/builders/test_quick_reply.py -q`，確認獨立通過，並確認 patch 確實生效（例如 `TestQuickReplyBuilderCreateRecentSearchQuickReply` 案例中未真的呼叫外部 `SearchHistoryService`）。
-- [ ] 3.6 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認累積回歸（含已拆分的 PostbackBuilder）全數通過。
-- [ ] 3.7 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「拆分 QuickReplyBuilder」）。
+- [x] 3.1 建立 `line_bot/builders/quick_reply.py`，搬移 `QuickReplyBuilder` 類別與其所需 import（`QuickReply`、`QuickReplyItem`、`LocationAction`、`PostbackAction`、`MenuText`、`MenuAction`、`VOTE_OPTIONS`、`SearchHistoryService` 等）。
+- [x] 3.2 建立 `line_bot/tests/builders/test_quick_reply.py`，搬移 `test_flex_builder.py` 中所有 `TestQuickReplyBuilder*` 測試類別，import 改為 `from line_bot.builders.quick_reply import QuickReplyBuilder`，不修改任何斷言；同步將 `patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', ...)` 改為 `patch('line_bot.builders.quick_reply.SearchHistoryService.get_search_history', ...)`（僅調整 mock 的 lookup location，不改變測試驗證的行為，見 design.md Decision 5）。
+- [x] 3.3 從 `line_bot/tests/test_flex_builder.py` 移除已搬移的 `TestQuickReplyBuilder*` 測試類別。
+- [x] 3.4 於 `flex_builder.py` 中移除 `QuickReplyBuilder` 類別本體，改為 `from line_bot.builders.quick_reply import QuickReplyBuilder`。
+- [x] 3.5 執行 `uv run pytest line_bot/tests/builders/test_quick_reply.py -q`，確認獨立通過，並確認 patch 確實生效（例如 `TestQuickReplyBuilderCreateRecentSearchQuickReply` 案例中未真的呼叫外部 `SearchHistoryService`）。15 passed。
+- [x] 3.6 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認累積回歸（含已拆分的 PostbackBuilder）全數通過。73 passed (5+15+53)。
+- [x] 3.7 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「拆分 QuickReplyBuilder」）。
 
 ## 4. 拆分 FlexMessageBuilder（含私有輔助方法，既有行為搬移）
 
