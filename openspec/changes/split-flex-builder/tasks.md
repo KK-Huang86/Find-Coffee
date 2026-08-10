@@ -1,19 +1,19 @@
 ## 1. 前置準備與基準驗證
 
-- [ ] 1.1 確認目前在 `refactor/split-flex-builder` 分支，且 `git status` 乾淨。
-- [ ] 1.2 執行 `uv run pytest line_bot/tests/test_flex_builder.py -q`，記錄拆分前的測試數（記為 `N_base`）與全數通過（基準綠燈）。
-- [ ] 1.3 執行 `uv run pytest -q` 全套測試，記錄拆分前的總測試數（記為 `N_total_base`）與全數通過（基準綠燈，作為後續每輪比對依據）。
-- [ ] 1.4 建立 `line_bot/tests/builders/` 目錄與 `__init__.py`，作為拆分後測試檔的存放位置。
+- [x] 1.1 確認目前在 `refactor/split-flex-builder` 分支，且 `git status` 乾淨。
+- [x] 1.2 執行 `uv run pytest line_bot/tests/test_flex_builder.py -q`，記錄拆分前的測試數（記為 `N_base`）與全數通過（基準綠燈）。N_base = 73。
+- [x] 1.3 執行 `uv run pytest -q` 全套測試，記錄拆分前的總測試數（記為 `N_total_base`）與全數通過（基準綠燈，作為後續每輪比對依據）。N_total_base = 280。
+- [x] 1.4 建立 `line_bot/tests/builders/` 目錄與 `__init__.py`，作為拆分後測試檔的存放位置。
 
 ## 2. 拆分 PostbackBuilder（無跨類別依賴，既有行為搬移）
 
-- [ ] 2.1 建立 `line_bot/builders/postback.py`，搬移 `PostbackBuilder` 類別與其所需 import（`TemplateMessage`）。
-- [ ] 2.2 建立 `line_bot/tests/builders/test_postback.py`，將 `test_flex_builder.py` 中 `TestPostbackBuilderCreateCafeActionPostback` 測試方法原樣搬移，import 改為 `from line_bot.builders.postback import PostbackBuilder`，不修改任何斷言。
-- [ ] 2.3 從 `line_bot/tests/test_flex_builder.py` 移除已搬移的 `TestPostbackBuilderCreateCafeActionPostback`。
-- [ ] 2.4 於 `flex_builder.py` 中移除 `PostbackBuilder` 類別本體，改為 `from line_bot.builders.postback import PostbackBuilder`（暫時性 re-export，供尚未拆分的類別與外部呼叫端使用）。
-- [ ] 2.5 執行 `uv run pytest line_bot/tests/builders/test_postback.py -q`，確認新測試檔獨立通過（既有行為搬移後仍是綠燈，驗證程式碼確實已搬到新模組且可運作）。
-- [ ] 2.6 執行 `uv run pytest line_bot/tests/test_flex_builder.py -q`，確認移除該測試類別後其餘測試仍全數通過。
-- [ ] 2.7 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「拆分 PostbackBuilder」），作為此階段最小回滾單位。
+- [x] 2.1 建立 `line_bot/builders/postback.py`，搬移 `PostbackBuilder` 類別與其所需 import（`TemplateMessage`）。
+- [x] 2.2 建立 `line_bot/tests/builders/test_postback.py`，將 `test_flex_builder.py` 中 `TestPostbackBuilderCreateCafeActionPostback` 測試方法原樣搬移，import 改為 `from line_bot.builders.postback import PostbackBuilder`，不修改任何斷言。
+- [x] 2.3 從 `line_bot/tests/test_flex_builder.py` 移除已搬移的 `TestPostbackBuilderCreateCafeActionPostback`。
+- [x] 2.4 於 `flex_builder.py` 中移除 `PostbackBuilder` 類別本體，改為 `from line_bot.builders.postback import PostbackBuilder`（暫時性 re-export，供尚未拆分的類別與外部呼叫端使用）。
+- [x] 2.5 執行 `uv run pytest line_bot/tests/builders/test_postback.py -q`，確認新測試檔獨立通過（既有行為搬移後仍是綠燈，驗證程式碼確實已搬到新模組且可運作）。5 passed.
+- [x] 2.6 執行 `uv run pytest line_bot/tests/test_flex_builder.py -q`，確認移除該測試類別後其餘測試仍全數通過。68 passed (73-5)。
+- [x] 2.7 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「拆分 PostbackBuilder」），作為此階段最小回滾單位。
 
 ## 3. 拆分 QuickReplyBuilder（無跨類別依賴，既有行為搬移）
 
