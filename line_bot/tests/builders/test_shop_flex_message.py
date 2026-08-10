@@ -1,19 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from linebot.v3.messaging import (
-    QuickReply,
-    LocationAction,
-)
-
-from line_bot.builders.flex_builder import (
-    FlexMessageBuilder,
-    PostbackBuilder,
-    QuickReplyBuilder,
-)
-from line_bot.constants import MenuAction
+from line_bot.builders.shop_flex_message import FlexMessageBuilder
 from line_bot.tests.factories import CafeFactory
-
 
 
 # FlexMessageBuilder.get_photo_url
@@ -65,7 +54,6 @@ class TestGetPhotoUrl:
         assert result == 'https://s3.example.com/cafe.jpg'
 
 
-
 # FlexMessageBuilder.resolve_photo_url
 
 
@@ -83,8 +71,8 @@ class TestResolvePhotoUrl:
         mock_response.status_code = 200
         mock_response.url = 'https://lh3.googleusercontent.com/photo.jpg'
 
-        with patch('line_bot.builders.flex_builder.requests.head', return_value=mock_response), \
-             patch('line_bot.builders.flex_builder.config', return_value='fake_key'):
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
             result = FlexMessageBuilder.resolve_photo_url('valid_ref')
 
         assert result == 'https://lh3.googleusercontent.com/photo.jpg'
@@ -94,8 +82,8 @@ class TestResolvePhotoUrl:
         mock_response = MagicMock()
         mock_response.status_code = 404
 
-        with patch('line_bot.builders.flex_builder.requests.head', return_value=mock_response), \
-             patch('line_bot.builders.flex_builder.config', return_value='fake_key'):
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
             result = FlexMessageBuilder.resolve_photo_url('some_ref')
 
         assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
@@ -104,12 +92,11 @@ class TestResolvePhotoUrl:
         """requests 拋出例外時，回傳預設圖"""
         import requests as req_lib
 
-        with patch('line_bot.builders.flex_builder.requests.head', side_effect=req_lib.RequestException('timeout')), \
-             patch('line_bot.builders.flex_builder.config', return_value='fake_key'):
+        with patch('line_bot.builders.shop_flex_message.requests.head', side_effect=req_lib.RequestException('timeout')), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
             result = FlexMessageBuilder.resolve_photo_url('some_ref')
 
         assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
-
 
 
 # FlexMessageBuilder._create_attribute_tags
@@ -229,7 +216,6 @@ class TestCreateTagElement:
         assert element['backgroundColor'] == '#EEEEEE'
 
 
-
 # FlexMessageBuilder._create_tags_box
 
 
@@ -274,7 +260,6 @@ class TestCreateTagsBox:
         assert len(box['contents'][1]['contents']) == 2
 
 
-
 # FlexMessageBuilder.format_opening_hours
 
 
@@ -291,7 +276,7 @@ class TestFormatOpeningHours:
         """dict 格式正確回傳今日營業時間"""
         # 星期一 = isoweekday 1，index 0
         hours_dict = {'星期一': '09:00 – 21:00', '星期二': '10:00 – 22:00'}
-        with patch('line_bot.builders.flex_builder.date') as mock_date:
+        with patch('line_bot.builders.shop_flex_message.date') as mock_date:
             mock_date.today.return_value.isoweekday.return_value = 1
             result = FlexMessageBuilder.format_opening_hours(hours_dict)
         assert result == '09:00 – 21:00'
@@ -299,7 +284,7 @@ class TestFormatOpeningHours:
     def test_handles_list_format(self):
         """list 格式（Google API 格式）正確解析並回傳今日營業時間"""
         hours_list = ['星期三: 08:00 – 20:00', '星期四: 09:00 – 21:00']
-        with patch('line_bot.builders.flex_builder.date') as mock_date:
+        with patch('line_bot.builders.shop_flex_message.date') as mock_date:
             mock_date.today.return_value.isoweekday.return_value = 3  # 星期三
             result = FlexMessageBuilder.format_opening_hours(hours_list)
         assert result == '08:00 – 20:00'
@@ -307,7 +292,7 @@ class TestFormatOpeningHours:
     def test_returns_closed_when_day_is_rest(self):
         """當天標記為休息時，回傳『今日休息』"""
         hours_dict = {'星期五': '休息'}
-        with patch('line_bot.builders.flex_builder.date') as mock_date:
+        with patch('line_bot.builders.shop_flex_message.date') as mock_date:
             mock_date.today.return_value.isoweekday.return_value = 5  # 星期五
             result = FlexMessageBuilder.format_opening_hours(hours_dict)
         assert result == '今日休息'
@@ -315,7 +300,7 @@ class TestFormatOpeningHours:
     def test_returns_closed_for_public_holiday_text(self):
         """公休文字也回傳『今日休息』"""
         hours_dict = {'星期六': '公休'}
-        with patch('line_bot.builders.flex_builder.date') as mock_date:
+        with patch('line_bot.builders.shop_flex_message.date') as mock_date:
             mock_date.today.return_value.isoweekday.return_value = 6  # 星期六
             result = FlexMessageBuilder.format_opening_hours(hours_dict)
         assert result == '今日休息'
@@ -323,11 +308,10 @@ class TestFormatOpeningHours:
     def test_returns_no_operation_when_day_missing(self):
         """今日不在資料中時，回傳『今日未營業』"""
         hours_dict = {'星期一': '09:00 – 21:00'}
-        with patch('line_bot.builders.flex_builder.date') as mock_date:
+        with patch('line_bot.builders.shop_flex_message.date') as mock_date:
             mock_date.today.return_value.isoweekday.return_value = 2  # 星期二（不在 dict 中）
             result = FlexMessageBuilder.format_opening_hours(hours_dict)
         assert result == '今日未營業'
-
 
 
 # FlexMessageBuilder.create_shop_flex_message
@@ -473,172 +457,3 @@ class TestCreateShopFlexMessage:
         rating_box = result['body']['contents'][1]
         star_icons = [c for c in rating_box['contents'] if c['type'] == 'icon']
         assert star_icons == []
-
-
-# PostbackBuilder.create_cafe_action_postback
-
-
-class TestPostbackBuilderCreateCafeActionPostback:
-    """測試 PostbackBuilder.create_cafe_action_postback"""
-
-    def _make_info(self, place_id='test_place_id'):
-        return {'place_id': place_id}
-
-    def test_not_favorited_shows_star_label(self):
-        """未收藏時，收藏按鈕顯示 '⭐ 收藏'"""
-        result = PostbackBuilder.create_cafe_action_postback(self._make_info(), is_favorited=False)
-        actions = result.to_dict()['template']['actions']
-        fav_action = actions[0]
-        assert fav_action['label'] == '⭐ 收藏'
-        assert 'action=favorite' in fav_action['data']
-
-    def test_favorited_shows_remove_label(self):
-        """已收藏時，收藏按鈕顯示 '💔 取消收藏'"""
-        result = PostbackBuilder.create_cafe_action_postback(self._make_info(), is_favorited=True)
-        actions = result.to_dict()['template']['actions']
-        fav_action = actions[0]
-        assert fav_action['label'] == '💔 取消收藏'
-        assert 'action=unfavorite' in fav_action['data']
-
-    def test_postback_data_contains_place_id(self):
-        """postback data 包含正確的 place_id"""
-        result = PostbackBuilder.create_cafe_action_postback({'place_id': 'abc_xyz'})
-        actions = result.to_dict()['template']['actions']
-        for action in actions:
-            assert 'place_id=abc_xyz' in action['data']
-
-    def test_contains_four_actions(self):
-        """按鈕選單包含 4 個 action（收藏、分享、評價、問 AI）"""
-        result = PostbackBuilder.create_cafe_action_postback(self._make_info())
-        actions = result.to_dict()['template']['actions']
-        assert len(actions) == 4
-
-    def test_all_action_labels_present(self):
-        """按鈕選單包含所有預期的標籤"""
-        result = PostbackBuilder.create_cafe_action_postback(self._make_info())
-        labels = [a['label'] for a in result.to_dict()['template']['actions']]
-        assert '⭐ 收藏' in labels
-        assert '🔗 分享' in labels
-        assert '⭐ 評價' in labels
-        assert '🤖 看看AI怎麼說' in labels
-
-
-
-# QuickReplyBuilder
-
-
-class TestQuickReplyBuilderCreateSearchAgainActions:
-    """測試 QuickReplyBuilder.create_search_again_actions"""
-
-    def test_returns_quick_reply_with_three_items(self):
-        """回傳 QuickReply 包含 3 個選項"""
-        result = QuickReplyBuilder.create_search_again_actions()
-        assert isinstance(result, QuickReply)
-        assert len(result.items) == 3
-
-    def test_contains_search_shop_name_action(self):
-        """包含『再找一間』選項"""
-        result = QuickReplyBuilder.create_search_again_actions()
-        datas = [item.action.data for item in result.items]
-        assert any(MenuAction.SEARCH_SHOP_NAME in d for d in datas)
-
-    def test_contains_share_location_action(self):
-        """包含『附近搜尋』選項"""
-        result = QuickReplyBuilder.create_search_again_actions()
-        datas = [item.action.data for item in result.items]
-        assert any(MenuAction.SHARE_LOCATION in d for d in datas)
-
-    def test_contains_favorites_action(self):
-        """包含『我的收藏』選項"""
-        result = QuickReplyBuilder.create_search_again_actions()
-        datas = [item.action.data for item in result.items]
-        assert any(MenuAction.FAVORITES in d for d in datas)
-
-
-class TestQuickReplyBuilderCreateCarouselPaginationActions:
-    """測試 QuickReplyBuilder.create_carousel_pagination_actions"""
-
-    def test_returns_quick_reply_with_four_items(self):
-        """回傳 QuickReply 包含 4 個選項"""
-        result = QuickReplyBuilder.create_carousel_pagination_actions()
-        assert isinstance(result, QuickReply)
-        assert len(result.items) == 4
-
-    def test_contains_search_address_action(self):
-        """包含路名查詢選項"""
-        result = QuickReplyBuilder.create_carousel_pagination_actions()
-        datas = [item.action.data for item in result.items]
-        assert any(MenuAction.SEARCH_ADDRESS in d for d in datas)
-
-
-class TestQuickReplyBuilderCreateLocationRequest:
-    """測試 QuickReplyBuilder.create_location_request"""
-
-    def test_returns_quick_reply_with_location_action(self):
-        """回傳 QuickReply 包含 1 個 LocationAction"""
-        result = QuickReplyBuilder.create_location_request()
-        assert isinstance(result, QuickReply)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0].action, LocationAction)
-
-    def test_location_action_label(self):
-        """LocationAction 標籤為分享位置"""
-        result = QuickReplyBuilder.create_location_request()
-        assert '分享' in result.items[0].action.label
-
-
-class TestQuickReplyBuilderCreateRecentSearchQuickReply:
-    """測試 QuickReplyBuilder.create_recent_search_quick_reply"""
-
-    def test_returns_none_when_no_history(self):
-        """無搜尋紀錄時回傳 None"""
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=[]):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert result is None
-
-    def test_returns_quick_reply_with_history(self):
-        """有搜尋紀錄時回傳 QuickReply"""
-        history = [
-            {'keyword': '星巴克', 'type': 'shop_name', 'place_id': 'p1'},
-            {'keyword': '信義路', 'type': 'address', 'place_id': None},
-        ]
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=history):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert isinstance(result, QuickReply)
-        assert len(result.items) == 2
-
-    def test_shop_name_uses_coffee_icon(self):
-        """shop_name 類型使用 ☕️ 圖示"""
-        history = [{'keyword': '星巴克', 'type': 'shop_name', 'place_id': None}]
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=history):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert '☕️' in result.items[0].action.label
-
-    def test_address_type_uses_pin_icon(self):
-        """address 類型使用 📍 圖示"""
-        history = [{'keyword': '信義路', 'type': 'address', 'place_id': None}]
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=history):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert '📍' in result.items[0].action.label
-
-    def test_label_is_truncated_to_18_chars(self):
-        """標籤超過 18 字元時截斷"""
-        long_keyword = 'a' * 20
-        history = [{'keyword': long_keyword, 'type': 'shop_name', 'place_id': None}]
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=history):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert len(result.items[0].action.label) <= 18
-
-    def test_history_limited_to_five_items(self):
-        """最多顯示 5 筆搜尋紀錄"""
-        history = [{'keyword': f'店家{i}', 'type': 'shop_name', 'place_id': None} for i in range(8)]
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=history):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert len(result.items) == 5
-
-    def test_display_text_is_keyword(self):
-        """PostbackAction 的 display_text 為搜尋關鍵字本身"""
-        history = [{'keyword': '星巴克', 'type': 'shop_name', 'place_id': None}]
-        with patch('line_bot.builders.flex_builder.SearchHistoryService.get_search_history', return_value=history):
-            result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
-        assert result.items[0].action.display_text == '星巴克'
