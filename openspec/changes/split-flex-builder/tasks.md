@@ -42,15 +42,15 @@
 
 先寫測試、後搬程式碼（依 CLAUDE.md TDD 規範，`FavoritesPageBuilder` 目前無直接單元測試）：
 
-- [ ] 5.1 盤點 `build_page_message` 的行為與邊界情況：單頁/多頁標題、收藏筆數（0 筆、1 筆、15 筆上限）、`fav.cafe.address` 為空、`fav.cafe.rating` 為 `None` 等。
-- [ ] 5.2 於 `line_bot/tests/test_flex_builder.py`（**尚未搬移前的舊實作位置**，import 仍為 `from line_bot.builders.flex_builder import FavoritesPageBuilder`）新增 `TestFavoritesPageBuilderBuildPageMessage`，涵蓋 5.1 列出的情境。
-- [ ] 5.3 執行 `uv run pytest line_bot/tests/test_flex_builder.py -k TestFavoritesPageBuilderBuildPageMessage -q`，確認針對舊實作全數通過（綠燈，證明新測試正確描述現有契約，而非搬移後才拼湊出的期望值）。
-- [ ] 5.4 建立 `line_bot/builders/favorites_page.py`，搬移 `FavoritesPageBuilder` 類別，import 改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`（直接依賴來源模組，不透過 `flex_builder.py`），並補齊 `FlexMessage`、`FlexBubble` import。
-- [ ] 5.5 建立 `line_bot/tests/builders/test_favorites_page.py`，將 5.2 新增的測試搬移過去，import 改為 `from line_bot.builders.favorites_page import FavoritesPageBuilder`，不修改任何斷言；並從 `line_bot/tests/test_flex_builder.py` 移除已搬移的測試類別。
-- [ ] 5.6 於 `flex_builder.py` 中移除 `FavoritesPageBuilder` 類別本體，改為 `from line_bot.builders.favorites_page import FavoritesPageBuilder`。
-- [ ] 5.7 執行 `uv run pytest line_bot/tests/builders/test_favorites_page.py -q`，確認獨立通過。
-- [ ] 5.8 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認累積回歸驗證全數通過。
-- [ ] 5.9 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「補齊測試並拆分 FavoritesPageBuilder」）。
+- [x] 5.1 盤點 `build_page_message` 的行為與邊界情況：單頁/多頁標題、收藏筆數（0 筆、1 筆、15 筆上限）、`fav.cafe.address` 為空、`fav.cafe.rating` 為 `None` 等。
+- [x] 5.2 於 `line_bot/tests/test_flex_builder.py`（**尚未搬移前的舊實作位置**，import 仍為 `from line_bot.builders.flex_builder import FavoritesPageBuilder`）新增 `TestFavoritesPageBuilderBuildPageMessage`，涵蓋 5.1 列出的情境。
+- [x] 5.3 執行 `uv run pytest line_bot/tests/test_flex_builder.py -k TestFavoritesPageBuilderBuildPageMessage -q`，確認針對舊實作全數通過（綠燈，證明新測試正確描述現有契約，而非搬移後才拼湊出的期望值）。10 passed。
+- [x] 5.4 建立 `line_bot/builders/favorites_page.py`，搬移 `FavoritesPageBuilder` 類別，import 改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`（直接依賴來源模組，不透過 `flex_builder.py`），並補齊 `FlexMessage`、`FlexBubble` import。
+- [x] 5.5 建立 `line_bot/tests/builders/test_favorites_page.py`，將 5.2 新增的測試搬移過去，import 改為 `from line_bot.builders.favorites_page import FavoritesPageBuilder`，不修改任何斷言；並從 `line_bot/tests/test_flex_builder.py` 移除已搬移的測試類別。
+- [x] 5.6 於 `flex_builder.py` 中移除 `FavoritesPageBuilder` 類別本體，改為 `from line_bot.builders.favorites_page import FavoritesPageBuilder`。
+- [x] 5.7 執行 `uv run pytest line_bot/tests/builders/test_favorites_page.py -q`，確認獨立通過。10 passed。
+- [x] 5.8 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認累積回歸驗證全數通過。83 passed (73+10)。
+- [x] 5.9 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「補齊測試並拆分 FavoritesPageBuilder」）。
 
 ## 6. 補齊 LineMessageBuilder 缺漏測試並搬移（依賴 FlexMessageBuilder、PostbackBuilder）
 
