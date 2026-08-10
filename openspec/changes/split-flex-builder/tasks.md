@@ -56,15 +56,15 @@
 
 先寫測試、後搬程式碼（依 CLAUDE.md TDD 規範，`LineMessageBuilder.send_shop_result` 目前無直接單元測試）：
 
-- [ ] 6.1 盤點 `send_shop_result` 的行為與邊界情況：`shops` 為空列表、單筆結果、多筆結果（2-10 筆）、`info_d is QUOTA_EXCEEDED`（單筆與多筆路徑各一次）、單筆但 `info_d` 為空、多筆結果中部分 `place_id` 已在 DB 快取命中、多筆結果全部取得失敗（`flex_messages` 為空）。
-- [ ] 6.2 於 `line_bot/tests/test_flex_builder.py`（**尚未搬移前的舊實作位置**，import 仍為 `from line_bot.builders.flex_builder import LineMessageBuilder`）新增 `TestLineMessageBuilderSendShopResult`，涵蓋 6.1 列出的情境，並視需要 `patch('line_bot.builders.flex_builder.LineMessageBuilder._get_or_create_shop_info', ...)` 隔離對 `helpers.get_or_create_cafe_info` 的依賴。
-- [ ] 6.3 執行 `uv run pytest line_bot/tests/test_flex_builder.py -k TestLineMessageBuilderSendShopResult -q`，確認針對舊實作全數通過（綠燈，證明新測試正確描述現有契約）。
-- [ ] 6.4 建立 `line_bot/builders/message_sender.py`，搬移 `LineMessageBuilder` 類別，import 改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`、`from line_bot.builders.postback import PostbackBuilder`（直接依賴來源模組），並保留 `_get_or_create_shop_info` 內部對 `line_bot.handlers.helpers.get_or_create_cafe_info` 的 lazy import 不變，補齊 `ReplyMessageRequest`、`TextMessage`、`FlexContainer`、`FlexMessage`、`QUOTA_EXCEEDED`、`Cafe`、`json`、`logger` 等所需 import。
-- [ ] 6.5 建立 `line_bot/tests/builders/test_message_sender.py`，將 6.2 新增的測試搬移過去，import 改為 `from line_bot.builders.message_sender import LineMessageBuilder`，並將 6.2 中的 patch target 同步改為 `line_bot.builders.message_sender.LineMessageBuilder._get_or_create_shop_info`，不修改任何斷言；並從 `line_bot/tests/test_flex_builder.py` 移除已搬移的測試類別。
-- [ ] 6.6 於 `flex_builder.py` 中移除 `LineMessageBuilder` 類別本體，改為 `from line_bot.builders.message_sender import LineMessageBuilder`。
-- [ ] 6.7 執行 `uv run pytest line_bot/tests/builders/test_message_sender.py -q`，確認獨立通過。
-- [ ] 6.8 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認累積回歸驗證全數通過。
-- [ ] 6.9 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「補齊測試並拆分 LineMessageBuilder」）。
+- [x] 6.1 盤點 `send_shop_result` 的行為與邊界情況：`shops` 為空列表、單筆結果、多筆結果（2-10 筆）、`info_d is QUOTA_EXCEEDED`（單筆與多筆路徑各一次）、單筆但 `info_d` 為空、多筆結果中部分 `place_id` 已在 DB 快取命中、多筆結果全部取得失敗（`flex_messages` 為空）、`>10` 筆時現有實作不回覆任何訊息（鎖定既有行為的邊界測試）。
+- [x] 6.2 於 `line_bot/tests/test_flex_builder.py`（**尚未搬移前的舊實作位置**，import 仍為 `from line_bot.builders.flex_builder import LineMessageBuilder`）新增 `TestLineMessageBuilderSendShopResult`，涵蓋 6.1 列出的情境，並視需要 `patch('line_bot.builders.flex_builder.LineMessageBuilder._get_or_create_shop_info', ...)` 隔離對 `helpers.get_or_create_cafe_info` 的依賴。
+- [x] 6.3 執行 `uv run pytest line_bot/tests/test_flex_builder.py -k TestLineMessageBuilderSendShopResult -q`，確認針對舊實作全數通過（綠燈，證明新測試正確描述現有契約）。9 passed。
+- [x] 6.4 建立 `line_bot/builders/message_sender.py`，搬移 `LineMessageBuilder` 類別，import 改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`、`from line_bot.builders.postback import PostbackBuilder`（直接依賴來源模組），並保留 `_get_or_create_shop_info` 內部對 `line_bot.handlers.helpers.get_or_create_cafe_info` 的 lazy import 不變，補齊 `ReplyMessageRequest`、`TextMessage`、`FlexContainer`、`FlexMessage`、`QUOTA_EXCEEDED`、`Cafe`、`json`、`logger` 等所需 import。
+- [x] 6.5 建立 `line_bot/tests/builders/test_message_sender.py`，將 6.2 新增的測試搬移過去，import 改為 `from line_bot.builders.message_sender import LineMessageBuilder`，並將 6.2 中的 patch target 同步改為 `line_bot.builders.message_sender.LineMessageBuilder._get_or_create_shop_info`，不修改任何斷言；並從 `line_bot/tests/test_flex_builder.py` 移除已搬移的測試類別。
+- [x] 6.6 於 `flex_builder.py` 中移除 `LineMessageBuilder` 類別本體，改為 `from line_bot.builders.message_sender import LineMessageBuilder`。此時 `flex_builder.py` 已無殘留類別定義，一併完成第 8.1 節的收斂為相容層（提前完成，見第 8 節備註）。
+- [x] 6.7 執行 `uv run pytest line_bot/tests/builders/test_message_sender.py -q`，確認獨立通過。9 passed。
+- [x] 6.8 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認累積回歸驗證全數通過。92 passed (83+9)；全套 `uv run pytest -q` 299 passed (280+19)。
+- [x] 6.9 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「補齊測試並拆分 LineMessageBuilder」）。
 
 ## 7. 相容層 identity smoke test
 

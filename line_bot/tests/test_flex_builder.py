@@ -2,3 +2,4 @@
 # PostbackBuilder: 已搬移至 line_bot/tests/builders/test_postback.py
 # QuickReplyBuilder: 已搬移至 line_bot/tests/builders/test_quick_reply.py
 # FavoritesPageBuilder: 已搬移至 line_bot/tests/builders/test_favorites_page.py
+# LineMessageBuilder: 已搬移至 line_bot/tests/builders/test_message_sender.py
