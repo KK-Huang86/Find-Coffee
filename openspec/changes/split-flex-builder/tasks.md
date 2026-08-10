@@ -74,10 +74,10 @@
 
 ## 8. 收尾：flex_builder.py 相容層與舊測試檔清理
 
-- [ ] 8.1 確認 `line_bot/builders/flex_builder.py` 此時僅剩 5 行 re-export import 與 `__all__`，無殘留類別定義；於檔案頂部加上一行註解說明此檔為相容層、實作已搬至個別模組。
-- [ ] 8.2 確認 `line_bot/tests/test_flex_builder.py` 此時已無殘留測試類別；若已清空，刪除該檔案；若仍有跨類別整合測試（如同時用到多個 Builder 的情境），改名保留為整合測試檔並更新 import。
-- [ ] 8.3 逐一確認三個呼叫端檔案（`line_bot/event_handlers.py`、`line_bot/handlers/postback_actions.py`、`line_bot/handlers/helpers.py`）完全未被修改（`git diff` 應無變更）。
-- [ ] 8.4 `git add` 並獨立 commit（訊息說明「flex_builder.py 收斂為相容層」）。
+- [x] 8.1 確認 `line_bot/builders/flex_builder.py` 此時僅剩 re-export import 與 `__all__`，無殘留類別定義（已於 6.6 提前完成）；檔案頂部已加上 docstring 說明此檔為相容層、實作已搬至個別模組。
+- [x] 8.2 確認 `line_bot/tests/test_flex_builder.py` 此時已無殘留測試類別；已清空（僅剩搬移註記），故刪除該檔案。
+- [x] 8.3 逐一確認三個呼叫端檔案（`line_bot/event_handlers.py`、`line_bot/handlers/postback_actions.py`、`line_bot/handlers/helpers.py`）完全未被修改（`git diff develop` 無任何差異）。
+- [x] 8.4 `git add` 並獨立 commit（訊息說明「flex_builder.py 收斂為相容層」）。全套 `uv run pytest -q` 304 passed (299+5)。
 
 ## 9. 最終多輪驗證
 
