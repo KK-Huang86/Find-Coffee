@@ -27,16 +27,16 @@
 
 ## 4. 拆分 FlexMessageBuilder（含私有輔助方法，既有行為搬移）
 
-- [ ] 4.1 建立 `line_bot/builders/shop_flex_message.py`，搬移 `FlexMessageBuilder` 類別（含 `get_photo_url`、`_trigger_s3_upload`、`resolve_photo_url`、`_create_attribute_tags`、`_create_tag_element`、`_create_tags_box`、`format_opening_hours`、`create_shop_flex_message` 及其內部 `_generate_star_icons`）與所需 import（`requests`、`date`、`urlencode`、`Union`、`config`、`parse_opening_hours`、`download_and_upload_cafe_photo`）。
-- [ ] 4.2 建立 `line_bot/tests/builders/test_shop_flex_message.py`，搬移 `TestGetPhotoUrl`、`TestResolvePhotoUrl`、`TestCreateAttributeTags`、`TestCreateTagElement`、`TestCreateTagsBox`、`TestFormatOpeningHours`、`TestCreateShopFlexMessage`，import 改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`，不修改任何斷言；同步將以下 patch target 改為新模組路徑（見 design.md Decision 5）：
+- [x] 4.1 建立 `line_bot/builders/shop_flex_message.py`，搬移 `FlexMessageBuilder` 類別（含 `get_photo_url`、`_trigger_s3_upload`、`resolve_photo_url`、`_create_attribute_tags`、`_create_tag_element`、`_create_tags_box`、`format_opening_hours`、`create_shop_flex_message` 及其內部 `_generate_star_icons`）與所需 import（`requests`、`date`、`urlencode`、`Union`、`config`、`parse_opening_hours`、`download_and_upload_cafe_photo`）。
+- [x] 4.2 建立 `line_bot/tests/builders/test_shop_flex_message.py`，搬移 `TestGetPhotoUrl`、`TestResolvePhotoUrl`、`TestCreateAttributeTags`、`TestCreateTagElement`、`TestCreateTagsBox`、`TestFormatOpeningHours`、`TestCreateShopFlexMessage`，import 改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`，不修改任何斷言；同步將以下 patch target 改為新模組路徑（見 design.md Decision 5）：
   - `line_bot.builders.flex_builder.requests` → `line_bot.builders.shop_flex_message.requests`
   - `line_bot.builders.flex_builder.config` → `line_bot.builders.shop_flex_message.config`
   - `line_bot.builders.flex_builder.date` → `line_bot.builders.shop_flex_message.date`
-- [ ] 4.3 從 `line_bot/tests/test_flex_builder.py` 移除已搬移的測試類別。
-- [ ] 4.4 於 `flex_builder.py` 中移除 `FlexMessageBuilder` 類別本體，改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`。
-- [ ] 4.5 執行 `uv run pytest line_bot/tests/builders/test_shop_flex_message.py -q`，確認獨立通過，並確認 `requests`/`config`/`date` 相關 patch 確實生效（例如 `TestFormatOpeningHours` 案例中 `date.today()` 回傳的是 mock 值而非真實日期）。
-- [ ] 4.6 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認前兩個已拆分模組加上剩餘測試全數通過（累積回歸驗證）。
-- [ ] 4.7 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「拆分 FlexMessageBuilder」）。
+- [x] 4.3 從 `line_bot/tests/test_flex_builder.py` 移除已搬移的測試類別。
+- [x] 4.4 於 `flex_builder.py` 中移除 `FlexMessageBuilder` 類別本體，改為 `from line_bot.builders.shop_flex_message import FlexMessageBuilder`。
+- [x] 4.5 執行 `uv run pytest line_bot/tests/builders/test_shop_flex_message.py -q`，確認獨立通過，並確認 `requests`/`config`/`date` 相關 patch 確實生效（例如 `TestFormatOpeningHours` 案例中 `date.today()` 回傳的是 mock 值而非真實日期）。53 passed。
+- [x] 4.6 執行 `uv run pytest line_bot/tests/builders/ line_bot/tests/test_flex_builder.py -q`，確認前兩個已拆分模組加上剩餘測試全數通過（累積回歸驗證）。73 passed (5+15+53)；全套 `uv run pytest -q` 280 passed，與 N_total_base 相符。
+- [x] 4.7 `git add` 本階段新增/修改檔案並獨立 commit（訊息說明「拆分 FlexMessageBuilder」）。
 
 ## 5. 補齊 FavoritesPageBuilder 缺漏測試並搬移（依賴 FlexMessageBuilder）
 
