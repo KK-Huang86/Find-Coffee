@@ -81,10 +81,10 @@
 
 ## 9. 最終多輪驗證
 
-- [ ] 9.1 執行 `uv run python manage.py check`，確認 Django app 設定與 import 無誤。
-- [ ] 9.2 執行 `uv run pytest -q` 全套測試，確認：既有測試案例數不得減少（不得低於第 1.3 步 `N_total_base`）；最終總數應等於 `N_total_base` 加上第 5、6 節為補齊邊界情況新增的測試數（`FavoritesPageBuilder`、`LineMessageBuilder`、相容層 smoke test），且全數通過。
-- [ ] 9.3 執行 `uv run pytest --cov=line_bot.builders --cov-report=term-missing`，確認覆蓋率不低於拆分前。
-- [ ] 9.4 執行 `uv run ruff check .`，確認無新增 lint 錯誤。
-- [ ] 9.5 於本機以 `uv run python -c "from line_bot.event_handlers import *"` 等方式，或啟動 `uv run python manage.py runserver` 後觸發一次 LINE webhook 相關單元測試，做最後一次端到端 import 與行為 smoke test。
-- [ ] 9.6 執行 `openspec validate split-flex-builder --strict`，確認 change 文件通過驗證。
-- [ ] 9.7 檢視 `git diff develop...refactor/split-flex-builder` 全量差異，確認除 `line_bot/builders/`、`line_bot/tests/`、`openspec/changes/split-flex-builder/` 外無其他檔案變更。
+- [x] 9.1 執行 `uv run python manage.py check`，確認 Django app 設定與 import 無誤。System check identified no issues。
+- [x] 9.2 執行 `uv run pytest -q` 全套測試，確認：既有測試案例數不得減少（不得低於第 1.3 步 `N_total_base`）；最終總數應等於 `N_total_base` 加上第 5、6 節為補齊邊界情況新增的測試數（`FavoritesPageBuilder`、`LineMessageBuilder`、相容層 smoke test），且全數通過。304 passed = 280 (N_total_base) + 10 (Favorites) + 9 (LineMessageBuilder) + 5 (相容層)。
+- [x] 9.3 執行 `uv run pytest --cov=line_bot.builders --cov-report=term-missing`，確認覆蓋率不低於拆分前。整體 94%；缺口皆為既有（Celery/S3 副作用分支、原本無測試的 `create_vote_options`），`FavoritesPageBuilder`/`LineMessageBuilder` 由原本 0% 提升至 96–100%。
+- [x] 9.4 執行 `uv run ruff check .`，確認無新增 lint 錯誤。All checks passed。
+- [x] 9.5 於本機以 `uv run python -c "from line_bot.event_handlers import *"` 等方式，或啟動 `uv run python manage.py runserver` 後觸發一次 LINE webhook 相關單元測試，做最後一次端到端 import 與行為 smoke test。三個呼叫端模組（event_handlers、handlers/postback_actions、handlers/helpers）皆 import 成功，`ACTION_HANDLERS` dispatch table 正常。
+- [x] 9.6 執行 `openspec validate split-flex-builder --strict`，確認 change 文件通過驗證。Valid。
+- [x] 9.7 檢視 `git diff develop...refactor/split-flex-builder` 全量差異，確認除 `line_bot/builders/`、`line_bot/tests/`、`openspec/changes/split-flex-builder/` 外無其他檔案變更。已確認，17 個變更檔案皆落在此三個範圍內。
