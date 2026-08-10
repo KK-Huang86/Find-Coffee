@@ -68,9 +68,9 @@
 
 ## 7. 相容層 identity smoke test
 
-- [ ] 7.1 建立 `line_bot/tests/builders/test_flex_builder_compat.py`，對 5 個類別分別斷言 `from line_bot.builders.flex_builder import X` 與各自新模組匯入的 `X` 為同一物件（`is` 比較），直接驗證 proposal.md 承諾的「呼叫端 import 路徑不需修改」相容契約（見 design.md Decision 6）。
-- [ ] 7.2 執行 `uv run pytest line_bot/tests/builders/test_flex_builder_compat.py -q`，確認全數通過。
-- [ ] 7.3 `git add` 並獨立 commit（訊息說明「新增相容層 identity smoke test」）。
+- [x] 7.1 建立 `line_bot/tests/builders/test_flex_builder_compat.py`，對 5 個類別分別斷言 `from line_bot.builders.flex_builder import X` 與各自新模組匯入的 `X` 為同一物件（`is` 比較），直接驗證 proposal.md 承諾的「呼叫端 import 路徑不需修改」相容契約（見 design.md Decision 6）。
+- [x] 7.2 執行 `uv run pytest line_bot/tests/builders/test_flex_builder_compat.py -q`，確認全數通過。5 passed。
+- [x] 7.3 `git add` 並獨立 commit（訊息說明「新增相容層 identity smoke test」）。
 
 ## 8. 收尾：flex_builder.py 相容層與舊測試檔清理
 
