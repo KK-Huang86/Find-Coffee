@@ -16,6 +16,7 @@
 - [操作流程](#操作流程)
 - [使用技術](#使用技術)
 - [快速啟動](#快速啟動)
+- [Terraform（AWS 基礎設施）](#terraformaws-基礎設施)
 - [專案架構](#專案架構)
 - [技術亮點](#技術亮點)
 - [未竟之事](#未竟之事)
@@ -248,6 +249,53 @@ uv run pytest
 
 ---
 
+## Terraform（AWS 基礎設施）
+
+S3 Bucket 與 CloudFront CDN（照片儲存與分發）由 `terraform/` 定義與管理，State 存於遠端 S3 backend（`find-coffee-terraform-state`）。
+
+### 設定變數
+
+複製 `terraform.tfvars.example` 並填入對應的值：
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+需要設定的變數：
+
+```
+aws_region     = "ap-northeast-1"
+project_name   = "find-coffee"
+environment    = "production"
+s3_bucket_name = ""   # 必填，須全球唯一，建議與 .env 的 S3_BUCKET_NAME 保持一致
+```
+
+`terraform.tfvars` 已列在 `.gitignore`，不會被 commit。
+
+### AWS 憑證
+
+Terraform 不會從 `.tfvars` 或 `.env` 讀取 AWS 憑證，`provider.tf` 中的 `aws` provider 依標準憑證鏈尋找，例如：
+
+```bash
+export AWS_ACCESS_KEY_ID=xxx
+export AWS_SECRET_ACCESS_KEY=xxx
+# 或使用 aws configure 設定的 profile
+```
+
+### 常用指令
+
+```bash
+cd terraform
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan
+terraform apply
+```
+
+---
+
 ## 專案架構
 
 ```
@@ -268,7 +316,12 @@ Find_Coffee/
 │   │   ├── postback_actions.py   # 所有 Postback action handler（dispatch table 架構）
 │   │   └── helpers.py            # 取得 / 建立咖啡店資料的共用邏輯
 │   ├── builders/
-│   │   └── flex_builder.py       # Flex Message、Carousel、Quick Reply 建構
+│   │   ├── flex_builder.py           # 相容層（re-export，實作已搬至下列各模組）
+│   │   ├── shop_flex_message.py      # 店家 Flex Message 組裝
+│   │   ├── message_sender.py         # 組裝並發送店家搜尋結果
+│   │   ├── postback.py               # 店家操作 postback 組裝
+│   │   ├── favorites_page.py         # 收藏清單分頁訊息組裝
+│   │   └── quick_reply.py            # Quick Reply 組裝
 │   └── services/
 │       └── search_cache.py       # 搜尋歷史紀錄（Redis）
 │
