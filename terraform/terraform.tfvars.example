@@ -1,0 +1,8 @@
+# 複製此檔案為 terraform.tfvars 並依實際環境填入實際值。
+
+aws_region   =
+project_name =
+environment  =
+
+# 必填：S3 bucket 名稱須全球唯一，建議與 .env 的 S3_BUCKET_NAME 保持一致
+s3_bucket_name =
