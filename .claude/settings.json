@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tmpfile=$(mktemp); if [ -n \"$(git status --porcelain 2>/dev/null)\" ]; then codex exec review --uncommitted --skip-git-repo-check -o \"$tmpfile\" >/dev/null 2>&1; else codex exec review --commit HEAD --skip-git-repo-check -o \"$tmpfile\" >/dev/null 2>&1; fi; msg=$(cat \"$tmpfile\" 2>/dev/null); rm -f \"$tmpfile\"; if [ -z \"$msg\" ]; then msg=\"(codex review 沒有輸出)\"; fi; python3 -c \"import json,sys; print(json.dumps({'systemMessage': 'Codex review:\\n\\n' + sys.argv[1]}))\" \"$msg\" 2>/dev/null || true",
+            "timeout": 180,
+            "statusMessage": "Codex 正在 review 這輪的變更..."
+          }
+        ]
+      }
+    ]
+  }
+}

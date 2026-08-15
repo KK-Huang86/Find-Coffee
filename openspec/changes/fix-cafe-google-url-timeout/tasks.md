@@ -15,7 +15,7 @@
 - [ ] 2.5 新增測試：`photo_s3_url` 已有值時，無論 `allow_sync_resolve` 為 `True` 或 `False`，皆直接回傳該 S3 URL，不受此參數影響。
 - [ ] 2.6 擴充既有測試 `test_returns_default_when_no_photo_reference_or_s3`：新增 `patch.object(FlexMessageBuilder, '_trigger_s3_upload')`，斷言 `mock_upload.assert_not_called()`——對應 specs/cafe-photo-loading/spec.md 新增的「沒有可用照片來源時不觸發背景快取」情境，明確界定「無 `photo_reference`」不屬於本次「觸發條件與解析結果無關」規則的適用範圍。
 - [ ] 2.7 於 `TestCreateShopFlexMessage` 新增測試：`create_shop_flex_message(info, is_multiple=True)` 呼叫 `get_photo_url` 時帶入 `allow_sync_resolve=False`；`is_multiple=False`（或不傳，預設值）時帶入 `allow_sync_resolve=True`（用 `patch.object(FlexMessageBuilder, 'get_photo_url')` 驗證呼叫參數）。
-- [ ] 2.8 執行 `uv run pytest line_bot/tests/builders/test_shop_flex_message.py -q`，確認 2.2-2.7 新增/調整的測試在實作變更前為紅燈，且失敗原因確實是「尚未支援 `allow_sync_resolve` 參數 / 觸發條件尚未解耦」等預期原因（例如 `TypeError: unexpected keyword argument`），而非測試本身寫錯；2.1 修改後的測試此時應仍是紅燈（因實作尚未變更）。
+- [ ] 2.8 執行 `uv run pytest line_bot/tests/builders/test_shop_flex_message.py -q`，確認 2.2-2.5、2.7 新增/調整的測試在實作變更前為紅燈，且失敗原因確實是「尚未支援 `allow_sync_resolve` 參數 / 觸發條件尚未解耦」等預期原因（例如 `TypeError: unexpected keyword argument`），而非測試本身寫錯；2.1 修改後的測試此時應仍是紅燈（因實作尚未變更）。**2.6 例外**：其涵蓋的 `else:`（無 `photo_reference`）分支本次未變更，`_trigger_s3_upload` 本來就不會被呼叫，此斷言在實作變更前應已是綠燈——確認 2.6 綠燈即可，不屬於本次的紅燈清單，用來鎖定既有行為不被意外改動。
 
 ## 3. 實作
 
