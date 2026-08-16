@@ -40,8 +40,8 @@
 
 ## 5. Spec 一致性檢查與收尾
 
-- [ ] 5.1 執行 `openspec validate parallelize-carousel-photo-resolve --strict`，確認 proposal/specs/design/tasks 一致且通過驗證。
-- [ ] 5.2 執行 `/spectra-verify`，確認實作與本 change 的 proposal/design/specs 語意一致；若回報落差，先修正實作或回頭調整 spec，確認一致後才繼續。
-- [ ] 5.3 執行 `/spectra-drift`，檢查本 change 與目前程式碼現狀是否已產生落差；若回報落差，先處理後再繼續（依 CLAUDE.md「PR 前的 Spec 一致性檢查」規範，這兩步是開 PR 前的強制流程約定）。
-- [ ] 5.4 檢視 `git diff`，確認變更範圍僅限 `line_bot/builders/shop_flex_message.py`、`line_bot/builders/message_sender.py`、`line_bot/tests/builders/test_shop_flex_message.py`、`line_bot/tests/builders/test_message_sender.py`、`openspec/changes/parallelize-carousel-photo-resolve/`。
-- [ ] 5.5 `git add` 並建立 commit（訊息說明本次變更：多筆結果照片解析改為平行嘗試，取代原本完全跳過同步解析）。
+- [x] 5.1 執行 `openspec validate parallelize-carousel-photo-resolve --strict`，確認 proposal/specs/design/tasks 一致且通過驗證。
+- [x] 5.2 執行 `/spectra-verify`，確認實作與本 change 的 proposal/design/specs 語意一致；若回報落差，先修正實作或回頭調整 spec，確認一致後才繼續。（環境內無對應 slash command，改跑 `spectra analyze parallelize-carousel-photo-resolve` 等效檢查；補齊 4.7 traceability 任務後 Coverage/Consistency/Gaps 全 Clean，剩 9 項為選填的 SUGGEST 範例補充，非落差）
+- [x] 5.3 執行 `/spectra-drift`，檢查本 change 與目前程式碼現狀是否已產生落差；若回報落差，先處理後再繼續（依 CLAUDE.md「PR 前的 Spec 一致性檢查」規範，這兩步是開 PR 前的強制流程約定）。（改跑 `spectra drift parallelize-carousel-photo-resolve`；LIGHT drift，唯一項為 anchor 偵測工具誤判 `--strict` 不在 help，經 `openspec validate --help` / `spectra validate --help` 核實皆存在，非真落差）
+- [x] 5.4 檢視 `git diff`，確認變更範圍僅限 `line_bot/builders/shop_flex_message.py`、`line_bot/builders/message_sender.py`、`line_bot/tests/builders/test_shop_flex_message.py`、`line_bot/tests/builders/test_message_sender.py`、`openspec/changes/parallelize-carousel-photo-resolve/`。
+- [x] 5.5 `git add` 並建立 commit（訊息說明本次變更：多筆結果照片解析改為平行嘗試，取代原本完全跳過同步解析）。
