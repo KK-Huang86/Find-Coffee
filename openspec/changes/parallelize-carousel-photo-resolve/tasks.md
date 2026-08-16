@@ -45,3 +45,9 @@
 - [x] 5.3 執行 `/spectra-drift`，檢查本 change 與目前程式碼現狀是否已產生落差；若回報落差，先處理後再繼續（依 CLAUDE.md「PR 前的 Spec 一致性檢查」規範，這兩步是開 PR 前的強制流程約定）。（改跑 `spectra drift parallelize-carousel-photo-resolve`；LIGHT drift，唯一項為 anchor 偵測工具誤判 `--strict` 不在 help，經 `openspec validate --help` / `spectra validate --help` 核實皆存在，非真落差）
 - [x] 5.4 檢視 `git diff`，確認變更範圍僅限 `line_bot/builders/shop_flex_message.py`、`line_bot/builders/message_sender.py`、`line_bot/tests/builders/test_shop_flex_message.py`、`line_bot/tests/builders/test_message_sender.py`、`openspec/changes/parallelize-carousel-photo-resolve/`。
 - [x] 5.5 `git add` 並建立 commit（訊息說明本次變更：多筆結果照片解析改為平行嘗試，取代原本完全跳過同步解析）。
+
+## 6. Codex Review 修正
+
+- [x] 6.1（中等）DB 連線清理改用 `django.db.connections.close_all()` 取代 `close_old_connections()`：後者是否關閉連線取決於 `CONN_MAX_AGE` 設定，本專案雖固定為 0（`core/settings.py:94`）而效果上等同必關閉，但屬間接依賴，不是函式本身保證的行為；`close_all()` 不論設定為何皆保證關閉，語意更明確可靠。同步修改 `line_bot/builders/message_sender.py`（import 與 `_resolve_single_photo_url`）、`test_message_sender.py`（patch 目標與 `test_closes_all_db_connections_once_per_info`）、`design.md` Decision 3。
+- [x] 6.2（輕微）並行證明測試改用 `threading.Barrier` 取代 wall-clock 時間門檻：原本 `elapsed < 0.2 * len(infos) * 0.7` 在 CI 負載較高時可能偶發 flaky；改用 `Barrier(len(infos), timeout=1.0)`，序列實作會使 worker 無法在時限內集合而拋出 `BrokenBarrierError`、回退預設圖，導致結果字典與預期不符而測試失敗，不再依賴牆鐘時間量測。
+- [x] 6.3 重跑驗證：`uv run pytest line_bot/tests/builders/ -q`、`uv run pytest -q` 全數通過；`Barrier` 測試重複執行 5 次無 flaky；`uv run ruff check .` 通過。

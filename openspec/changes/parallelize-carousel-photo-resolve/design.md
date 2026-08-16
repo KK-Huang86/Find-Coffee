@@ -34,8 +34,9 @@
 - 替代方案：把 `get_photo_url` 呼叫完全從 `create_shop_flex_message` 移出，改成呼叫端一律先算好 `photo_url` 再傳入（必填參數，不留預設呼叫路徑）。放棄原因：這會強制修改所有現有呼叫端（包含單筆結果路徑與 `helpers.py`），擴大變更範圍與回歸風險，不符合「多筆結果」這個具體目標；用可選參數可以把改動完全侷限在多筆結果的呼叫路徑。
 
 **3. 每個 worker 執行緒結束前，明確關閉 Django DB 連線**
-- 選擇：平行呼叫 `get_photo_url` 的 worker 函式，在 `finally` 區塊呼叫 `django.db.close_old_connections()`。
-- 理由：`get_photo_url` 內部的 `_trigger_s3_upload` 會查詢 `Cafe` model（`Cafe.objects.filter(...)`），這個查詢若在非主執行緒（worker thread）執行，Django 會在該執行緒的 thread-local 開一個新的資料庫連線；但 Django 預設只在 `request_started`／`request_finished` signal（綁定主執行緒的請求生命週期）時清理連線，worker 執行緒開的連線不會被自動清理。`ThreadPoolExecutor` 的 worker 執行緒在 `with` 區塊結束（`shutdown()`）時會終止，若沒有明確關閉連線，該連線可能以未關閉狀態遺留，在專案的 PgBouncer transaction pooling 架構下會佔用連線池資源。明確在每次 worker 任務結束時呼叫 `close_old_connections()`，可確保這個既有的 Django + 執行緒常見陷阱不會發生。
+- 選擇：平行呼叫 `get_photo_url` 的 worker 函式，在 `finally` 區塊呼叫 `django.db.connections.close_all()`。
+- 理由：`get_photo_url` 內部的 `_trigger_s3_upload` 會查詢 `Cafe` model（`Cafe.objects.filter(...)`），這個查詢若在非主執行緒（worker thread）執行，Django 會在該執行緒的 thread-local 開一個新的資料庫連線；但 Django 預設只在 `request_started`／`request_finished` signal（綁定主執行緒的請求生命週期）時清理連線，worker 執行緒開的連線不會被自動清理。`ThreadPoolExecutor` 的 worker 執行緒在 `with` 區塊結束（`shutdown()`）時會終止，若沒有明確關閉連線，該連線可能以未關閉狀態遺留，在專案的 PgBouncer transaction pooling 架構下會佔用連線池資源。
+- 為何用 `connections.close_all()` 而非 `close_old_connections()`：後者只關閉「已標記為過期／不可用」的連線，是否關閉取決於 `CONN_MAX_AGE` 設定——本專案 `CONN_MAX_AGE=0`（`core/settings.py:94`，CLAUDE.md 規定必須維持 0），效果上每次呼叫確實會關閉連線，但這是「間接依賴一個可能被改動的全域設定」而成立，不是函式本身保證的行為。`connections.close_all()` 不論 `CONN_MAX_AGE` 為何皆保證關閉所有連線，語意直接、不隨設定變動而改變行為，更符合「明確關閉」的設計意圖（此點為 codex review 建議修正，原先誤用 `close_old_connections()` 雖在本專案現行設定下功能無誤，但不夠明確可靠）。
 - 替代方案：不特別處理，依賴作業系統在執行緒結束、行程結束時最終回收 socket。放棄原因：這是已知的資源洩漏風險，在 PgBouncer transaction pooling（連線數有限）的架構下影響更明顯，屬於低成本就能避免的技術債，沒有理由不處理。
 
 **4. 平行解析的批次呼叫不篩選「哪些店家需要解析」，一律呼叫 `get_photo_url`，交由其內部既有優先序處理**
@@ -56,7 +57,7 @@
    - `create_shop_flex_message(info, is_multiple=True)`（不傳 `photo_url_override`）維持現行行為（呼叫 `get_photo_url(info, allow_sync_resolve=False)`），確保既有測試不受影響
    - 新增的平行解析方法：多筆 `infos` 平行呼叫 `get_photo_url`（每個呼叫皆帶 `allow_sync_resolve=True`），回傳正確的 `{place_id: photo_url}` 對照表
    - 平行解析時，個別 `get_photo_url` 拋出例外，不影響其他店家的結果，該店家回退 `DEFAULT_PHOTO_URL`
-   - 每次 worker 呼叫後皆呼叫 `close_old_connections`（可用 `patch` 驗證呼叫次數與 `infos` 數量一致）
+   - 每次 worker 呼叫後皆呼叫 `connections.close_all()`（可用 `patch` 驗證呼叫次數與 `infos` 數量一致）
    - `send_shop_result` 多筆結果分支：確認會呼叫新的平行解析方法，並將結果正確傳入每個 `create_shop_flex_message` 呼叫的 `photo_url_override`
 2. 確認新測試在無實作變更前為紅燈
 3. 實作：`create_shop_flex_message` 新增 `photo_url_override` 參數、`LineMessageBuilder` 新增平行解析私有方法、`send_shop_result` 多筆結果分支改為「先收集 `infos` → 平行解析 → 組裝 Flex Message」三階段

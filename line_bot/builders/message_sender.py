@@ -2,7 +2,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from django.db import close_old_connections
+from django.db import connections
 
 from linebot.v3.messaging import (
     ReplyMessageRequest,
@@ -36,13 +36,16 @@ class LineMessageBuilder:
         """
         單筆店家的照片解析 worker，供 ThreadPoolExecutor 平行呼叫。
 
-        在 worker 執行緒結束前明確關閉 Django DB 連線，避免 PgBouncer
-        transaction pooling 下遺留未關閉的連線（見 design.md Decision 3）。
+        在 worker 執行緒結束前明確關閉該執行緒持有的 Django DB 連線，避免
+        PgBouncer transaction pooling 下遺留未關閉的連線（見 design.md Decision 3）。
+        用 connections.close_all() 而非 close_old_connections()：後者是否關閉
+        取決於 CONN_MAX_AGE 設定（本專案雖固定為 0，效果上等同必關閉，但屬間接
+        依賴），close_all() 不論設定為何皆保證關閉，行為更明確、不隨設定變動。
         """
         try:
             return FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=True)
         finally:
-            close_old_connections()
+            connections.close_all()
 
     @staticmethod
     def _resolve_photo_urls_concurrently(infos):

@@ -1,5 +1,4 @@
 import threading
-import time
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -188,7 +187,7 @@ class TestLineMessageBuilderResolvePhotoUrlsConcurrently:
             return f'https://example.com/{info["place_id"]}.jpg'
 
         with patch.object(FlexMessageBuilder, 'get_photo_url', side_effect=fake_get_photo_url) as mock_get, \
-             patch('line_bot.builders.message_sender.close_old_connections'):
+             patch('line_bot.builders.message_sender.connections'):
             result = LineMessageBuilder._resolve_photo_urls_concurrently(infos)
 
         assert result == {
@@ -209,22 +208,22 @@ class TestLineMessageBuilderResolvePhotoUrlsConcurrently:
             return f'https://example.com/{info["place_id"]}.jpg'
 
         with patch.object(FlexMessageBuilder, 'get_photo_url', side_effect=fake_get_photo_url), \
-             patch('line_bot.builders.message_sender.close_old_connections'):
+             patch('line_bot.builders.message_sender.connections'):
             result = LineMessageBuilder._resolve_photo_urls_concurrently(infos)
 
         assert result['p1'] == 'https://example.com/p1.jpg'
         assert result['p2'] == FlexMessageBuilder.DEFAULT_PHOTO_URL
         assert result['p3'] == 'https://example.com/p3.jpg'
 
-    def test_closes_old_connections_once_per_info(self):
-        """每次 worker 呼叫結束後皆呼叫 close_old_connections，次數與 infos 筆數一致"""
+    def test_closes_all_db_connections_once_per_info(self):
+        """每次 worker 呼叫結束後皆呼叫 connections.close_all()，次數與 infos 筆數一致"""
         infos = [self._make_info('p1'), self._make_info('p2')]
 
         with patch.object(FlexMessageBuilder, 'get_photo_url', return_value='https://example.com/x.jpg'), \
-             patch('line_bot.builders.message_sender.close_old_connections') as mock_close:
+             patch('line_bot.builders.message_sender.connections') as mock_connections:
             LineMessageBuilder._resolve_photo_urls_concurrently(infos)
 
-        assert mock_close.call_count == len(infos)
+        assert mock_connections.close_all.call_count == len(infos)
 
     def test_empty_infos_returns_empty_dict(self):
         """infos 為空時直接回傳空字典"""
@@ -235,25 +234,24 @@ class TestLineMessageBuilderResolvePhotoUrlsConcurrently:
         mock_get.assert_not_called()
 
     def test_calls_run_concurrently_not_sequentially(self):
-        """證明真正並行：序列迴圈會讓最大同時執行數停在 1、總耗時趨近 infos 數 * 0.2 秒，會被此測試擋下"""
+        """
+        證明真正並行（非序列迴圈偽裝），用 Barrier 同步而非量測牆鐘時間，避免 CI 負載造成 flaky：
+        Barrier 要求所有 3 個 worker 皆到達等待點才會一起放行；若實作退化為序列呼叫，
+        每次只會有 1 個 worker 到達，其餘 2 個未到位，Barrier 在 timeout 後拋出
+        BrokenBarrierError，該筆 get_photo_url 呼叫失敗、回退為 DEFAULT_PHOTO_URL，
+        導致最終結果與預期的真實 URL 不符，測試因此失敗。
+        """
         infos = [self._make_info(f'p{i}') for i in range(3)]
-        lock = threading.Lock()
-        state = {'current': 0, 'max_concurrent': 0}
+        barrier = threading.Barrier(len(infos), timeout=1.0)
 
         def fake_get_photo_url(info, allow_sync_resolve=True):
-            with lock:
-                state['current'] += 1
-                state['max_concurrent'] = max(state['max_concurrent'], state['current'])
-            time.sleep(0.2)
-            with lock:
-                state['current'] -= 1
+            barrier.wait()
             return f'https://example.com/{info["place_id"]}.jpg'
 
         with patch.object(FlexMessageBuilder, 'get_photo_url', side_effect=fake_get_photo_url), \
-             patch('line_bot.builders.message_sender.close_old_connections'):
-            start = time.monotonic()
-            LineMessageBuilder._resolve_photo_urls_concurrently(infos)
-            elapsed = time.monotonic() - start
+             patch('line_bot.builders.message_sender.connections'):
+            result = LineMessageBuilder._resolve_photo_urls_concurrently(infos)
 
-        assert state['max_concurrent'] >= 2
-        assert elapsed < 0.2 * len(infos) * 0.7
+        assert result == {
+            f'p{i}': f'https://example.com/p{i}.jpg' for i in range(len(infos))
+        }
