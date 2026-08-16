@@ -37,15 +37,16 @@ class FlexMessageBuilder:
     }
 
     @staticmethod
-    def get_photo_url(cafe_dict_or_obj):
+    def get_photo_url(cafe_dict_or_obj, allow_sync_resolve=True):
         """
         取得照片 URL 的優先順序：
         1. S3 URL -> 若已經查詢過會異步存到 S3，再從 S3 抓下來
-        2. resolve Google Photo URL -> 透過 photo_reference 去抓取實際的圖片 url（僅限第一次）
-        3. 預設圖 -> 若沒有設定 photo_reference，給預設圖
+        2. resolve Google Photo URL -> 透過 photo_reference 去抓取實際的圖片 url（僅限第一次，且 allow_sync_resolve 為 True 時才會同步嘗試）
+        3. 預設圖 -> 若沒有設定 photo_reference，或 allow_sync_resolve 為 False，給預設圖
 
         Args:
             cafe_dict_or_obj: dict 或 Cafe model 物件
+            allow_sync_resolve: 是否允許同步呼叫 Google Photo API 解析（單筆結果可等待，多筆結果應設為 False 避免逐間阻塞）
 
         Returns:
             str: 照片 URL
@@ -65,11 +66,14 @@ class FlexMessageBuilder:
 
 
         elif photo_reference:
-            logger.info(f'place_id: {place_id}, photo_reference: {photo_reference}，解析google photo')
-            resolved_url = FlexMessageBuilder.resolve_photo_url(photo_reference)
+            if allow_sync_resolve:
+                logger.info(f'place_id: {place_id}, photo_reference: {photo_reference}，解析google photo')
+                resolved_url = FlexMessageBuilder.resolve_photo_url(photo_reference)
+            else:
+                resolved_url = FlexMessageBuilder.DEFAULT_PHOTO_URL
 
-            if resolved_url != FlexMessageBuilder.DEFAULT_PHOTO_URL:
-                FlexMessageBuilder._trigger_s3_upload(place_id)
+            # 背景快取觸發與同步解析是否嘗試、是否成功無關，只要有 photo_reference 且尚未快取即觸發
+            FlexMessageBuilder._trigger_s3_upload(place_id)
 
             return resolved_url
 
@@ -330,7 +334,7 @@ class FlexMessageBuilder:
         })
 
         # 處理咖啡店照片
-        photo_url = FlexMessageBuilder.get_photo_url(info)
+        photo_url = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=not is_multiple)
 
         # 建立 Flex Message
         flex_message = {
