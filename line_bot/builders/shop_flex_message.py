@@ -37,7 +37,7 @@ class FlexMessageBuilder:
     }
 
     @staticmethod
-    def get_photo_url(cafe_dict_or_obj, allow_sync_resolve=True):
+    def get_photo_url(cafe_dict_or_obj, allow_sync_resolve: bool = True):
         """
         取得照片 URL 的優先順序：
         1. S3 URL -> 若已經查詢過會異步存到 S3，再從 S3 抓下來
