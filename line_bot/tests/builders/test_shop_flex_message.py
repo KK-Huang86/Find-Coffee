@@ -520,3 +520,22 @@ class TestCreateShopFlexMessage:
             FlexMessageBuilder.create_shop_flex_message(info)
 
         mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=True)
+
+    def test_photo_url_override_used_directly_without_calling_get_photo_url(self):
+        """photo_url_override 有值時，直接用它當 photo_url，不呼叫 get_photo_url"""
+        info = self._make_info()
+        with patch.object(FlexMessageBuilder, 'get_photo_url') as mock_get_photo_url:
+            result = FlexMessageBuilder.create_shop_flex_message(
+                info, is_multiple=True, photo_url_override='https://example.com/x.jpg'
+            )
+
+        mock_get_photo_url.assert_not_called()
+        assert result['hero']['url'] == 'https://example.com/x.jpg'
+
+    def test_photo_url_override_none_falls_back_to_get_photo_url(self):
+        """photo_url_override 為 None（顯式傳入或不傳）時，行為與現行一致，仍呼叫 get_photo_url"""
+        info = self._make_info()
+        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL) as mock_get_photo_url:
+            FlexMessageBuilder.create_shop_flex_message(info, is_multiple=True, photo_url_override=None)
+
+        mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=False)
