@@ -277,7 +277,7 @@ class FlexMessageBuilder:
         return '今日未營業'
 
     @staticmethod
-    def create_shop_flex_message(info, is_multiple=False):
+    def create_shop_flex_message(info, is_multiple=False, photo_url_override=None):
 
         def _generate_star_icons(rating):
             """根據評分生成星星圖示"""
@@ -334,7 +334,10 @@ class FlexMessageBuilder:
         })
 
         # 處理咖啡店照片
-        photo_url = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=not is_multiple)
+        if photo_url_override is not None:
+            photo_url = photo_url_override
+        else:
+            photo_url = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=not is_multiple)
 
         # 建立 Flex Message
         flex_message = {

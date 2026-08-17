@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -143,3 +145,113 @@ class TestLineMessageBuilderSendShopResult:
         LineMessageBuilder.send_shop_result(api, 'tok', shops, self._make_user())
         api.reply_message.assert_not_called()
         api.reply_message_with_http_info.assert_not_called()
+
+    def test_multiple_shops_passes_resolved_photo_url_map_as_override(self):
+        """多筆結果分支會呼叫平行解析方法，並將對照表中對應的 URL 傳入每筆 create_shop_flex_message 的 photo_url_override"""
+        api = MagicMock()
+        shops = [{'place_id': f'p{i}'} for i in range(5)]
+        info_ds = [{'place_id': f'p{i}', 'name': f'shop{i}'} for i in range(5)]
+        photo_url_map = {f'p{i}': f'https://example.com/p{i}.jpg' for i in range(5)}
+
+        with patch(
+            'line_bot.builders.message_sender.LineMessageBuilder._get_or_create_shop_info',
+            side_effect=[(info_d, MagicMock()) for info_d in info_ds],
+        ), \
+            patch.object(
+                LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value=photo_url_map
+            ) as mock_resolve, \
+            patch.object(
+                FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}
+            ) as mock_flex:
+            LineMessageBuilder.send_shop_result(api, 'tok', shops, self._make_user())
+
+        mock_resolve.assert_called_once_with(info_ds)
+        for i, info_d in enumerate(info_ds):
+            mock_flex.assert_any_call(
+                info_d, is_multiple=True, photo_url_override=photo_url_map[f'p{i}']
+            )
+
+
+@pytest.mark.django_db
+class TestLineMessageBuilderResolvePhotoUrlsConcurrently:
+    """測試 LineMessageBuilder._resolve_photo_urls_concurrently"""
+
+    def _make_info(self, place_id):
+        return {'place_id': place_id, 'photo_reference': f'ref-{place_id}', 'photo_s3_url': ''}
+
+    def test_calls_get_photo_url_with_sync_resolve_allowed_for_each_info(self):
+        """對每筆 info 平行呼叫 get_photo_url，皆帶入 allow_sync_resolve=True"""
+        infos = [self._make_info('p1'), self._make_info('p2'), self._make_info('p3')]
+
+        def fake_get_photo_url(info, allow_sync_resolve=True):
+            return f'https://example.com/{info["place_id"]}.jpg'
+
+        with patch.object(FlexMessageBuilder, 'get_photo_url', side_effect=fake_get_photo_url) as mock_get, \
+             patch('line_bot.builders.message_sender.connections'):
+            result = LineMessageBuilder._resolve_photo_urls_concurrently(infos)
+
+        assert result == {
+            'p1': 'https://example.com/p1.jpg',
+            'p2': 'https://example.com/p2.jpg',
+            'p3': 'https://example.com/p3.jpg',
+        }
+        for call in mock_get.call_args_list:
+            assert call.kwargs.get('allow_sync_resolve') is True or call.args[1] is True
+
+    def test_single_failure_falls_back_to_default_without_affecting_others(self):
+        """某一筆 get_photo_url 拋出例外時，該筆回退預設圖，不影響其他筆的正確結果"""
+        infos = [self._make_info('p1'), self._make_info('p2'), self._make_info('p3')]
+
+        def fake_get_photo_url(info, allow_sync_resolve=True):
+            if info['place_id'] == 'p2':
+                raise RuntimeError('boom')
+            return f'https://example.com/{info["place_id"]}.jpg'
+
+        with patch.object(FlexMessageBuilder, 'get_photo_url', side_effect=fake_get_photo_url), \
+             patch('line_bot.builders.message_sender.connections'):
+            result = LineMessageBuilder._resolve_photo_urls_concurrently(infos)
+
+        assert result['p1'] == 'https://example.com/p1.jpg'
+        assert result['p2'] == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        assert result['p3'] == 'https://example.com/p3.jpg'
+
+    def test_closes_all_db_connections_once_per_info(self):
+        """每次 worker 呼叫結束後皆呼叫 connections.close_all()，次數與 infos 筆數一致"""
+        infos = [self._make_info('p1'), self._make_info('p2')]
+
+        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value='https://example.com/x.jpg'), \
+             patch('line_bot.builders.message_sender.connections') as mock_connections:
+            LineMessageBuilder._resolve_photo_urls_concurrently(infos)
+
+        assert mock_connections.close_all.call_count == len(infos)
+
+    def test_empty_infos_returns_empty_dict(self):
+        """infos 為空時直接回傳空字典"""
+        with patch.object(FlexMessageBuilder, 'get_photo_url') as mock_get:
+            result = LineMessageBuilder._resolve_photo_urls_concurrently([])
+
+        assert result == {}
+        mock_get.assert_not_called()
+
+    def test_calls_run_concurrently_not_sequentially(self):
+        """
+        證明真正並行（非序列迴圈偽裝），用 Barrier 同步而非量測牆鐘時間，避免 CI 負載造成 flaky：
+        Barrier 要求所有 3 個 worker 皆到達等待點才會一起放行；若實作退化為序列呼叫，
+        每次只會有 1 個 worker 到達，其餘 2 個未到位，Barrier 在 timeout 後拋出
+        BrokenBarrierError，該筆 get_photo_url 呼叫失敗、回退為 DEFAULT_PHOTO_URL，
+        導致最終結果與預期的真實 URL 不符，測試因此失敗。
+        """
+        infos = [self._make_info(f'p{i}') for i in range(3)]
+        barrier = threading.Barrier(len(infos), timeout=1.0)
+
+        def fake_get_photo_url(info, allow_sync_resolve=True):
+            barrier.wait()
+            return f'https://example.com/{info["place_id"]}.jpg'
+
+        with patch.object(FlexMessageBuilder, 'get_photo_url', side_effect=fake_get_photo_url), \
+             patch('line_bot.builders.message_sender.connections'):
+            result = LineMessageBuilder._resolve_photo_urls_concurrently(infos)
+
+        assert result == {
+            f'p{i}': f'https://example.com/p{i}.jpg' for i in range(len(infos))
+        }
