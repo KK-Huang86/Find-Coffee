@@ -1,6 +1,6 @@
 ## 1. 前置準備與基準驗證
 
-- [ ] 1.1 確認目前在 `feature/fix-to-dict-bug` 分支，且分支乾淨地從最新 `develop` 分出（`git merge-base develop HEAD` 應等於 `HEAD`）。
+- [ ] 1.1 確認目前在 `feature/fix-to-dict-bug` 分支，且分支乾淨地從最新 `develop` 分出（`git merge-base develop HEAD` 應等於 `git rev-parse develop`；比對對象是 `develop` 本身而非 `HEAD`——分支上一旦有新 commit，`HEAD` 就會領先 `develop`，用 `HEAD` 當比對基準在那之後永遠無法成立）。
 - [ ] 1.2 `git add openspec/changes/fix-cafe-data-integrity-edge-cases/` 並建立 commit，將本 change 的 proposal/specs/design/tasks 規劃文件單獨提交，使工作目錄回到乾淨狀態。
 - [ ] 1.3 確認 `git status` 乾淨。
 - [ ] 1.4 執行 `uv run pytest cafe/tests/test_models.py users/tests/test_models.py -q`，記錄基準測試數與全數通過（基準綠燈）。
