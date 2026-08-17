@@ -30,21 +30,25 @@ class TestGetPhotoUrl:
         mock_upload.assert_called_once_with('p1')
         assert result == resolved
 
-    def test_does_not_trigger_upload_when_resolved_to_default(self):
-        """解析後得到預設圖時，不觸發 S3 上傳"""
+    def test_triggers_upload_even_when_resolved_to_default(self):
+        """解析後得到預設圖時，仍觸發 S3 上傳（商業邏輯變更：背景快取觸發不再依賴同步解析是否成功，見 design.md Decision 2；此測試斷言由「不觸發」改為「觸發」，非遷就實作而修改）"""
         info = {'photo_s3_url': '', 'photo_reference': 'ref123', 'place_id': 'p1'}
 
         with patch.object(FlexMessageBuilder, 'resolve_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL), \
              patch.object(FlexMessageBuilder, '_trigger_s3_upload') as mock_upload:
             FlexMessageBuilder.get_photo_url(info)
 
-        mock_upload.assert_not_called()
+        mock_upload.assert_called_once_with('p1')
 
     def test_returns_default_when_no_photo_reference_or_s3(self):
-        """photo_s3_url 和 photo_reference 皆為空時，回傳預設圖"""
+        """photo_s3_url 和 photo_reference 皆為空時，回傳預設圖，且不觸發背景快取（無可用照片來源，不屬於「觸發條件與解析結果無關」規則的適用範圍，見 specs/cafe-photo-loading/spec.md）"""
         info = {'photo_s3_url': '', 'photo_reference': '', 'place_id': 'p1'}
-        result = FlexMessageBuilder.get_photo_url(info)
+
+        with patch.object(FlexMessageBuilder, '_trigger_s3_upload') as mock_upload:
+            result = FlexMessageBuilder.get_photo_url(info)
+
         assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        mock_upload.assert_not_called()
 
     @pytest.mark.django_db
     def test_accepts_cafe_model_object(self):
@@ -52,6 +56,49 @@ class TestGetPhotoUrl:
         cafe = CafeFactory(photo_s3_url='https://s3.example.com/cafe.jpg')
         result = FlexMessageBuilder.get_photo_url(cafe)
         assert result == 'https://s3.example.com/cafe.jpg'
+
+    def test_skips_sync_resolve_when_allow_sync_resolve_false(self):
+        """allow_sync_resolve=False 時，photo_s3_url 為空但有 photo_reference，不呼叫 resolve_photo_url，直接回傳預設圖"""
+        info = {'photo_s3_url': '', 'photo_reference': 'ref123', 'place_id': 'p1'}
+
+        with patch.object(FlexMessageBuilder, 'resolve_photo_url') as mock_resolve, \
+             patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
+            result = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=False)
+
+        mock_resolve.assert_not_called()
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+
+    def test_triggers_upload_even_when_sync_resolve_skipped(self):
+        """allow_sync_resolve=False 時，即使跳過同步解析，仍觸發 S3 背景上傳"""
+        info = {'photo_s3_url': '', 'photo_reference': 'ref123', 'place_id': 'p1'}
+
+        with patch.object(FlexMessageBuilder, 'resolve_photo_url'), \
+             patch.object(FlexMessageBuilder, '_trigger_s3_upload') as mock_upload:
+            FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=False)
+
+        mock_upload.assert_called_once_with('p1')
+
+    def test_allow_sync_resolve_true_explicit_matches_default(self):
+        """allow_sync_resolve=True 顯式傳入時，行為與不傳（預設值）一致，皆會呼叫 resolve_photo_url"""
+        info = {'photo_s3_url': '', 'photo_reference': 'ref123', 'place_id': 'p1'}
+        resolved = 'https://lh3.googleusercontent.com/photo.jpg'
+
+        with patch.object(FlexMessageBuilder, 'resolve_photo_url', return_value=resolved) as mock_resolve, \
+             patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
+            result = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=True)
+
+        mock_resolve.assert_called_once_with('ref123')
+        assert result == resolved
+
+    def test_s3_url_returned_regardless_of_allow_sync_resolve(self):
+        """photo_s3_url 已有值時，無論 allow_sync_resolve 為 True 或 False，皆直接回傳該 S3 URL"""
+        info = {'photo_s3_url': 'https://s3.example.com/photo.jpg', 'photo_reference': 'ref123', 'place_id': 'p1'}
+
+        result_true = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=True)
+        result_false = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=False)
+
+        assert result_true == 'https://s3.example.com/photo.jpg'
+        assert result_false == 'https://s3.example.com/photo.jpg'
 
 
 # FlexMessageBuilder.resolve_photo_url
@@ -457,3 +504,38 @@ class TestCreateShopFlexMessage:
         rating_box = result['body']['contents'][1]
         star_icons = [c for c in rating_box['contents'] if c['type'] == 'icon']
         assert star_icons == []
+
+    def test_multiple_results_calls_get_photo_url_with_sync_resolve_disallowed(self):
+        """is_multiple=True 時，get_photo_url 被呼叫時帶入 allow_sync_resolve=False"""
+        info = self._make_info()
+        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL) as mock_get_photo_url:
+            FlexMessageBuilder.create_shop_flex_message(info, is_multiple=True)
+
+        mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=False)
+
+    def test_single_result_calls_get_photo_url_with_sync_resolve_allowed(self):
+        """is_multiple=False（或不傳，預設值）時，get_photo_url 被呼叫時帶入 allow_sync_resolve=True"""
+        info = self._make_info()
+        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL) as mock_get_photo_url:
+            FlexMessageBuilder.create_shop_flex_message(info)
+
+        mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=True)
+
+    def test_photo_url_override_used_directly_without_calling_get_photo_url(self):
+        """photo_url_override 有值時，直接用它當 photo_url，不呼叫 get_photo_url"""
+        info = self._make_info()
+        with patch.object(FlexMessageBuilder, 'get_photo_url') as mock_get_photo_url:
+            result = FlexMessageBuilder.create_shop_flex_message(
+                info, is_multiple=True, photo_url_override='https://example.com/x.jpg'
+            )
+
+        mock_get_photo_url.assert_not_called()
+        assert result['hero']['url'] == 'https://example.com/x.jpg'
+
+    def test_photo_url_override_none_falls_back_to_get_photo_url(self):
+        """photo_url_override 為 None（顯式傳入或不傳）時，行為與現行一致，仍呼叫 get_photo_url"""
+        info = self._make_info()
+        with patch.object(FlexMessageBuilder, 'get_photo_url', return_value=FlexMessageBuilder.DEFAULT_PHOTO_URL) as mock_get_photo_url:
+            FlexMessageBuilder.create_shop_flex_message(info, is_multiple=True, photo_url_override=None)
+
+        mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=False)
