@@ -131,6 +131,53 @@ class TestCafeModel:
 
         assert result['last_refreshed'] == refresh_time.isoformat()
 
+    def test_to_dict_with_both_coordinates_set(self):
+        """座標皆有值時，to_dict 回傳對應浮點數"""
+        cafe = CafeFactory(lat=Decimal('25.033964'), lng=Decimal('121.564468'))
+
+        result = cafe.to_dict()
+
+        assert result['lat'] == pytest.approx(25.033964)
+        assert result['lng'] == pytest.approx(121.564468)
+
+    def test_to_dict_with_both_coordinates_none(self):
+        """座標皆為 None 時，to_dict 不拋例外，回傳 None"""
+        cafe = CafeFactory(lat=None, lng=None)
+
+        result = cafe.to_dict()
+
+        assert result['lat'] is None
+        assert result['lng'] is None
+
+    def test_to_dict_with_lat_none_lng_set(self):
+        """僅 lat 為 None、lng 有值時，to_dict 不拋例外，lat 回傳 None、lng 回傳浮點數"""
+        cafe = CafeFactory(lat=None, lng=Decimal('121.564468'))
+
+        result = cafe.to_dict()
+
+        assert result['lat'] is None
+        assert result['lng'] == pytest.approx(121.564468)
+
+    def test_to_dict_with_lng_none_lat_set(self):
+        """僅 lng 為 None、lat 有值時，to_dict 不拋例外，lng 回傳 None、lat 回傳浮點數"""
+        cafe = CafeFactory(lat=Decimal('25.033964'), lng=None)
+
+        result = cafe.to_dict()
+
+        assert result['lat'] == pytest.approx(25.033964)
+        assert result['lng'] is None
+
+    def test_to_dict_coordinates_do_not_fallback_to_zero(self):
+        """座標缺值時不 fallback 為 0.0（明確斷言 is None，避免誤改成 0.0 仍通過測試）"""
+        cafe = CafeFactory(lat=None, lng=None)
+
+        result = cafe.to_dict()
+
+        assert result['lat'] is None
+        assert result['lat'] != 0.0
+        assert result['lng'] is None
+        assert result['lng'] != 0.0
+
     def test_get_popular_cafes(self):
         """測試取得熱門咖啡店"""
         # 先清空資料
