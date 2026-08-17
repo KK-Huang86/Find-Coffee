@@ -1,8 +1,11 @@
+import logging
 import random
 import string
 
 from django.core.exceptions import ValidationError
-from django.db import models, IntegrityError
+from django.db import models, IntegrityError, router, transaction
+
+logger = logging.getLogger(__name__)
 
 
 # Create your models here.
@@ -43,18 +46,27 @@ class User(models.Model):
             super().save(*args, **kwargs)
             return
 
+        using = kwargs.get('using') or router.db_for_write(self.__class__, instance=self)
         last_error = None
         for attempt in range(10):
             self.member_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
             try:
-                super().save(*args, **kwargs)
+                with transaction.atomic(using=using):
+                    super().save(*args, **kwargs)
                 return
             except IntegrityError as e:
                 if 'member_code' not in str(e):
                     raise
                 last_error = e  # 保存原始錯誤
+                logger.warning(
+                    f'member_code 撞號，觸發 rollback 並重試 (attempt {attempt + 1}/10)，'
+                    f'line_user_id={self.line_user_id}'
+                )
 
         # 執行 10 次都失敗
+        logger.error(
+            f'member_code 重試 10 次仍撞號，建立失敗，line_user_id={self.line_user_id}'
+        )
         raise IntegrityError(
             f'Failed to generate a unique member_code after {attempt + 1} attempts.'
         ) from last_error
