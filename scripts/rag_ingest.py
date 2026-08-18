@@ -53,35 +53,45 @@ def _api_url(path: str) -> str:
     return f"{BASE_URL.rstrip('/')}/api{path}"
 
 
-def _iter_document_entries(node: dict) -> list[dict]:
+def _iter_document_entries(node: dict, prefix: str = "") -> list[tuple[str, dict]]:
     """AnythingLLM 的 `GET /v1/documents` 以 `localFiles` 巢狀資料夾樹回傳文件，
-    而非扁平陣列，需遞迴走訪每個 folder 的 `items` 找出實際文件節點。"""
-    entries = []
+    而非扁平陣列，需遞迴走訪每個 folder 的 `items` 找出實際文件節點；同時累積
+    父資料夾路徑，因為 `DELETE /v1/system/remove-documents` 要求的 `names` 是
+    含資料夾前綴的完整路徑（例如 `custom-documents/raw-xxx.json`），只傳檔案
+    自身的 `name` 短檔名會回應 `success: true` 但實際不會刪除任何文件（實測確
+    認的靜默失效）。"""
+    entries: list[tuple[str, dict]] = []
     for item in node.get("items", []) or []:
         if item.get("type") == "folder":
-            entries.extend(_iter_document_entries(item))
+            entries.extend(_iter_document_entries(item, prefix + item["name"] + "/"))
         else:
-            entries.append(item)
+            entries.append((prefix + item["name"], item))
     return entries
 
 
-def find_existing_document(title: str) -> str | None:
+def find_existing_document(source_id: str) -> str | None:
+    """以 `metadata.docSource` 比對是否已有相同來源檔案的既有文件。
+
+    AnythingLLM 的 raw-text upload 會對 `metadata.title` 做內部 slugify（例如
+    `openspec/specs/x/spec.md` 存成 `openspec-specs-x-spec.txt`），不會原樣保
+    留，因此不能拿 title 當穩定識別碼比對；`docSource` 則會原樣保留，且會出
+    現在 `GET /v1/documents` 的回應中，故改用它。"""
     response = requests.get(
         _api_url("/v1/documents"), headers=_auth_headers(), timeout=REQUEST_TIMEOUT
     )
     response.raise_for_status()
     root = response.json().get("localFiles", {})
-    for document in _iter_document_entries(root):
-        if document.get("title") == title:
-            return document.get("name")
+    for full_path, document in _iter_document_entries(root):
+        if document.get("docSource") == source_id:
+            return full_path
     return None
 
 
-def remove_document(name: str) -> None:
+def remove_document(full_path: str) -> None:
     response = requests.delete(
         _api_url("/v1/system/remove-documents"),
         headers=_auth_headers(),
-        json={"names": [name]},
+        json={"names": [full_path]},
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
@@ -95,7 +105,7 @@ def upload_document(path: str, slug: str, content: str | None = None) -> None:
         headers=_auth_headers(),
         json={
             "textContent": content,
-            "metadata": {"title": path},
+            "metadata": {"title": path, "docSource": path},
             "addToWorkspaces": slug,
         },
         timeout=REQUEST_TIMEOUT,

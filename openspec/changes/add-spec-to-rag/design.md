@@ -39,10 +39,13 @@
 - **實作階段修正（重要）**：本文件與 spec.md 中列出的路徑（`/v1/document/raw-text`、`/v1/documents`、`/v1/system/remove-documents`）皆為 `openapi.json` 內 `paths` 的相對路徑，實際請求需另外帶上 `openapi.json` 的 `servers[0].url`（`/api`）前綴，即完整路徑為 `/api/v1/document/raw-text` 等。首次實作時漏了這個前綴，導致請求打到 AnythingLLM 前端 SPA 的 HTML fallback route（回應 200 OK 但非 JSON），`response.json()` 解析失敗後被 Decision 4 的例外處理吞掉、記錄為失敗——功能完全不會生效但不會有明顯報錯，屬於與 Decision 1a 同類的靜默失效模式。已在 code review 階段發現並修正，`scripts/rag_ingest.py` 內所有 API 呼叫皆統一透過 `_api_url()` 補上 `/api` 前綴。
 
 **3. 寫入前先查重、刪除舊版本，再寫入新版本**
-- 選擇：呼叫 `GET /v1/documents` 列出所有既有文件，比對 `title` 是否等於本次要寫入檔案的 repo 相對路徑；若找到，先呼叫 `DELETE /v1/system/remove-documents`（帶入既有文件的 `name`）移除，再執行 Decision 2 的寫入。
+- 選擇：呼叫 `GET /v1/documents` 列出所有既有文件，比對 `metadata.docSource` 是否等於本次要寫入檔案的 repo 相對路徑；若找到，先呼叫 `DELETE /v1/system/remove-documents`（帶入既有文件的完整路徑）移除，再執行 Decision 2 的寫入。
 - 理由：實測確認 AnythingLLM 每次 `raw-text` 呼叫都會建立帶隨機 UUID 的全新文件，不會自動辨識「這是同一份檔案的新版本」。若不處理，`sdd-current-specs` workspace 會隨著 spec 多次修改而累積新舊版本混雜，導致 agent 查詢時可能取得過期內容，直接違背這次變更「讓 agent 查到正確現行規格」的核心目的。
 - 替代方案：不做去重，讓文件持續累加。放棄原因：對「歷史決策」workspace 或許還能接受（archive 目錄理論上不會重複修改），但對「現行規格」workspace 是不可接受的正確性問題，因此統一處理不特例。
-- **實作階段修正**：`GET /v1/documents` 的回應並非扁平的文件陣列，而是以 `localFiles` 為根、逐層 `items` 巢狀的資料夾樹（folder/file 混合節點）；比對 `title` 前需先遞迴走訪整棵樹取出所有 file 節點。首次實作時誤以為是扁平 `documents` 陣列，會導致查重永遠找不到既有文件、無法觸發移除，等同 Decision 3 的去重機制失效。已在 code review 階段發現並修正（`_iter_document_entries()`）。
+- **實作階段修正**：`GET /v1/documents` 的回應並非扁平的文件陣列，而是以 `localFiles` 為根、逐層 `items` 巢狀的資料夾樹（folder/file 混合節點）；比對前需先遞迴走訪整棵樹取出所有 file 節點。首次實作時誤以為是扁平 `documents` 陣列，會導致查重永遠找不到既有文件、無法觸發移除，等同 Decision 3 的去重機制失效。已在 code review 階段發現並修正（`_iter_document_entries()`）。
+- **實作階段重大修正（原設計假設錯誤）**：原設計假設 `metadata.title` 會被 AnythingLLM 原樣保留、可直接拿來比對去重。實測發現 AnythingLLM 的 collector 對 `title` 會做內部 slugify（例如 `openspec/specs/x/spec.md` 存成 `openspec-specs-x-spec.txt`），且此轉換規則不透明（讀 container 內原始碼推算出的公式與實際 HTTP API 行為不一致，懷疑跑的是不同建置版本），不可依賴自行重現。改用 `metadata.docSource` 作為去重識別碼——此欄位在 AnythingLLM 端不會被轉換、原樣保留，且會出現在 `GET /v1/documents` 回應中，故 `upload_document()` 同時帶入 `title`（保留可讀性）與 `docSource`（穩定識別碼），`find_existing_document()` 改比對 `docSource`。
+- **實作階段重大修正（remove-documents 需要完整路徑）**：`DELETE /v1/system/remove-documents` 的 `names` 參數必須是含資料夾前綴的完整路徑（例如 `custom-documents/raw-xxx.json`），若只傳文件節點的短 `name` 欄位，API 會回應 `{"success": true}` 但**實際不會刪除任何文件**——是與 Decision 1a／API 路徑前綴問題同類的靜默失效，且更隱蔽（連 HTTP 層都回報成功）。已修正 `_iter_document_entries()` 在遞迴走訪時累積父資料夾路徑，`find_existing_document()` 回傳含前綴的完整路徑供 `remove_document()` 直接使用。
+- **風險**：`docSource` 依賴 AnythingLLM 目前版本原樣保留自訂 metadata 欄位的行為，若未來版本改變此行為，去重會再次靜默失效。目前沒有更穩定的官方識別碼機制可用；若未來升級 AnythingLLM 版本，建議重跑一次本節的實測方法（`docker exec` 探測 API 真實回應）驗證假設仍成立。
 - **實作階段補充**：`requests` 對 GET/POST/DELETE 呼叫皆未預設 timeout；`post-commit` 階段為同步執行（見 Risks 第一項），若 RAG 服務接受連線後無回應會讓 `git commit` 指令卡住。已於 `scripts/rag_ingest.py` 統一加上 `REQUEST_TIMEOUT = 10` 秒逾時。
 - **實作階段補充**：`get_changed_files()` 原本用 `git diff-tree --no-commit-id --name-only -r HEAD`，對 repo 的 root commit（無 parent）會回傳空清單，導致該次 commit 即使觸及目標路徑也不會被偵測到（靜默跳過）。已加上 `--root` 參數修正；對非 root commit 行為不受影響（已用既有 commit 驗證前後輸出一致）。
 
@@ -59,7 +62,8 @@
 ## Risks / Trade-offs
 
 - [風險] `post-commit` hook 若執行時間過長（例如網路延遲），會讓 `git commit` 指令的終端機停留較久 → 緩解：匯入的檔案數量通常很小（單次 commit 頂多幾份 spec 文件），且 Decision 4 已確保逾時／失敗不會讓使用者困惑；若未來實測發現延遲明顯，可考慮改為背景執行（例如 `nohup ... &`），本次先以同步執行、簡單可預期為優先。
-- [風險] `title` 以 repo 相對路徑作為去重識別碼，若檔案被搬移或改名，RAG 中會留下舊路徑的殘留文件（因為新路徑會被當成「首次匯入」，不會觸發對舊路徑的移除） → 緩解：目前開發流程中 spec 檔案搬移改名的頻率低，且 `openspec/changes/archive/**` 的目錄名稱本來就是一次性建立、之後不會再變動；此為已知限制，不在本次處理範圍內，若未來出現實際困擾可另開 change 加上「清理孤兒文件」的機制。
+- [風險] `docSource` 以 repo 相對路徑作為去重識別碼，若檔案被搬移或改名，RAG 中會留下舊路徑的殘留文件（因為新路徑會被當成「首次匯入」，不會觸發對舊路徑的移除） → 緩解：目前開發流程中 spec 檔案搬移改名的頻率低，且 `openspec/changes/archive/**` 的目錄名稱本來就是一次性建立、之後不會再變動；此為已知限制，不在本次處理範圍內，若未來出現實際困擾可另開 change 加上「清理孤兒文件」的機制。
+- [風險]（Codex review 提出）若 AnythingLLM 中已存在由「無 `docSource` 的舊版腳本」上傳的文件，`find_existing_document()` 永遠比對不到，這些舊文件不會被移除、會永久殘留並可能被查詢到過期內容 → 緩解：本次是全新功能，`sdd-current-specs`／`sdd-archived-decisions` 兩個 workspace 建立以來從未有正式資料寫入過（開發過程中的測試/探測文件已於本次實作階段手動用 `DELETE /v1/system/remove-documents` 全數清空並以 `GET /v1/documents` 確認兩個 workspace 目前皆為空）；因此「舊版腳本上傳的文件」在目前這個部署裡不存在，此風險現階段不成立。若未來版本的 `upload_document()` 又更換識別碼欄位（例如 AnythingLLM 版本升級改變 `docSource` 保留行為，見上一則風險），才需要處理「新舊識別碼並存」的遷移問題；不在本次範圍內预先實作沒有對應真實資料的清理邏輯。
 - [Trade-off] 選擇本機 hook 而非 GitHub Actions，代表這套自動化目前只在啟用者自己的機器上生效；這是刻意的取捨，對應目前單人開發的實際情境（見 Decision 1），非疏漏。
 
 ## Migration Plan

@@ -103,9 +103,11 @@ def test_workspace_slug_for_unrelated_path_raises():
 # --- Requirement 3: 匯入前需避免重複或過期版本殘留 --------------------------
 
 
-def test_find_existing_document_returns_name_when_title_matches():
+def test_find_existing_document_returns_full_path_when_docsource_matches():
     # AnythingLLM 的 GET /v1/documents 以 localFiles 巢狀資料夾樹回傳（實測 docker exec
     # openapi.json 確認 base path 為 /api，且回應非扁平 documents 陣列而是巢狀 folder tree）。
+    # title 會被內部 slugify（不保留原值），因此用 docSource 比對；回傳值須含資料夾
+    # 前綴（remove-documents 需要完整路徑才會真的生效，實測確認的靜默失效）。
     response = MagicMock()
     response.json.return_value = {
         "localFiles": {
@@ -119,12 +121,14 @@ def test_find_existing_document_returns_name_when_title_matches():
                         {
                             "name": "other-doc-uuid.json",
                             "type": "file",
-                            "title": "openspec/specs/other/spec.md",
+                            "title": "openspec-specs-other-spec.txt",
+                            "docSource": "openspec/specs/other/spec.md",
                         },
                         {
                             "name": "target-doc-uuid.json",
                             "type": "file",
-                            "title": "openspec/specs/cafe-search/spec.md",
+                            "title": "openspec-specs-cafe-search-spec.txt",
+                            "docSource": "openspec/specs/cafe-search/spec.md",
                         },
                     ],
                 }
@@ -136,7 +140,7 @@ def test_find_existing_document_returns_name_when_title_matches():
     with patch.object(rag_ingest.requests, "get", return_value=response) as mock_get:
         result = rag_ingest.find_existing_document("openspec/specs/cafe-search/spec.md")
 
-    assert result == "target-doc-uuid.json"
+    assert result == "custom-documents/target-doc-uuid.json"
     mock_get.assert_called_once()
     args, kwargs = mock_get.call_args
     assert args[0] == "http://localhost:3001/api/v1/documents"
@@ -151,10 +155,17 @@ def test_find_existing_document_returns_none_when_no_match():
             "type": "folder",
             "items": [
                 {
-                    "name": "other-doc-uuid.json",
-                    "type": "file",
-                    "title": "openspec/specs/other/spec.md",
-                },
+                    "name": "custom-documents",
+                    "type": "folder",
+                    "items": [
+                        {
+                            "name": "other-doc-uuid.json",
+                            "type": "file",
+                            "title": "openspec-specs-other-spec.txt",
+                            "docSource": "openspec/specs/other/spec.md",
+                        },
+                    ],
+                }
             ],
         }
     }
@@ -164,6 +175,42 @@ def test_find_existing_document_returns_none_when_no_match():
         result = rag_ingest.find_existing_document("openspec/specs/cafe-search/spec.md")
 
     assert result is None
+
+
+def test_find_existing_document_builds_full_path_across_nested_folders():
+    response = MagicMock()
+    response.json.return_value = {
+        "localFiles": {
+            "name": "documents",
+            "type": "folder",
+            "items": [
+                {
+                    "name": "custom-documents",
+                    "type": "folder",
+                    "items": [
+                        {
+                            "name": "nested",
+                            "type": "folder",
+                            "items": [
+                                {
+                                    "name": "deep-doc-uuid.json",
+                                    "type": "file",
+                                    "title": "openspec-specs-cafe-search-spec.txt",
+                                    "docSource": "openspec/specs/cafe-search/spec.md",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+    response.raise_for_status.return_value = None
+
+    with patch.object(rag_ingest.requests, "get", return_value=response):
+        result = rag_ingest.find_existing_document("openspec/specs/cafe-search/spec.md")
+
+    assert result == "custom-documents/nested/deep-doc-uuid.json"
 
 
 def test_find_existing_document_empty_document_list_returns_none():
@@ -181,14 +228,18 @@ def test_find_existing_document_empty_document_list_returns_none():
 
 def test_ingest_file_removes_existing_before_upload():
     with (
-        patch.object(rag_ingest, "find_existing_document", return_value="old-doc-uuid.json") as mock_find,
+        patch.object(
+            rag_ingest,
+            "find_existing_document",
+            return_value="custom-documents/old-doc-uuid.json",
+        ) as mock_find,
         patch.object(rag_ingest, "remove_document") as mock_remove,
         patch.object(rag_ingest, "upload_document") as mock_upload,
     ):
         rag_ingest.ingest_file("openspec/specs/cafe-search/spec.md")
 
     mock_find.assert_called_once_with("openspec/specs/cafe-search/spec.md")
-    mock_remove.assert_called_once_with("old-doc-uuid.json")
+    mock_remove.assert_called_once_with("custom-documents/old-doc-uuid.json")
     mock_upload.assert_called_once_with(
         "openspec/specs/cafe-search/spec.md", "sdd-current-specs"
     )
@@ -223,6 +274,7 @@ def test_upload_document_sends_correct_payload(tmp_path, monkeypatch):
     assert args[0] == "http://localhost:3001/api/v1/document/raw-text"
     assert kwargs["json"]["textContent"] == "# Some Spec Content"
     assert kwargs["json"]["metadata"]["title"] == str(spec_file)
+    assert kwargs["json"]["metadata"]["docSource"] == str(spec_file)
     assert kwargs["json"]["addToWorkspaces"] == "sdd-current-specs"
     assert kwargs["timeout"] == rag_ingest.REQUEST_TIMEOUT
 
@@ -232,12 +284,12 @@ def test_remove_document_calls_correct_url_with_timeout():
     response.raise_for_status.return_value = None
 
     with patch.object(rag_ingest.requests, "delete", return_value=response) as mock_delete:
-        rag_ingest.remove_document("target-doc-uuid.json")
+        rag_ingest.remove_document("custom-documents/target-doc-uuid.json")
 
     mock_delete.assert_called_once()
     args, kwargs = mock_delete.call_args
     assert args[0] == "http://localhost:3001/api/v1/system/remove-documents"
-    assert kwargs["json"] == {"names": ["target-doc-uuid.json"]}
+    assert kwargs["json"] == {"names": ["custom-documents/target-doc-uuid.json"]}
     assert kwargs["timeout"] == rag_ingest.REQUEST_TIMEOUT
 
 
