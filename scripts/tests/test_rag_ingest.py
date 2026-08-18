@@ -6,6 +6,37 @@ import requests
 from scripts import rag_ingest
 
 
+# --- get_changed_files: git 指令建構（含 root commit 邊界情況）------------
+
+
+def test_get_changed_files_includes_root_flag():
+    # git diff-tree 若未加 --root，對 repo 的第一個 commit（無 parent）會回傳空
+    # 清單，導致該次 commit 即使觸及目標路徑也被靜默略過（Codex review 發現）。
+    result = MagicMock()
+    result.stdout = "openspec/specs/cafe-search/spec.md\n"
+
+    with patch.object(rag_ingest.subprocess, "run", return_value=result) as mock_run:
+        changed = rag_ingest.get_changed_files()
+
+    args, kwargs = mock_run.call_args
+    command = args[0]
+    assert "--root" in command
+    assert command[:2] == ["git", "diff-tree"]
+    assert command[-1] == "HEAD"
+    assert kwargs["check"] is True
+    assert changed == ["openspec/specs/cafe-search/spec.md"]
+
+
+def test_get_changed_files_empty_stdout_returns_empty_list():
+    result = MagicMock()
+    result.stdout = ""
+
+    with patch.object(rag_ingest.subprocess, "run", return_value=result):
+        changed = rag_ingest.get_changed_files()
+
+    assert changed == []
+
+
 # --- Requirement 1: 依 commit 內容判斷是否觸發匯入 -------------------------
 
 

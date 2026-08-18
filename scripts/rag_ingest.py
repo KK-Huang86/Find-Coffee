@@ -113,7 +113,7 @@ def ingest_file(path: str) -> None:
 
 def get_changed_files() -> list[str]:
     result = subprocess.run(
-        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", "HEAD"],
         capture_output=True,
         text=True,
         check=True,

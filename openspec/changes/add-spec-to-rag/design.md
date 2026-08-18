@@ -44,6 +44,7 @@
 - 替代方案：不做去重，讓文件持續累加。放棄原因：對「歷史決策」workspace 或許還能接受（archive 目錄理論上不會重複修改），但對「現行規格」workspace 是不可接受的正確性問題，因此統一處理不特例。
 - **實作階段修正**：`GET /v1/documents` 的回應並非扁平的文件陣列，而是以 `localFiles` 為根、逐層 `items` 巢狀的資料夾樹（folder/file 混合節點）；比對 `title` 前需先遞迴走訪整棵樹取出所有 file 節點。首次實作時誤以為是扁平 `documents` 陣列，會導致查重永遠找不到既有文件、無法觸發移除，等同 Decision 3 的去重機制失效。已在 code review 階段發現並修正（`_iter_document_entries()`）。
 - **實作階段補充**：`requests` 對 GET/POST/DELETE 呼叫皆未預設 timeout；`post-commit` 階段為同步執行（見 Risks 第一項），若 RAG 服務接受連線後無回應會讓 `git commit` 指令卡住。已於 `scripts/rag_ingest.py` 統一加上 `REQUEST_TIMEOUT = 10` 秒逾時。
+- **實作階段補充**：`get_changed_files()` 原本用 `git diff-tree --no-commit-id --name-only -r HEAD`，對 repo 的 root commit（無 parent）會回傳空清單，導致該次 commit 即使觸及目標路徑也不會被偵測到（靜默跳過）。已加上 `--root` 參數修正；對非 root commit 行為不受影響（已用既有 commit 驗證前後輸出一致）。
 
 **4. 匯入失敗（RAG 離線、API 錯誤）僅記錄，不阻斷 commit**
 - 選擇：匯入腳本在 `post-commit` stage 執行，任何例外皆捕捉並記錄（例如寫入本機 log 或印出警告訊息），腳本以成功結束（exit code 0）收尾，不讓 `pre-commit` 框架視為此次 commit 失敗。
