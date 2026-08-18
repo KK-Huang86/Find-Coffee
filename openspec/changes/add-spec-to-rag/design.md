@@ -67,9 +67,10 @@
    - 模擬 API 呼叫拋出例外時，腳本捕捉例外、記錄、且仍以成功狀態結束（Requirement 4）
    - 上述測試皆以 mock 模擬 AnythingLLM API 呼叫，不進行真實網路連線
 2. 確認新測試在無實作前為紅燈
-3. 實作 `scripts/rag_ingest.py` 與 `.pre-commit-config.yaml` 的 hook 設定
-4. 確認測試轉綠，並手動觸發一次真實 commit（觸及 `openspec/specs/**` 或 `openspec/changes/archive/**`）驗證端到端流程確實把文件寫進對應 workspace（可用 `GET /v1/documents` 或 AnythingLLM 網頁介面確認）
-5. `openspec validate add-spec-to-rag --strict` 確認 spec/proposal/design/tasks 一致
+3. 實作 `scripts/rag_ingest.py` 與 `.pre-commit-config.yaml` 的 hook 設定（含 `default_install_hook_types`，見 Decision 1a）
+4. 對這個 repo 實際執行 `pre-commit install -t post-commit`，確認 `.git/hooks/post-commit` 已建立（既有的 `.git/hooks/pre-commit` 不受影響）
+5. 確認測試轉綠，並手動觸發一次真實 commit（觸及 `openspec/specs/**` 或 `openspec/changes/archive/**`）驗證端到端流程確實把文件寫進對應 workspace（可用 `GET /v1/documents` 或 AnythingLLM 網頁介面確認）
+6. `openspec validate add-spec-to-rag --strict` 確認 spec/proposal/design/tasks 一致
 
 ## Open Questions
 
