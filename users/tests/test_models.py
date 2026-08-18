@@ -1,3 +1,6 @@
+import logging
+from unittest.mock import patch
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -71,6 +74,113 @@ class TestUserModel:
         assert len(user.member_code) == 6
         assert user.member_code.isalnum()
         assert user.member_code.isupper() or user.member_code.isdigit()
+
+    def test_member_code_first_attempt_no_collision_does_not_retry(self):
+        """member_code 首次產生即不衝突時，使用者建立成功、不觸發 retry"""
+        with patch('users.models.random.choices', return_value=list('AAAAAA')) as mock_choices:
+            user = User.objects.create(line_user_id='U_first_attempt_ok')
+
+        assert user.member_code == 'AAAAAA'
+        mock_choices.assert_called_once()
+
+    def test_member_code_retries_after_collision(self):
+        """member_code 首次產生與既有使用者衝突，重試後產生未衝突代號時仍建立成功"""
+        UserFactory(member_code='AAAAAA')
+
+        with patch('users.models.random.choices', side_effect=[list('AAAAAA'), list('BBBBBB')]):
+            user = User.objects.create(line_user_id='U_retry_success')
+
+        assert user.member_code == 'BBBBBB'
+
+    def test_member_code_retry_succeeds_when_nested_in_outer_transaction(self):
+        """
+        關鍵：巢狀 transaction 情境的重試證明。
+
+        @pytest.mark.django_db 本身即讓每個測試跑在 outer atomic transaction 中，
+        天然滿足此情境，不需額外 mock transaction。呼叫 get_or_create（沿用實際生產
+        呼叫路徑），若 retry loop 沒有各自用 savepoint 保護，第一次撞號後 transaction
+        會被標記 aborted，第二次 super().save() 會拋非 IntegrityError 的例外，
+        導致本測試失敗。
+        """
+        UserFactory(member_code='AAAAAA')
+
+        with patch('users.models.random.choices', side_effect=[list('AAAAAA'), list('BBBBBB')]):
+            user, created = User.objects.get_or_create(line_user_id='U_nested_tx_ok')
+
+        assert created is True
+        assert user.member_code == 'BBBBBB'
+
+    def test_member_code_raises_after_max_retries_exhausted(self):
+        """連續 10 次產生的 member_code 皆與既有使用者衝突時，最終拋出明確的 IntegrityError"""
+        UserFactory(member_code='AAAAAA')
+
+        with patch('users.models.random.choices', return_value=list('AAAAAA')):
+            with pytest.raises(IntegrityError):
+                User.objects.create(line_user_id='U_exhausted')
+
+    def test_save_atomic_uses_router_resolved_alias(self):
+        """
+        save() 未顯式指定 using 時，atomic() 使用 router.db_for_write 解析出的連線別名。
+
+        額外 patch django.db.models.Model.save，避免 super().save() 真的嘗試連線到
+        測試環境不存在的 'some_alias'，確保測的是「using 有沒有正確傳給 atomic()」
+        本身，而不是意外觸發 ConnectionDoesNotExist。
+        """
+        user = UserFactory.build(line_user_id='U_router_alias', member_code='')
+
+        with patch('users.models.transaction.atomic') as mock_atomic, \
+             patch('users.models.router.db_for_write', return_value='some_alias'), \
+             patch('django.db.models.Model.save') as mock_model_save:
+            user.save()
+
+        mock_atomic.assert_called_once_with(using='some_alias')
+        mock_model_save.assert_called_once()
+
+    def test_save_atomic_uses_explicit_using_kwarg(self):
+        """save(using=...) 顯式指定時，atomic() 使用該別名，優先於 router 解析結果"""
+        user = UserFactory.build(line_user_id='U_explicit_alias', member_code='')
+
+        with patch('users.models.transaction.atomic') as mock_atomic, \
+             patch('users.models.router.db_for_write', return_value='some_alias'), \
+             patch('django.db.models.Model.save') as mock_model_save:
+            user.save(using='explicit_alias')
+
+        mock_atomic.assert_called_once_with(using='explicit_alias')
+        mock_model_save.assert_called_once()
+
+    def test_member_code_collision_retry_logs_warning(self, caplog):
+        """撞號後觸發重試時，記錄可追蹤的 WARNING 紀錄，內容包含 line_user_id"""
+        UserFactory(member_code='AAAAAA')
+
+        with caplog.at_level(logging.WARNING, logger='users.models'):
+            with patch('users.models.random.choices', side_effect=[list('AAAAAA'), list('BBBBBB')]):
+                User.objects.create(line_user_id='U_logs_warning')
+
+        warning_records = [r for r in caplog.records if r.levelname == 'WARNING']
+        assert len(warning_records) == 1
+        assert 'U_logs_warning' in caplog.text
+
+    def test_member_code_exhausted_retries_logs_error(self, caplog):
+        """重試上限用盡時，記錄可追蹤的 ERROR 紀錄，內容包含 line_user_id"""
+        UserFactory(member_code='AAAAAA')
+
+        with caplog.at_level(logging.WARNING, logger='users.models'):
+            with patch('users.models.random.choices', return_value=list('AAAAAA')):
+                with pytest.raises(IntegrityError):
+                    User.objects.create(line_user_id='U_logs_error')
+
+        error_records = [r for r in caplog.records if r.levelname == 'ERROR']
+        assert len(error_records) == 1
+        assert 'U_logs_error' in caplog.text
+
+    def test_member_code_first_attempt_success_logs_nothing(self, caplog):
+        """首次即成功時，不產生撞號相關 WARNING/ERROR log，避免正常路徑製造雜訊"""
+        with caplog.at_level(logging.WARNING, logger='users.models'):
+            with patch('users.models.random.choices', return_value=list('AAAAAA')):
+                User.objects.create(line_user_id='U_no_noise')
+
+        noisy_records = [r for r in caplog.records if r.levelname in ('WARNING', 'ERROR')]
+        assert noisy_records == []
 
 
 @pytest.mark.django_db
