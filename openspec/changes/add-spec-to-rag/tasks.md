@@ -1,44 +1,44 @@
 ## 1. 前置準備與基準驗證
 
-- [ ] 1.1 確認目前在 `feature/add-spec-to-rag` 分支。
-- [ ] 1.2 `git add openspec/changes/add-spec-to-rag/` 並建立 commit，將本 change 的 proposal/specs/design/tasks 規劃文件單獨提交，使工作目錄回到乾淨狀態。
-- [ ] 1.3 確認 `git status` 乾淨（`.env.example` 新增的 `ANYTHINGLLM_API_KEY`／`ANYTHINGLLM_BASE_URL` 兩行若尚未提交，一併納入本次或前一次 commit）。
-- [ ] 1.4 建立 `scripts/` 與 `scripts/tests/` 目錄（若尚不存在）。
-- [ ] 1.5 執行 `uv run pytest -q` 全套測試，記錄基準測試數與全數通過（基準綠燈）。
+- [x] 1.1 確認目前在 `feature/add-spec-to-rag` 分支。
+- [x] 1.2 `git add openspec/changes/add-spec-to-rag/` 並建立 commit，將本 change 的 proposal/specs/design/tasks 規劃文件單獨提交，使工作目錄回到乾淨狀態。
+- [x] 1.3 確認 `git status` 乾淨（`.env.example` 新增的 `ANYTHINGLLM_API_KEY`／`ANYTHINGLLM_BASE_URL` 兩行若尚未提交，一併納入本次或前一次 commit）。
+- [x] 1.4 建立 `scripts/` 與 `scripts/tests/` 目錄（若尚不存在）。
+- [x] 1.5 執行 `uv run pytest -q` 全套測試，記錄基準測試數與全數通過（基準綠燈）。
 
 ## 2. 依 TDD 規範撰寫測試（先於實作，預期紅燈）
 
-- [ ] 2.1 建立 `scripts/tests/test_rag_ingest.py`，新增測試：給定一組 commit 變更的檔案路徑清單，函式正確判斷「是否觸及 `openspec/changes/archive/**` 或 `openspec/specs/**/spec.md`」，回傳需要匯入的檔案清單（過濾掉不相關路徑），對應 spec 的 Requirement 1 三個 scenario（觸及封存文件、觸及現行 spec、皆未觸及）。
-- [ ] 2.2 新增測試：依檔案路徑正確判斷應分流至 `sdd-archived-decisions` 或 `sdd-current-specs` 哪個 workspace slug，對應 Requirement 2。
-- [ ] 2.3 新增測試：呼叫「查詢既有文件」的函式（mock `GET /v1/documents` 回傳），比對 `title` 找出是否已有相同識別碼（repo 相對路徑）的既有文件，回傳其 `name` 供後續移除；找不到時回傳 `None`。
-- [ ] 2.4 新增測試：整合寫入流程——當查重結果為「已存在」時，會先呼叫（mock 的）移除 API，再呼叫寫入 API；查重結果為「不存在」時，直接呼叫寫入 API、不呼叫移除 API，對應 Requirement 3 兩個 scenario。
-- [ ] 2.5 新增測試：寫入 API 呼叫時帶入正確的 `textContent`（檔案內容）、`metadata.title`（repo 相對路徑）、`addToWorkspaces`（對應 slug）。
-- [ ] 2.6 新增測試：模擬 API 呼叫（查重、移除、或寫入任一步驟）拋出例外或連線錯誤時，主流程函式捕捉例外並記錄，函式本身正常返回（不重新拋出），對應 Requirement 4 兩個 scenario（RAG 服務離線、API 回傳錯誤）。
-- [ ] 2.7 執行 `uv run pytest scripts/tests/test_rag_ingest.py -q`，確認上述測試在實作前為紅燈，且失敗原因為「找不到對應函式/模組」等預期原因。
+- [x] 2.1 建立 `scripts/tests/test_rag_ingest.py`，新增測試：給定一組 commit 變更的檔案路徑清單，函式正確判斷「是否觸及 `openspec/changes/archive/**` 或 `openspec/specs/**/spec.md`」，回傳需要匯入的檔案清單（過濾掉不相關路徑），對應 spec 的 Requirement 1 三個 scenario（觸及封存文件、觸及現行 spec、皆未觸及）。
+- [x] 2.2 新增測試：依檔案路徑正確判斷應分流至 `sdd-archived-decisions` 或 `sdd-current-specs` 哪個 workspace slug，對應 Requirement 2。
+- [x] 2.3 新增測試：呼叫「查詢既有文件」的函式（mock `GET /v1/documents` 回傳），比對 `title` 找出是否已有相同識別碼（repo 相對路徑）的既有文件，回傳其 `name` 供後續移除；找不到時回傳 `None`。
+- [x] 2.4 新增測試：整合寫入流程——當查重結果為「已存在」時，會先呼叫（mock 的）移除 API，再呼叫寫入 API；查重結果為「不存在」時，直接呼叫寫入 API、不呼叫移除 API，對應 Requirement 3 兩個 scenario。
+- [x] 2.5 新增測試：寫入 API 呼叫時帶入正確的 `textContent`（檔案內容）、`metadata.title`（repo 相對路徑）、`addToWorkspaces`（對應 slug）。
+- [x] 2.6 新增測試：模擬 API 呼叫（查重、移除、或寫入任一步驟）拋出例外或連線錯誤時，主流程函式捕捉例外並記錄，函式本身正常返回（不重新拋出），對應 Requirement 4 兩個 scenario（RAG 服務離線、API 回傳錯誤）。
+- [x] 2.7 執行 `uv run pytest scripts/tests/test_rag_ingest.py -q`，確認上述測試在實作前為紅燈，且失敗原因為「找不到對應函式/模組」等預期原因。
 
 ## 3. 實作
 
-- [ ] 3.1 建立 `scripts/rag_ingest.py`：實作路徑過濾函式（判斷 commit 變更檔案是否觸及目標路徑）。
-- [ ] 3.2 實作路徑→workspace slug 的分流函式。
-- [ ] 3.3 實作查詢既有文件（`GET /v1/documents`）並比對 `title` 的函式。
-- [ ] 3.4 實作移除既有文件（`DELETE /v1/system/remove-documents`）與寫入新文件（`POST /v1/document/raw-text`，帶 `addToWorkspaces`）的函式。
-- [ ] 3.5 實作主流程：讀取本次 commit 變更的檔案清單（`git diff-tree --no-commit-id --name-only -r HEAD`）→ 過濾 → 逐檔查重→（存在則移除）→ 寫入；所有步驟包在 `try/except` 中，記錄錯誤但不拋出、不影響腳本結束狀態碼。
-- [ ] 3.6 從 `.env` 讀取 `ANYTHINGLLM_API_KEY`、`ANYTHINGLLM_BASE_URL`（用 `python-decouple` 的 `config()`，與專案既有慣例一致）。
-- [ ] 3.7 於 `.pre-commit-config.yaml` 新增 local hook：`id: rag-ingest`、`name` 說明用途、`entry: uv run python scripts/rag_ingest.py`、`language: system`、`stages: [post-commit]`、`pass_filenames: false`、`always_run: true`。
-- [ ] 3.8 於 `.pre-commit-config.yaml` 頂層新增 `default_install_hook_types: [pre-commit, post-commit]`，確保未來任何人（含新 clone）執行標準的 `pre-commit install` 時會一併裝好 `post-commit` type（見 design.md Decision 1a）。
-- [ ] 3.9 對這個 repo 實際執行 `pre-commit install -t post-commit`，確認 `.git/hooks/post-commit` 被建立（`ls .git/hooks/` 應同時看到 `pre-commit` 與 `post-commit`）；此步驟是必要的，因為既有已安裝過 `pre-commit` type 的 clone **不會**因為修改 `.pre-commit-config.yaml` 就自動回溯安裝新的 hook type。
+- [x] 3.1 建立 `scripts/rag_ingest.py`：實作路徑過濾函式（判斷 commit 變更檔案是否觸及目標路徑）。
+- [x] 3.2 實作路徑→workspace slug 的分流函式。
+- [x] 3.3 實作查詢既有文件（`GET /v1/documents`）並比對 `title` 的函式。
+- [x] 3.4 實作移除既有文件（`DELETE /v1/system/remove-documents`）與寫入新文件（`POST /v1/document/raw-text`，帶 `addToWorkspaces`）的函式。
+- [x] 3.5 實作主流程：讀取本次 commit 變更的檔案清單（`git diff-tree --no-commit-id --name-only -r HEAD`）→ 過濾 → 逐檔查重→（存在則移除）→ 寫入；所有步驟包在 `try/except` 中，記錄錯誤但不拋出、不影響腳本結束狀態碼。
+- [x] 3.6 從 `.env` 讀取 `ANYTHINGLLM_API_KEY`、`ANYTHINGLLM_BASE_URL`（用 `python-decouple` 的 `config()`，與專案既有慣例一致）。
+- [x] 3.7 於 `.pre-commit-config.yaml` 新增 local hook：`id: rag-ingest`、`name` 說明用途、`entry: uv run python scripts/rag_ingest.py`、`language: system`、`stages: [post-commit]`、`pass_filenames: false`、`always_run: true`。
+- [x] 3.8 於 `.pre-commit-config.yaml` 頂層新增 `default_install_hook_types: [pre-commit, post-commit]`，確保未來任何人（含新 clone）執行標準的 `pre-commit install` 時會一併裝好 `post-commit` type（見 design.md Decision 1a）。
+- [x] 3.9 對這個 repo 實際執行 `pre-commit install -t post-commit`，確認 `.git/hooks/post-commit` 被建立（`ls .git/hooks/` 應同時看到 `pre-commit` 與 `post-commit`）；此步驟是必要的，因為既有已安裝過 `pre-commit` type 的 clone **不會**因為修改 `.pre-commit-config.yaml` 就自動回溯安裝新的 hook type。
 
 ## 4. 驗證
 
-- [ ] 4.1 執行 `uv run pytest scripts/tests/test_rag_ingest.py -q`，確認全數轉綠。
-- [ ] 4.2 執行 `uv run pytest -q` 全套測試，確認全數通過，並比對總測試數 = 第 1.5 步基準數 + 本次新增測試數。
-- [ ] 4.3 執行 `uv run ruff check .`，確認無新增 lint 錯誤。
-- [ ] 4.4 確認 `.git/hooks/post-commit` 確實存在且內容由 `pre-commit` 產生（`head -5 .git/hooks/post-commit` 應看到 `File generated by pre-commit` 字樣），此為 3.9 的驗收，避免「設定看似完成、實際從未安裝」的靜默失效重演。
+- [x] 4.1 執行 `uv run pytest scripts/tests/test_rag_ingest.py -q`，確認全數轉綠。
+- [x] 4.2 執行 `uv run pytest -q` 全套測試，確認全數通過，並比對總測試數 = 第 1.5 步基準數 + 本次新增測試數。
+- [x] 4.3 執行 `uv run ruff check .`，確認無新增 lint 錯誤。
+- [x] 4.4 確認 `.git/hooks/post-commit` 確實存在且內容由 `pre-commit` 產生（`head -5 .git/hooks/post-commit` 應看到 `File generated by pre-commit` 字樣），此為 3.9 的驗收，避免「設定看似完成、實際從未安裝」的靜默失效重演。
 - [ ] 4.5 手動驗證：對一份 `openspec/specs/**/spec.md` 做一個小幅修改並 commit，確認 hook 觸發、`GET /v1/documents`（或 AnythingLLM 網頁介面）可看到新版本文件已寫入 `sdd-current-specs`，且原本存在的舊版本已被移除（若該檔案先前已匯入過）。
 - [ ] 4.6 手動驗證：暫停本機 AnythingLLM container（`docker stop anythingllm`），對相關路徑做修改並 commit，確認 commit 本身仍成功完成、終端機沒有因此顯示令人誤解的失敗訊息；驗證完成後重新啟動 container（`docker start anythingllm`）。
 
 ## 5. Spec 一致性檢查與收尾
 
-- [ ] 5.1 執行 `openspec validate add-spec-to-rag --strict`，確認 proposal/specs/design/tasks 一致且通過驗證。
-- [ ] 5.2 檢視 `git diff`，確認變更範圍僅限 `scripts/rag_ingest.py`、`scripts/tests/test_rag_ingest.py`、`.pre-commit-config.yaml`、`openspec/changes/add-spec-to-rag/`（`.env.example` 的兩行新增已於第 1 節處理，不在此次核對範圍內重複列出）。
+- [x] 5.1 執行 `openspec validate add-spec-to-rag --strict`，確認 proposal/specs/design/tasks 一致且通過驗證。
+- [x] 5.2 檢視 `git diff`，確認變更範圍僅限 `scripts/rag_ingest.py`、`scripts/tests/test_rag_ingest.py`、`.pre-commit-config.yaml`、`openspec/changes/add-spec-to-rag/`（`.env.example` 的兩行新增已於第 1 節處理，不在此次核對範圍內重複列出）。
 - [ ] 5.3 `git add` 並建立 commit（訊息說明本次變更：新增本機 post-commit hook，將 SDD 文件自動同步至 AnythingLLM RAG）。

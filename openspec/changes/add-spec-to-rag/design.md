@@ -36,11 +36,14 @@
 - 選擇：以檔案內容為 `textContent`、`metadata.title` 設為檔案的 repo 相對路徑（例如 `openspec/specs/cafe-photo-loading/spec.md`）、`addToWorkspaces` 帶入對應 workspace 的 slug。
 - 理由：實際查驗 AnythingLLM 執行中容器內的 `openapi.json` 確認此 API 支援 `addToWorkspaces` 欄位，可省去「先上傳、再呼叫 `update-embeddings` 掛載」兩步驟；`metadata.title` 採用 repo 相對路徑作為穩定識別碼，確保同一來源檔案每次都能被正確查找、去重。
 - 替代方案：`POST /v1/document/upload`（multipart file upload）+ `POST /v1/workspace/{slug}/update-embeddings`（兩步驟）。放棄原因：raw-text 版本已內建 `addToWorkspaces`，不需要處理檔案的 multipart 編碼與暫存，程式碼更簡單。
+- **實作階段修正（重要）**：本文件與 spec.md 中列出的路徑（`/v1/document/raw-text`、`/v1/documents`、`/v1/system/remove-documents`）皆為 `openapi.json` 內 `paths` 的相對路徑，實際請求需另外帶上 `openapi.json` 的 `servers[0].url`（`/api`）前綴，即完整路徑為 `/api/v1/document/raw-text` 等。首次實作時漏了這個前綴，導致請求打到 AnythingLLM 前端 SPA 的 HTML fallback route（回應 200 OK 但非 JSON），`response.json()` 解析失敗後被 Decision 4 的例外處理吞掉、記錄為失敗——功能完全不會生效但不會有明顯報錯，屬於與 Decision 1a 同類的靜默失效模式。已在 code review 階段發現並修正，`scripts/rag_ingest.py` 內所有 API 呼叫皆統一透過 `_api_url()` 補上 `/api` 前綴。
 
 **3. 寫入前先查重、刪除舊版本，再寫入新版本**
 - 選擇：呼叫 `GET /v1/documents` 列出所有既有文件，比對 `title` 是否等於本次要寫入檔案的 repo 相對路徑；若找到，先呼叫 `DELETE /v1/system/remove-documents`（帶入既有文件的 `name`）移除，再執行 Decision 2 的寫入。
 - 理由：實測確認 AnythingLLM 每次 `raw-text` 呼叫都會建立帶隨機 UUID 的全新文件，不會自動辨識「這是同一份檔案的新版本」。若不處理，`sdd-current-specs` workspace 會隨著 spec 多次修改而累積新舊版本混雜，導致 agent 查詢時可能取得過期內容，直接違背這次變更「讓 agent 查到正確現行規格」的核心目的。
 - 替代方案：不做去重，讓文件持續累加。放棄原因：對「歷史決策」workspace 或許還能接受（archive 目錄理論上不會重複修改），但對「現行規格」workspace 是不可接受的正確性問題，因此統一處理不特例。
+- **實作階段修正**：`GET /v1/documents` 的回應並非扁平的文件陣列，而是以 `localFiles` 為根、逐層 `items` 巢狀的資料夾樹（folder/file 混合節點）；比對 `title` 前需先遞迴走訪整棵樹取出所有 file 節點。首次實作時誤以為是扁平 `documents` 陣列，會導致查重永遠找不到既有文件、無法觸發移除，等同 Decision 3 的去重機制失效。已在 code review 階段發現並修正（`_iter_document_entries()`）。
+- **實作階段補充**：`requests` 對 GET/POST/DELETE 呼叫皆未預設 timeout；`post-commit` 階段為同步執行（見 Risks 第一項），若 RAG 服務接受連線後無回應會讓 `git commit` 指令卡住。已於 `scripts/rag_ingest.py` 統一加上 `REQUEST_TIMEOUT = 10` 秒逾時。
 
 **4. 匯入失敗（RAG 離線、API 錯誤）僅記錄，不阻斷 commit**
 - 選擇：匯入腳本在 `post-commit` stage 執行，任何例外皆捕捉並記錄（例如寫入本機 log 或印出警告訊息），腳本以成功結束（exit code 0）收尾，不讓 `pre-commit` 框架視為此次 commit 失敗。
