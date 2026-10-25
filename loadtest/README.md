@@ -1,6 +1,6 @@
 # 多筆搜尋回應時間壓測（K6 + mock server）
 
-量測「多筆搜尋結果（carousel，10 間店）」從 LINE webhook 進來到回覆完成的時間。webhook 為同步處理，`/callback` 的回應時間即為完整處理時間。
+量測「多筆搜尋結果（carousel，10 間店）」從 LINE webhook 進來到回覆完成的時間，並驗證 Google 搜尋共用快取（穿透、擊穿防護）的呼叫次數。webhook 為同步處理，`/callback` 的回應時間即為完整處理時間。
 
 ## 不會打到真的 Google / LINE
 
@@ -17,7 +17,7 @@ mock server 的 `GET /__stats` 會回傳各端點被呼叫次數，用來確認�
 ## 執行
 
 ```bash
-loadtest/run.sh                         # 三個情境全跑
+loadtest/run.sh                         # 六個情境全跑
 loadtest/run.sh stale                   # 只跑指定情境
 VUS=5 ITERATIONS=30 loadtest/run.sh     # 調整並發數與次數
 DETAIL_LATENCY_MS=1000 loadtest/run.sh  # 模擬 Google 變慢
@@ -32,6 +32,11 @@ DETAIL_LATENCY_MS=1000 loadtest/run.sh  # 模擬 Google 變慢
 | `cached` | 資料未過期、已有 S3 照片 | 只有 LINE（loading + reply） |
 | `stale` | 從未刷新、沒有 S3 照片、reference 已失效 | 平行刷新 10 次 Detail → 用新 reference 解析 10 張照片 |
 | `expired_photo` | 資料未過期、reference 已失效、沒有 S3 照片 | 照片 403 → 刷新 → 用新 reference 重試，各 10 次 |
+| `address_cold` | 地址搜尋，每次都是不同地址 | 每次都未命中：Geocoding、Nearby Search 各 1 次（等同沒有快取） |
+| `address_hot` | 地址搜尋，所有人搜同一個地址 | 整輪只有第一次打 Google：Geocoding、Nearby Search 各 1 次；同時進來的請求等鎖（擊穿防護） |
+| `address_miss` | 地址搜尋，所有人搜同一個查不到的地址 | Geocoding 回 `ZERO_RESULTS` 被快取，整輪只打 1 次；不呼叫 Nearby Search（穿透防護） |
+
+地址搜尋情境的 10 間店已預先寫入 DB 且為快取狀態，量到的差異只來自 Geocoding（mock 200ms）與 Nearby Search（mock 300ms）。
 
 ## 結果（2026-10-25，本機 Docker，gunicorn 3 sync workers）
 
@@ -54,6 +59,30 @@ mock 延遲：Places Detail 300ms、Photo 150ms、LINE 50ms。
 | expired_photo | 889ms | 1.17s | 2.04s | 2.07s |
 
 mock 呼叫次數完全符合預期：`stale` 每次搜尋剛好 10 次 Detail、10 次照片解析；`expired_photo` 每次剛好 10 次 403、10 次 Detail、10 次重試。沒有重複刷新，也沒有呼叫到未 mock 的端點。
+
+## Google 搜尋共用快取（2026-10-25，`feature/cache-protection`）
+
+mock 延遲：Geocoding 200ms、Nearby Search 300ms、LINE 50ms。
+
+**VUS=5，30 次**
+
+| 情境 | Geocoding 呼叫 | Nearby 呼叫 | min | med | p95 | max |
+|---|---|---|---|---|---|---|
+| address_cold（沒有命中） | 30 | 30 | 643ms | 856ms | 1.24s | 1.30s |
+| address_hot（同一個地址） | **1** | **1** | 186ms | 308ms | 737ms | 765ms |
+| address_miss（查不到的地址） | **1** | 0 | 149ms | 249ms | 361ms | 367ms |
+
+**VUS=10，50 次（address_hot，同時請求數超過 gunicorn worker 數）**
+
+| Geocoding 呼叫 | Nearby 呼叫 | 等鎖逾時 | min | med | p95 | max |
+|---|---|---|---|---|---|---|
+| **1** | **1** | 0 次 | 204ms | 558ms | 1.84s | 1.89s |
+
+- **擊穿防護有效**：5 人、10 人同時搜尋同一個沒快取過的地址，Google 都只被打 1 次，其他請求等持有者寫入快取後直接拿結果，沒有任何請求等鎖逾時
+- **命中時省下約 550ms**：address_hot 的中位數 308ms 和 `cached`（全部快取的店名搜尋）差不多；address_cold 的 856ms ≈ 308ms + Geocoding 200ms + Nearby 300ms + 開銷
+- **address_hot 的 p95 偏高**：第一批同時進來的請求要等持有者打完 Google（約 0.5 秒）才拿得到結果
+- **VUS=10 的 p95 1.84s** 主要是 3 個 gunicorn worker 排隊，Google 呼叫次數沒有增加
+- **穿透防護有效**：查不到的地址整輪只打 1 次 Geocoding
 
 ## 解讀
 

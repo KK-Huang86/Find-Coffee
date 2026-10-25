@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 多筆搜尋回應時間壓測。外部 API 全部走 mock server，DB / Redis 與開發環境隔離。
-# 用法：loadtest/run.sh [情境...]   （預設 cached stale expired_photo）
+# 用法：loadtest/run.sh [情境...]   （預設 cached stale expired_photo address_cold address_hot address_miss）
 # 可調參數（環境變數）：VUS=5 ITERATIONS=30 DETAIL_LATENCY_MS=300 PHOTO_LATENCY_MS=150 LINE_LATENCY_MS=50
+#                       GEOCODE_LATENCY_MS=200 NEARBY_LATENCY_MS=300
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-SCENARIOS=("${@:-cached stale expired_photo}")
+SCENARIOS=("${@:-cached stale expired_photo address_cold address_hot address_miss}")
 read -r -a SCENARIOS <<< "${SCENARIOS[*]}"
 VUS="${VUS:-5}"
 ITERATIONS="${ITERATIONS:-30}"
