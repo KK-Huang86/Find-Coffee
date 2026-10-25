@@ -1,4 +1,6 @@
 import logging
+import re
+import unicodedata
 import requests
 from datetime import date
 from typing import Union
@@ -16,6 +18,11 @@ class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
     CLOSED_TEXTS = {'休息', '公休', 'Closed'}
     DEFAULT_PHOTO_URL = 'https://developers.line.biz/assets/images/services/bot-designer-icon.png'
+    # 電話分機標記，標記之後的內容不併入撥號號碼
+    PHONE_EXTENSION_PATTERN = re.compile(r'#|分機|ext|轉|,|;', re.IGNORECASE)
+    # 撥號號碼位數範圍（上限依 E.164）
+    PHONE_MIN_DIGITS = 3
+    PHONE_MAX_DIGITS = 15
     # 標籤樣式配置
     TAG_STYLES = {
         'socket': {
@@ -123,6 +130,31 @@ class FlexMessageBuilder:
         except requests.RequestException as e:
             logger.warning(f'解析 Google photo URL 失敗 (reference: {photo_reference}): {e}')
         return FlexMessageBuilder.DEFAULT_PHOTO_URL
+
+    @staticmethod
+    def _build_tel_uri(phone) -> str | None:
+        """
+        將店家電話正規化為 tel: URI，供撥號按鈕使用
+
+        Args:
+            phone: 店家電話字串，例如 '02 2345 6789'
+
+        Returns:
+            str | None: 例如 'tel:0223456789'；電話缺失或格式不合法時回傳 None
+        """
+        if not isinstance(phone, str):
+            return None
+
+        # 全形數字、符號轉半形，並截斷分機
+        normalized = unicodedata.normalize('NFKC', phone).strip()
+        normalized = FlexMessageBuilder.PHONE_EXTENSION_PATTERN.split(normalized, maxsplit=1)[0]
+
+        digits = re.sub(r'\D', '', normalized)
+        if not FlexMessageBuilder.PHONE_MIN_DIGITS <= len(digits) <= FlexMessageBuilder.PHONE_MAX_DIGITS:
+            return None
+
+        prefix = '+' if normalized.startswith('+') else ''
+        return f'tel:{prefix}{digits}'
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:
@@ -484,7 +516,7 @@ class FlexMessageBuilder:
                 }
             ])
         else:
-            # 單筆結果時：顯示「看地圖」與「官方網站」
+            # 單筆結果時：顯示「看地圖」、「打電話」與「官方網站」
             flex_message['footer']['contents'].append({
                 'type': 'button',
                 'style': 'primary',
@@ -494,6 +526,17 @@ class FlexMessageBuilder:
                     'uri': info.get('google_maps', 'https://maps.google.com/')
                 }
             })
+            tel_uri = FlexMessageBuilder._build_tel_uri(info.get('phone'))
+            if tel_uri:
+                flex_message['footer']['contents'].append({
+                    'type': 'button',
+                    'style': 'link',
+                    'action': {
+                        'type': 'uri',
+                        'label': '打電話',
+                        'uri': tel_uri
+                    }
+                })
             if info.get('website') and info.get('website') != '無提供':
                 flex_message['footer']['contents'].append({
                     'type': 'button',

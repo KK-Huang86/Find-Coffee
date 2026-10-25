@@ -539,3 +539,128 @@ class TestCreateShopFlexMessage:
             FlexMessageBuilder.create_shop_flex_message(info, is_multiple=True, photo_url_override=None)
 
         mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=False)
+
+
+class TestBuildTelUri:
+    """測試 FlexMessageBuilder._build_tel_uri"""
+
+    @pytest.mark.parametrize('phone, expected', [
+        ('02 2345 6789', 'tel:0223456789'),
+        ('02-2345-6789', 'tel:0223456789'),
+        ('(02) 2345-6789', 'tel:0223456789'),
+        ('0912 345 678', 'tel:0912345678'),
+        ('+886 2 2345 6789', 'tel:+886223456789'),
+        ('  02 2345 6789  ', 'tel:0223456789'),
+    ])
+    def test_strips_separators(self, phone, expected):
+        """移除空白、連字號、括號，保留開頭 +"""
+        assert FlexMessageBuilder._build_tel_uri(phone) == expected
+
+    @pytest.mark.parametrize('phone', [
+        '02-2345-6789 #123',
+        '02-2345-6789#123',
+        '02-2345-6789 分機 123',
+        '02-2345-6789 ext. 123',
+        '02-2345-6789 EXT 123',
+        '02-2345-6789 轉 123',
+        '02-2345-6789, 123',
+        '02-2345-6789;123',
+    ])
+    def test_truncates_extension(self, phone):
+        """分機標記之後的內容不併入號碼"""
+        assert FlexMessageBuilder._build_tel_uri(phone) == 'tel:0223456789'
+
+    def test_full_width_digits(self):
+        """全形數字與符號轉半形"""
+        assert FlexMessageBuilder._build_tel_uri('０２－２３４５－６７８９') == 'tel:0223456789'
+
+    def test_plus_only_kept_at_start(self):
+        """非開頭的 + 視為分隔符號移除"""
+        assert FlexMessageBuilder._build_tel_uri('02+2345+6789') == 'tel:0223456789'
+
+    @pytest.mark.parametrize('phone', ['無提供', '未提供電話', '電話未提供', '', '   ', '---', '+'])
+    def test_placeholder_or_no_digits_returns_none(self, phone):
+        """佔位字串或不含數字時回傳 None"""
+        assert FlexMessageBuilder._build_tel_uri(phone) is None
+
+    @pytest.mark.parametrize('phone', [None, 223456789, 2.5, ['02 2345 6789'], {'phone': '02'}])
+    def test_non_string_returns_none(self, phone):
+        """非字串輸入回傳 None"""
+        assert FlexMessageBuilder._build_tel_uri(phone) is None
+
+    def test_min_length_boundary(self):
+        """3 位數字為下限（含），2 位不合法"""
+        assert FlexMessageBuilder._build_tel_uri('110') == 'tel:110'
+        assert FlexMessageBuilder._build_tel_uri('11') is None
+
+    def test_max_length_boundary(self):
+        """15 位數字為上限（含），16 位不合法"""
+        assert FlexMessageBuilder._build_tel_uri('1' * 15) == f'tel:{"1" * 15}'
+        assert FlexMessageBuilder._build_tel_uri('1' * 16) is None
+        assert FlexMessageBuilder._build_tel_uri('+' + '1' * 16) is None
+
+    def test_extension_only_returns_none(self):
+        """只有分機標記、前面無號碼時回傳 None"""
+        assert FlexMessageBuilder._build_tel_uri('#123') is None
+
+
+class TestPhoneCallButton:
+    """測試單筆詳細卡片 footer 的「打電話」按鈕"""
+
+    def _make_info(self, **kwargs):
+        defaults = {
+            'place_id': 'test_place_id',
+            'name': '測試咖啡店',
+            'address': '台北市信義區',
+            'phone': '02 2345 6789',
+            'rating': 4.5,
+            'user_ratings_total': 100,
+            'google_maps': 'https://maps.google.com/?q=test',
+            'website': 'https://example.com',
+            'opening_hours': {'星期一': '09:00 – 21:00'},
+            'photo_s3_url': 'https://s3.example.com/photo.jpg',
+            'photo_reference': '',
+            'has_socket': None,
+            'limited_time': None,
+        }
+        defaults.update(kwargs)
+        return defaults
+
+    def _footer_labels(self, result):
+        return [btn['action']['label'] for btn in result['footer']['contents']]
+
+    def test_single_result_has_call_button_with_tel_uri(self):
+        """單筆且電話合法：footer 有打電話按鈕，action 為 tel URI"""
+        result = FlexMessageBuilder.create_shop_flex_message(self._make_info(), is_multiple=False)
+        call_btn = next(b for b in result['footer']['contents'] if b['action']['label'] == '打電話')
+        assert call_btn['type'] == 'button'
+        assert call_btn['action']['type'] == 'uri'
+        assert call_btn['action']['uri'] == 'tel:0223456789'
+
+    def test_button_order_map_call_website(self):
+        """按鈕順序為看地圖、打電話、官方網站"""
+        result = FlexMessageBuilder.create_shop_flex_message(self._make_info(), is_multiple=False)
+        assert self._footer_labels(result) == ['看地圖', '打電話', '官方網站']
+
+    def test_button_order_without_website(self):
+        """無官方網站時為看地圖、打電話"""
+        result = FlexMessageBuilder.create_shop_flex_message(self._make_info(website='無提供'), is_multiple=False)
+        assert self._footer_labels(result) == ['看地圖', '打電話']
+
+    @pytest.mark.parametrize('phone', [None, '', '無提供', '未提供電話'])
+    def test_no_call_button_when_phone_invalid(self, phone):
+        """電話缺失或為佔位字串時不顯示打電話按鈕"""
+        result = FlexMessageBuilder.create_shop_flex_message(self._make_info(phone=phone), is_multiple=False)
+        assert '打電話' not in self._footer_labels(result)
+
+    def test_no_call_button_when_phone_key_missing(self):
+        """info 沒有 phone key 時不顯示打電話按鈕"""
+        info = self._make_info()
+        del info['phone']
+        result = FlexMessageBuilder.create_shop_flex_message(info, is_multiple=False)
+        assert '打電話' not in self._footer_labels(result)
+
+    def test_multiple_results_no_call_button(self):
+        """多筆結果卡片不顯示打電話按鈕"""
+        result = FlexMessageBuilder.create_shop_flex_message(self._make_info(), is_multiple=True)
+        assert '打電話' not in self._footer_labels(result)
