@@ -11,6 +11,7 @@ x-app: &x-app
     - .env
   environment:
     - DB_HOST=pgbouncer
+    - DB_PORT=5432
     - REDIS_URL=redis://redis:6379/0
     - CELERY_BROKER_URL=redis://redis:6379/0
   networks:
