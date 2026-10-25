@@ -27,33 +27,50 @@ class TestGetOrCreateCafeInfo:
         assert returned_cafe == cafe
         assert info_d['place_id'] == cafe.place_id
 
-    def test_refreshes_stale_cafe_data(self):
-        """last_refreshed 超過 30 天，觸發 refresh"""
+    # 商業邏輯變更（sync-refresh-stale-cafe-data）：過期判斷、lock 與失敗回退移到 cafe.services.cafe_refresh，
+    # 原本直接斷言 refresh_cafe_data(cafe.id) 的兩個測試改為斷言委派給 refresh_cafe_if_stale；
+    # 過期 / None 的判斷邊界改由 cafe/tests/test_cafe_refresh.py 覆蓋
+    def test_delegates_refresh_to_refresh_cafe_if_stale(self):
+        """DB 命中時交由 refresh_cafe_if_stale 決定是否同步刷新"""
         cafe = CafeFactory(last_refreshed=timezone.now() - timedelta(days=31))
 
         with (
-            patch('line_bot.handlers.helpers.refresh_cafe_data') as mock_refresh,
-            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
+            patch('line_bot.handlers.helpers.refresh_cafe_if_stale', return_value=True) as mock_refresh,
+            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes', return_value=False),
         ):
-            mock_refresh.return_value = None
-            mock_match.return_value = False
             get_or_create_cafe_info(cafe.place_id, user_id=1)
 
-        mock_refresh.assert_called_once_with(cafe.id)
+        mock_refresh.assert_called_once()
+        assert mock_refresh.call_args.args[0].id == cafe.id
 
-    def test_refreshes_when_last_refreshed_is_none(self):
-        """last_refreshed 為 None，觸發 refresh"""
-        cafe = CafeFactory(last_refreshed=None)
+    def test_returns_refreshed_data_when_stale(self):
+        """過期刷新成功時，回傳刷新後的資料"""
+        cafe = CafeFactory(name='舊店名', last_refreshed=timezone.now() - timedelta(days=31))
+
+        def fake_refresh(c):
+            c.name = '新店名'
+            return True
 
         with (
-            patch('line_bot.handlers.helpers.refresh_cafe_data') as mock_refresh,
-            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes') as mock_match,
+            patch('line_bot.handlers.helpers.refresh_cafe_if_stale', side_effect=fake_refresh),
+            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes', return_value=False),
         ):
-            mock_refresh.return_value = None
-            mock_match.return_value = False
-            get_or_create_cafe_info(cafe.place_id, user_id=1)
+            info_d, _ = get_or_create_cafe_info(cafe.place_id, user_id=1)
 
-        mock_refresh.assert_called_once_with(cafe.id)
+        assert info_d['name'] == '新店名'
+
+    def test_returns_cached_data_when_refresh_fails(self):
+        """刷新失敗時仍回傳既有資料，不回傳 None"""
+        cafe = CafeFactory(name='舊店名', last_refreshed=None)
+
+        with (
+            patch('line_bot.handlers.helpers.refresh_cafe_if_stale', return_value=False),
+            patch('line_bot.handlers.helpers.CafeAttributeMatcher.match_and_sync_attributes', return_value=False),
+        ):
+            info_d, returned_cafe = get_or_create_cafe_info(cafe.place_id, user_id=1)
+
+        assert info_d['name'] == '舊店名'
+        assert returned_cafe == cafe
 
     def test_returns_quota_exceeded_when_quota_exceeded(self):
         """API 額度不足，回傳 (QUOTA_EXCEEDED, None) 且不呼叫 Google API"""

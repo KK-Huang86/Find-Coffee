@@ -16,6 +16,7 @@ from line_bot.builders.shop_flex_message import FlexMessageBuilder
 from line_bot.builders.postback import PostbackBuilder
 
 from cafe.models import Cafe
+from cafe.services.cafe_refresh import is_cafe_stale, refresh_cafe_now
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,36 @@ class LineMessageBuilder:
         """
         from line_bot.handlers.helpers import get_or_create_cafe_info
         return get_or_create_cafe_info(place_id, user_id)
+
+    @staticmethod
+    def _refresh_single_cafe(cafe):
+        """單間過期店家的同步刷新 worker；結束前關閉該執行緒的 DB 連線（同 _resolve_single_photo_url）"""
+        try:
+            return refresh_cafe_now(cafe)
+        finally:
+            connections.close_all()
+
+    @staticmethod
+    def _refresh_stale_cafes_concurrently(cafes):
+        """
+        平行同步刷新過期店家，刷新成功的 cafe 物件會就地更新為 DB 最新資料。
+
+        任一店家拋出未預期例外時記錄錯誤，該店沿用既有資料，不影響其他店家。
+        """
+        if not cafes:
+            return
+
+        with ThreadPoolExecutor(max_workers=len(cafes)) as executor:
+            future_to_cafe = {
+                executor.submit(LineMessageBuilder._refresh_single_cafe, cafe): cafe
+                for cafe in cafes
+            }
+            for future in as_completed(future_to_cafe):
+                cafe = future_to_cafe[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f'平行刷新店家資料失敗，沿用既有資料，place_id: {cafe.place_id}, error: {e}')
 
     @staticmethod
     def _resolve_single_photo_url(info):
@@ -143,10 +174,16 @@ class LineMessageBuilder:
         if 2 <= len(shops) <= 10:
             # 多筆結果：先批次查 DB，減少 Google API 呼叫次數
             place_ids = [shop['place_id'] for shop in shops]
-            cached_cafes = {
-                cafe.place_id: cafe.to_dict()
+            cafes_by_place_id = {
+                cafe.place_id: cafe
                 for cafe in Cafe.objects.filter(place_id__in=place_ids)
             }
+
+            # 過期店家在回覆前平行同步刷新，避免使用者拿到舊資料（失敗則沿用既有資料）
+            LineMessageBuilder._refresh_stale_cafes_concurrently(
+                [cafe for cafe in cafes_by_place_id.values() if is_cafe_stale(cafe)]
+            )
+            cached_cafes = {place_id: cafe.to_dict() for place_id, cafe in cafes_by_place_id.items()}
 
             # ① 收集所有店家的完整資訊（含 DB 快取命中與 Google API 補查）
             info_ds = []

@@ -7,13 +7,12 @@ from linebot.v3.messaging import (
     FlexMessage,
     FlexContainer,
 )
-from datetime import timedelta
-
 from django.utils import timezone
 
 from cafe.models import Cafe
 from cafe.services.attribute_matcher import CafeAttributeMatcher
-from cafe.tasks import generate_cafe_ai_summary, refresh_cafe_data
+from cafe.services.cafe_refresh import refresh_cafe_if_stale
+from cafe.tasks import generate_cafe_ai_summary
 from integrations.google.api import GoogleAPI
 from integrations.services import ApiUsageService
 from line_bot.constants import QUOTA_EXCEEDED
@@ -35,17 +34,11 @@ def get_or_create_cafe_info(place_id, user_id):
                若失敗或額度不足則回傳 (None, None)
     """
 
-    DATA_REFRESH_DAYS = 30
-
     # 1. 先查 DB
     cafe = Cafe.objects.filter(place_id=place_id).first()
     if cafe:
-        # 檢查該咖啡店的資訊是否需要刷新，走同步，因為有些資訊需即時更新
-        last_refreshed = cafe.last_refreshed
-        now = timezone.now()
-        if last_refreshed is None or now - last_refreshed >= timedelta(days=DATA_REFRESH_DAYS):
-            refresh_cafe_data(cafe.id)
-            cafe.refresh_from_db()  # 同步更新後，重新從 DB 取得最新資料
+        # 資料過期則同步刷新（含 lock 與失敗回退），成功時 cafe 已重新載入；失敗沿用既有資料
+        refresh_cafe_if_stale(cafe)
         # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料
         if cafe.has_socket is None or cafe.limited_time is None:
             try:

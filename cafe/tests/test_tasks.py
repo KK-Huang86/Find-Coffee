@@ -112,6 +112,33 @@ class TestRefreshCafeData:
 
         mock_photo_task.assert_not_called()
 
+    def test_skips_photo_upload_when_trigger_disabled_and_no_s3_url(self, mock_google_api, mock_photo_task):
+        """trigger_photo_upload=False 時，即使沒有 S3 照片也不觸發上傳（交由請求流程的 get_photo_url 觸發）"""
+        cafe = CafeFactory(photo_s3_url='')
+        mock_google_api.return_value = {'name': '咖啡店', 'photo_reference': 'new_ref'}
+
+        result = refresh_cafe_data(cafe_id=cafe.id, trigger_photo_upload=False)
+
+        assert result['status'] == 'success'
+        mock_photo_task.assert_not_called()
+        cafe.refresh_from_db()
+        assert cafe.photo_reference == 'new_ref'
+
+    def test_clears_expired_photo_without_upload_when_trigger_disabled(self, mock_google_api, mock_photo_task):
+        """trigger_photo_upload=False 且照片超過 180 天時，仍清除舊 S3 照片，但不觸發上傳"""
+        cafe = CafeFactory(
+            photo_s3_url='https://example.com/old.jpg',
+            photo_updated_at=timezone.now() - timedelta(days=181),
+        )
+        mock_google_api.return_value = {'name': '咖啡店'}
+
+        refresh_cafe_data(cafe_id=cafe.id, trigger_photo_upload=False)
+
+        mock_photo_task.assert_not_called()
+        cafe.refresh_from_db()
+        assert cafe.photo_s3_url == ''
+        assert cafe.photo_updated_at is None
+
     def test_triggers_ai_summary_regeneration_when_reviews_changed(
         self, mock_google_api, mock_photo_task, mock_summary_task
     ):

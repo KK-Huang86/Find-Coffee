@@ -1,8 +1,10 @@
 import threading
+from datetime import timedelta
 
 import pytest
 from unittest.mock import MagicMock, patch
 
+from django.utils import timezone
 from linebot.v3.messaging import QuickReply, QuickReplyItem, LocationAction
 
 from line_bot.builders.message_sender import LineMessageBuilder
@@ -170,6 +172,162 @@ class TestLineMessageBuilderSendShopResult:
             mock_flex.assert_any_call(
                 info_d, is_multiple=True, photo_url_override=photo_url_map[f'p{i}']
             )
+
+
+@pytest.mark.django_db
+class TestSendShopResultRefreshesStaleCafes:
+    """多筆結果：DB 命中且過期的店家在回覆前同步（平行）刷新"""
+
+    def _make_user(self):
+        user = MagicMock()
+        user.id = 'user1'
+        return user
+
+    def _stale(self):
+        return timezone.now() - timedelta(days=31)
+
+    def test_refreshes_only_stale_cafes(self):
+        """只刷新過期店家，未過期店家不刷新"""
+        stale = CafeFactory(place_id='p1', last_refreshed=self._stale())
+        CafeFactory(place_id='p2', last_refreshed=timezone.now())
+        api = MagicMock()
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', return_value=True) as mock_now, \
+             patch('line_bot.builders.message_sender.connections'), \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}), \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}], self._make_user())
+
+        assert mock_now.call_count == 1
+        assert mock_now.call_args.args[0].id == stale.id
+
+    def test_uses_refreshed_data_in_reply(self):
+        """回覆使用刷新後的資料，而非刷新前的快取"""
+        CafeFactory(place_id='p1', name='舊店名', last_refreshed=self._stale())
+        CafeFactory(place_id='p2', name='B', last_refreshed=timezone.now())
+        api = MagicMock()
+
+        def fake_refresh_now(cafe):
+            cafe.name = '新店名'
+            return True
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', side_effect=fake_refresh_now), \
+             patch('line_bot.builders.message_sender.connections'), \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}) as mock_resolve, \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}], self._make_user())
+
+        infos = mock_resolve.call_args.args[0]
+        assert [info['place_id'] for info in infos] == ['p1', 'p2']
+        assert infos[0]['name'] == '新店名'
+
+    def test_refresh_happens_before_photo_resolve(self):
+        """先刷新再解析照片，照片解析拿到的是刷新後的 photo_reference"""
+        CafeFactory(place_id='p1', photo_reference='old_ref', last_refreshed=self._stale())
+        CafeFactory(place_id='p2', last_refreshed=timezone.now())
+        api = MagicMock()
+
+        def fake_refresh_now(cafe):
+            cafe.photo_reference = 'new_ref'
+            return True
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', side_effect=fake_refresh_now), \
+             patch('line_bot.builders.message_sender.connections'), \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}) as mock_resolve, \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}], self._make_user())
+
+        assert mock_resolve.call_args.args[0][0]['photo_reference'] == 'new_ref'
+
+    def test_refresh_failure_falls_back_to_cached_data(self):
+        """刷新失敗（回傳 False）時沿用快取資料，仍正常回覆"""
+        CafeFactory(place_id='p1', name='舊店名', last_refreshed=self._stale())
+        CafeFactory(place_id='p2', last_refreshed=timezone.now())
+        api = MagicMock()
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', return_value=False), \
+             patch('line_bot.builders.message_sender.connections'), \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}) as mock_resolve, \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}], self._make_user())
+
+        assert mock_resolve.call_args.args[0][0]['name'] == '舊店名'
+        api.reply_message.assert_called_once()
+
+    def test_unexpected_exception_in_one_worker_does_not_affect_others(self, caplog):
+        """單一店家刷新拋出未預期例外時，該店沿用快取，其他店仍使用刷新後資料，且記錄 error"""
+        CafeFactory(place_id='p1', name='舊1', last_refreshed=self._stale())
+        CafeFactory(place_id='p2', name='舊2', last_refreshed=self._stale())
+        api = MagicMock()
+
+        def fake_refresh_now(cafe):
+            if cafe.place_id == 'p1':
+                raise RuntimeError('boom')
+            cafe.name = '新2'
+            return True
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', side_effect=fake_refresh_now), \
+             patch('line_bot.builders.message_sender.connections'), \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}) as mock_resolve, \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}), \
+             caplog.at_level('ERROR', logger='line_bot.builders.message_sender'):
+            LineMessageBuilder.send_shop_result(api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}], self._make_user())
+
+        names = {info['place_id']: info['name'] for info in mock_resolve.call_args.args[0]}
+        assert names == {'p1': '舊1', 'p2': '新2'}
+        assert any('boom' in r.getMessage() for r in caplog.records)
+
+    def test_no_stale_cafes_skips_refresh(self):
+        """全部未過期時不刷新"""
+        CafeFactory(place_id='p1', last_refreshed=timezone.now())
+        CafeFactory(place_id='p2', last_refreshed=timezone.now())
+        api = MagicMock()
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now') as mock_now, \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}), \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}], self._make_user())
+
+        mock_now.assert_not_called()
+
+    def test_closes_db_connections_once_per_refresh_worker(self):
+        """每個刷新 worker 結束後呼叫 connections.close_all()"""
+        CafeFactory(place_id='p1', last_refreshed=self._stale())
+        CafeFactory(place_id='p2', last_refreshed=self._stale())
+        CafeFactory(place_id='p3', last_refreshed=timezone.now())
+        api = MagicMock()
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', return_value=True), \
+             patch('line_bot.builders.message_sender.connections') as mock_connections, \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}), \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(
+                api, 'tok', [{'place_id': 'p1'}, {'place_id': 'p2'}, {'place_id': 'p3'}], self._make_user()
+            )
+
+        assert mock_connections.close_all.call_count == 2
+
+    def test_stale_cafes_refresh_concurrently(self):
+        """過期店家平行刷新：Barrier 要求所有 worker 同時到達，序列實作會 BrokenBarrierError 而退回快取資料"""
+        for i in range(3):
+            CafeFactory(place_id=f'p{i}', name=f'舊{i}', last_refreshed=self._stale())
+        barrier = threading.Barrier(3, timeout=1.0)
+        api = MagicMock()
+
+        def fake_refresh_now(cafe):
+            barrier.wait()
+            cafe.name = f'新{cafe.place_id}'
+            return True
+
+        with patch('line_bot.builders.message_sender.refresh_cafe_now', side_effect=fake_refresh_now), \
+             patch('line_bot.builders.message_sender.connections'), \
+             patch.object(LineMessageBuilder, '_resolve_photo_urls_concurrently', return_value={}) as mock_resolve, \
+             patch.object(FlexMessageBuilder, 'create_shop_flex_message', return_value={'type': 'bubble'}):
+            LineMessageBuilder.send_shop_result(
+                api, 'tok', [{'place_id': f'p{i}'} for i in range(3)], self._make_user()
+            )
+
+        assert [info['name'] for info in mock_resolve.call_args.args[0]] == ['新p0', '新p1', '新p2']
 
 
 @pytest.mark.django_db

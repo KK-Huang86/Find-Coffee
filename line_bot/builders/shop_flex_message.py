@@ -8,6 +8,7 @@ from line_bot.utils import parse_opening_hours
 
 from cafe.tasks import download_and_upload_cafe_photo
 from cafe.models import Cafe
+from cafe.services.cafe_refresh import refresh_cafe_now
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,11 @@ class FlexMessageBuilder:
         elif photo_reference:
             if allow_sync_resolve:
                 logger.info(f'place_id: {place_id}, photo_reference: {photo_reference}，解析google photo')
-                resolved_url = FlexMessageBuilder.resolve_photo_url(photo_reference)
+                resolved_url = FlexMessageBuilder.resolve_photo_url(
+                    photo_reference,
+                    # reference 被 Google 拒絕（多半是過期）時，同步刷新店家資料取得新 reference
+                    on_rejected=lambda: FlexMessageBuilder._refresh_photo_reference(place_id, photo_reference),
+                )
             else:
                 resolved_url = FlexMessageBuilder.DEFAULT_PHOTO_URL
 
@@ -103,12 +108,38 @@ class FlexMessageBuilder:
         except Exception as e:
             logger.error(f'觸發背景任務失敗: {e}')
 
+    # Google 對失效的 photo_reference 會回 400 或 403（實測同一個 reference 先後出現兩種）
+    REFERENCE_REJECTED_STATUSES = (400, 403)
+
     @staticmethod
-    def resolve_photo_url(photo_reference: str) -> str:
-        """解析 Google Places Photo API 重導向，取得實際圖片 URL"""
+    def resolve_photo_url(photo_reference: str, on_rejected=None) -> str:
+        """
+        解析 Google Places Photo API 重導向，取得實際圖片 URL
+
+        Args:
+            photo_reference: Google photo reference
+            on_rejected: reference 被拒絕（400/403）時呼叫，回傳新的 reference 則以新 reference 重試一次；
+                回傳 None 或未提供則不重試
+        """
         if not photo_reference:
             return FlexMessageBuilder.DEFAULT_PHOTO_URL
 
+        resolved_url, status_code = FlexMessageBuilder._request_photo_url(photo_reference)
+        if status_code in FlexMessageBuilder.REFERENCE_REJECTED_STATUSES and on_rejected:
+            new_reference = on_rejected()
+            if new_reference:
+                logger.info(f'以新 reference 重新解析照片 (old: {photo_reference}, new: {new_reference})')
+                resolved_url, _ = FlexMessageBuilder._request_photo_url(new_reference)
+        return resolved_url
+
+    @staticmethod
+    def _request_photo_url(photo_reference: str):
+        """
+        向 Google Photo API 發出一次 HEAD 請求
+
+        Returns:
+            tuple: (圖片 URL 或預設圖, HTTP status code；請求例外時為 None)
+        """
         photo_api_url = (
             f'https://maps.googleapis.com/maps/api/place/photo'
             f'?photo_reference={photo_reference}'
@@ -119,15 +150,45 @@ class FlexMessageBuilder:
         try:
             # (connect, read)：連線 2 秒內要建立，讀取最多等 4 秒
             response = requests.head(photo_api_url, allow_redirects=True, timeout=(2, 4))
-            if response.status_code == 200:
-                return response.url
-            # 不記錄 photo_api_url，避免 API key 寫入 log
-            logger.warning(
-                f'解析 Google photo URL 非 200 (status: {response.status_code}, reference: {photo_reference})'
-            )
         except requests.RequestException as e:
             logger.warning(f'解析 Google photo URL 失敗 (reference: {photo_reference}): {e}')
-        return FlexMessageBuilder.DEFAULT_PHOTO_URL
+            return FlexMessageBuilder.DEFAULT_PHOTO_URL, None
+
+        if response.status_code == 200:
+            return response.url, response.status_code
+        # 不記錄 photo_api_url，避免 API key 寫入 log
+        logger.warning(
+            f'解析 Google photo URL 非 200 (status: {response.status_code}, reference: {photo_reference})'
+        )
+        return FlexMessageBuilder.DEFAULT_PHOTO_URL, response.status_code
+
+    @staticmethod
+    def _refresh_photo_reference(place_id: str, old_reference: str):
+        """
+        photo_reference 被拒絕時，同步刷新店家資料並回傳新的 reference
+
+        Returns:
+            str | None: 新的 reference；找不到店家、刷新被跳過或失敗、reference 未改變或為空時回傳 None
+        """
+        if not place_id:
+            return None
+
+        try:
+            cafe = Cafe.objects.filter(place_id=place_id).first()
+            if not cafe or not refresh_cafe_now(cafe):
+                return None
+        except Exception as e:
+            logger.error(f'刷新 photo_reference 失敗 (place_id: {place_id}): {e}', exc_info=True)
+            return None
+
+        new_reference = cafe.photo_reference
+        if not new_reference:
+            logger.warning(f'刷新後店家沒有照片 reference (place_id: {place_id})')
+            return None
+        if new_reference == old_reference:
+            logger.warning(f'刷新後 photo_reference 未改變，被拒原因非 reference 過期 (place_id: {place_id})')
+            return None
+        return new_reference
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:

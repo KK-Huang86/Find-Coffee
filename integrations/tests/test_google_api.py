@@ -1,3 +1,6 @@
+import logging
+
+import pytest
 from unittest.mock import MagicMock
 from requests.exceptions import RequestException, Timeout
 
@@ -234,6 +237,79 @@ class TestGetShopDetail:
         result = GoogleAPI.get_shop_detail('ChIJ123')
 
         assert result == {}
+
+    def _mock_status_response(self, mocker, status, error_message=None):
+        body = {'status': status}
+        if error_message:
+            body['error_message'] = error_message
+        mock_response = MagicMock()
+        mock_response.json.return_value = body
+        mock_response.raise_for_status = MagicMock()
+        return mocker.patch('integrations.google.api.requests.get', return_value=mock_response)
+
+    @pytest.mark.parametrize('status', ['NOT_FOUND', 'INVALID_REQUEST', 'REQUEST_DENIED', 'OVER_QUERY_LIMIT'])
+    def test_status_not_ok_logs_status_and_error_message(self, mocker, caplog, status):
+        """狀態非 OK 時記錄 status、error_message 與 place_id"""
+        self._mock_status_response(mocker, status, error_message='some reason')
+
+        with caplog.at_level(logging.WARNING, logger='integrations.google.api'):
+            GoogleAPI.get_shop_detail('ChIJ123')
+
+        messages = ' '.join(r.getMessage() for r in caplog.records)
+        assert status in messages
+        assert 'some reason' in messages
+        assert 'ChIJ123' in messages
+
+    def test_status_not_ok_log_does_not_leak_api_key(self, mocker, caplog):
+        """非 OK 的 log 不含 API key"""
+        mocker.patch.object(GoogleAPI, 'GOOGLE_API_KEY', 'secret_key_123')
+        self._mock_status_response(mocker, 'REQUEST_DENIED', error_message='The provided API key is invalid.')
+
+        with caplog.at_level(logging.WARNING, logger='integrations.google.api'):
+            GoogleAPI.get_shop_detail('ChIJ123')
+
+        assert all('secret_key_123' not in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize('status', ['REQUEST_DENIED', 'OVER_QUERY_LIMIT'])
+    def test_denied_or_over_limit_pauses_subsequent_calls(self, mocker, status):
+        """金鑰被拒或額度用盡後，後續呼叫不發出請求，直接回傳空字典"""
+        mock_get = self._mock_status_response(mocker, status)
+
+        GoogleAPI.get_shop_detail('ChIJ123')
+        result = GoogleAPI.get_shop_detail('ChIJ456')
+
+        assert result == {}
+        assert mock_get.call_count == 1
+
+    def test_pause_lasts_300_seconds(self, mocker):
+        """暫停旗標 TTL 為 300 秒"""
+        self._mock_status_response(mocker, 'REQUEST_DENIED')
+        mock_cache_set = mocker.patch('integrations.google.api.cache.set')
+
+        GoogleAPI.get_shop_detail('ChIJ123')
+
+        mock_cache_set.assert_called_once()
+        assert mock_cache_set.call_args.kwargs['timeout'] == 300
+
+    def test_paused_call_logs_skip(self, mocker, caplog):
+        """暫停期間的呼叫會記錄被跳過"""
+        self._mock_status_response(mocker, 'OVER_QUERY_LIMIT')
+        GoogleAPI.get_shop_detail('ChIJ123')
+
+        with caplog.at_level(logging.WARNING, logger='integrations.google.api'):
+            GoogleAPI.get_shop_detail('ChIJ456')
+
+        assert any('ChIJ456' in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize('status', ['NOT_FOUND', 'INVALID_REQUEST', 'ZERO_RESULTS'])
+    def test_other_not_ok_status_does_not_pause(self, mocker, status):
+        """店家不存在等狀態不暫停，後續呼叫仍會發出請求"""
+        mock_get = self._mock_status_response(mocker, status)
+
+        GoogleAPI.get_shop_detail('ChIJ123')
+        GoogleAPI.get_shop_detail('ChIJ456')
+
+        assert mock_get.call_count == 2
 
 
 class TestGeocodeAddress:

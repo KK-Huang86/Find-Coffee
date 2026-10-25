@@ -146,10 +146,14 @@ def download_and_upload_cafe_photo(self, cafe_id):
     default_retry_delay=60,  # 60 秒後重試
     autoretry_for=(requests.RequestException,)
 )
-def refresh_cafe_data(cafe_id):
+def refresh_cafe_data(cafe_id, trigger_photo_upload=True):
     """
-    異步更新咖啡店資料
-    (當 last_refreshed 超過 30 天時觸發，該邏輯放在 helpers.py)
+    更新咖啡店資料
+    (當 last_refreshed 超過 30 天時，由 cafe.services.cafe_refresh 在請求流程中同步呼叫)
+
+    Args:
+        trigger_photo_upload: 是否在這裡觸發 S3 照片上傳；請求流程中同步呼叫時傳 False，
+            改由 FlexMessageBuilder.get_photo_url 統一觸發，避免重複送出 task
     """
 
     PHOTO_REFRESH_DAYS = 180
@@ -197,7 +201,8 @@ def refresh_cafe_data(cafe_id):
 
     # 2. 再來決定「是否需要更新照片」 photo_reference 本質是
     if not cafe.photo_s3_url:
-        download_and_upload_cafe_photo.delay(cafe.id)
+        if trigger_photo_upload:
+            download_and_upload_cafe_photo.delay(cafe.id)
 
 
     # 3. 照片超過180天後重新拉資料更新
@@ -209,7 +214,8 @@ def refresh_cafe_data(cafe_id):
         cafe.photo_s3_url = ""
         cafe.photo_updated_at = None
         cafe.save(update_fields=['photo_s3_url', 'photo_updated_at'])
-        download_and_upload_cafe_photo.delay(cafe.id)
+        if trigger_photo_upload:
+            download_and_upload_cafe_photo.delay(cafe.id)
 
     logger.info(f'已更新咖啡店資料: {cafe.name} ({cafe.place_id})')
     return {'status': 'success', 'cafe_id': cafe.id, 'cafe_name': cafe.name}
