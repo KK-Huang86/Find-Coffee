@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from linebot.v3.messaging import (
     ReplyMessageRequest,
@@ -7,6 +8,7 @@ from linebot.v3.messaging import (
     FlexMessage,
     FlexContainer,
 )
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from cafe.models import Cafe
@@ -17,8 +19,15 @@ from integrations.google.api import GoogleAPI
 from integrations.services import ApiUsageService
 from line_bot.constants import QUOTA_EXCEEDED
 from line_bot.utils import parse_opening_hours
+from utils.distributed_lock import distributed_lock
 
 logger = logging.getLogger(__name__)
+
+# 新店建立鎖：大於 Places Detail timeout（5 秒），持有者當機時自動釋放
+CREATE_LOCK_TIMEOUT_SECONDS = 10
+# 拿不到鎖時每 CREATE_POLL_INTERVAL_SECONDS 秒查一次 DB，最多 CREATE_WAIT_ATTEMPTS 次（約 2 秒）
+CREATE_WAIT_ATTEMPTS = 20
+CREATE_POLL_INTERVAL_SECONDS = 0.1
 
 
 def get_or_create_cafe_info(place_id, user_id):
@@ -37,21 +46,56 @@ def get_or_create_cafe_info(place_id, user_id):
     # 1. 先查 DB
     cafe = Cafe.objects.filter(place_id=place_id).first()
     if cafe:
-        # 資料過期則同步刷新（含 lock 與失敗回退），成功時 cafe 已重新載入；失敗沿用既有資料
-        refresh_cafe_if_stale(cafe)
-        # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料
-        if cafe.has_socket is None or cafe.limited_time is None:
-            try:
-                if CafeAttributeMatcher.match_and_sync_attributes(cafe):
-                    cafe.refresh_from_db()
-            except Exception as e:
-                logger.warning(f'查詢 CafeNomadCache 失敗 {e}', exc_info=True)
-        return cafe.to_dict(), cafe
+        return _existing_cafe_info(cafe)
+
+    # 2. 先前已被 Google 確認無效的 place_id，不扣額度、不再查詢（防快取穿透）
+    if GoogleAPI.is_known_missing_place(place_id):
+        logger.info(f'place_id 先前已確認無效，不查詢 Google: {place_id}')
+        return None, None
+
+    # 3. 同一間新店同時只讓一個請求打 Google（防快取擊穿）
+    with distributed_lock(f'cafe:create:{place_id}', timeout=CREATE_LOCK_TIMEOUT_SECONDS) as acquired:
+        if acquired:
+            # double check：前一個持有者可能剛建立完成
+            cafe = Cafe.objects.filter(place_id=place_id).first()
+            if cafe:
+                return _existing_cafe_info(cafe)
+            return _create_cafe_from_google(place_id, user_id)
+
+    cafe = _wait_for_cafe(place_id)
+    if cafe:
+        return _existing_cafe_info(cafe)
+
+    logger.warning(f'等待其他請求建立店家逾時，自行建立: place_id={place_id}')
+    return _create_cafe_from_google(place_id, user_id)
 
 
+def _existing_cafe_info(cafe):
+    """DB 已有店家：過期則同步刷新，並補 CafeNomadCache 屬性"""
+    # 資料過期則同步刷新（含 lock 與失敗回退），成功時 cafe 已重新載入；失敗沿用既有資料
+    refresh_cafe_if_stale(cafe)
+    # 是否有插頭 或者 限時的資料，沒有的話去找 CafeNomadCache 是否有資料
+    if cafe.has_socket is None or cafe.limited_time is None:
+        try:
+            if CafeAttributeMatcher.match_and_sync_attributes(cafe):
+                cafe.refresh_from_db()
+        except Exception as e:
+            logger.warning(f'查詢 CafeNomadCache 失敗 {e}', exc_info=True)
+    return cafe.to_dict(), cafe
 
 
-    # 2. DB 沒有，先確認 API 額度，再呼叫 Google API
+def _wait_for_cafe(place_id):
+    """等待持有鎖的請求建立店家，逾時回傳 None"""
+    for _ in range(CREATE_WAIT_ATTEMPTS):
+        time.sleep(CREATE_POLL_INTERVAL_SECONDS)
+        cafe = Cafe.objects.filter(place_id=place_id).first()
+        if cafe:
+            return cafe
+    return None
+
+
+def _create_cafe_from_google(place_id, user_id):
+    """確認額度後向 Google 取得店家資料並建立"""
     if not ApiUsageService.try_increment_detail_calls(user_id):
         logger.warning(f'User {user_id} 超過 API 額度，無法查詢 {place_id}')
         return QUOTA_EXCEEDED, None
@@ -65,27 +109,36 @@ def get_or_create_cafe_info(place_id, user_id):
         logger.error('缺少 place_id，無法建立店家資料')
         return None, None
 
-    # 3. 存入 DB
     try:
         opening_hours_l = info_d.get('opening_hours', [])
         opening_hours_d = parse_opening_hours(opening_hours_l)
 
-        cafe = Cafe.objects.create(
-            place_id=info_d['place_id'],
-            name=info_d.get('name') or '未提供名稱',
-            address=info_d.get('address') or '未提供地址',
-            phone=info_d.get('phone') or '未提供電話',
-            rating=info_d.get('rating'),
-            user_ratings_total=info_d.get('user_ratings_total', 0),
-            google_maps=info_d.get('google_maps') or '',
-            website=info_d.get('website') or '',
-            lat=info_d.get('lat') or 0.0,
-            lng=info_d.get('lng') or 0.0,
-            opening_hours=opening_hours_d,
-            reviews=info_d.get('reviews') or [],
-            photo_reference=info_d.get('photo_reference') or '',
-            last_refreshed=timezone.now(),
-        )
+        try:
+            with transaction.atomic():
+                cafe = Cafe.objects.create(
+                    place_id=info_d['place_id'],
+                    name=info_d.get('name') or '未提供名稱',
+                    address=info_d.get('address') or '未提供地址',
+                    phone=info_d.get('phone') or '未提供電話',
+                    rating=info_d.get('rating'),
+                    user_ratings_total=info_d.get('user_ratings_total', 0),
+                    google_maps=info_d.get('google_maps') or '',
+                    website=info_d.get('website') or '',
+                    lat=info_d.get('lat') or 0.0,
+                    lng=info_d.get('lng') or 0.0,
+                    opening_hours=opening_hours_d,
+                    reviews=info_d.get('reviews') or [],
+                    photo_reference=info_d.get('photo_reference') or '',
+                    last_refreshed=timezone.now(),
+                )
+        except IntegrityError:
+            # 等待逾時後自行建立時，持有者可能已先建立完成
+            existing = Cafe.objects.filter(place_id=info_d['place_id']).first()
+            if not existing:
+                raise
+            logger.info(f'店家已由其他請求建立，改讀既有資料: place_id={place_id}')
+            return _existing_cafe_info(existing)
+
         logger.info(f'建立新咖啡店: {cafe.name} ({cafe.place_id})')
 
         if cafe.reviews:
