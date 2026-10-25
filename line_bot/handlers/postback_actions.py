@@ -4,6 +4,8 @@ Postback Action Handlers - 每個 action 獨立處理
 import logging
 from urllib.parse import urlencode, quote
 
+from django.db.models import Q
+
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction, TemplateMessage
 
 from cafe.models import Cafe, CafeAttributeVote
@@ -141,41 +143,62 @@ def handle_share(line_bot_api, reply_token, user, params):
 
 
 def handle_ask_ai(line_bot_api, reply_token, user, params):
-    """呼叫 Groq 對咖啡店進行 AI 評價，結果以 Redis 快取避免重複呼叫"""
-    from django.core.cache import cache
-
+    """回覆咖啡店 AI 評價：優先使用 DB 的 ai_summary，空值時當場產生並存入，避免重複呼叫 Groq"""
     place_id = params.get('place_id')
     if not place_id:
         reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
 
-    info_d, _ = get_or_create_cafe_info(place_id, user.id)
-    if not info_d or info_d is QUOTA_EXCEEDED:
-        reply_text(line_bot_api, reply_token, '找不到該咖啡店' if info_d is not QUOTA_EXCEEDED else '本月 API 查詢額度已達上限 😢')
+    info_d, cafe = get_or_create_cafe_info(place_id, user.id)
+    if info_d is QUOTA_EXCEEDED:
+        reply_text(line_bot_api, reply_token, '本月 API 查詢額度已達上限 😢')
+        return
+    if not info_d or not cafe:
+        reply_text(line_bot_api, reply_token, '找不到該咖啡店')
         return
 
-    cache_key = f'ai_review:{place_id}'
-    result = cache.get(cache_key)
-
-    if not result:
-        if not ApiUsageService.try_increment_ai_calls(user.id):
-            reply_text(line_bot_api, reply_token, '本月 AI 評價額度已達上限 😢')
+    summary = cafe.ai_summary
+    if not summary:
+        summary = _generate_and_save_ai_summary(line_bot_api, reply_token, user, cafe)
+        if not summary:
             return
 
-        result = GroqAPI.review_cafe(
-            name=info_d.get('name', ''),
-            address=info_d.get('address', ''),
-            rating=info_d.get('rating'),
-            user_ratings_total=info_d.get('user_ratings_total', 0),
-            reviews=info_d.get('reviews', []),
-        )
-        if not result:
-            ApiUsageService.revert_ai_call(user.id)
-            reply_text(line_bot_api, reply_token, 'AI 評價暫時無法使用，請稍後再試')
-            return
-        cache.set(cache_key, result, timeout=60 * 60 * 24 * 7)  # 快取 7 天
+    reply_text(line_bot_api, reply_token, f'🤖 AI 評價｜{cafe.name}\n\n{summary}')
 
-    reply_text(line_bot_api, reply_token, f'🤖 AI 評價｜{info_d.get("name", "")}\n\n{result}')
+
+def _generate_and_save_ai_summary(line_bot_api, reply_token, user, cafe):
+    """
+    當場產生 ai_summary，只在 DB 仍為空時寫入。
+
+    Returns:
+        str | None: 要回覆的摘要；已回覆錯誤訊息時回傳 None
+    """
+    if not cafe.reviews:
+        reply_text(line_bot_api, reply_token, '這間店目前評論不足，AI 暫時無法評價 😢')
+        return None
+
+    if not ApiUsageService.try_increment_ai_calls(user.id):
+        reply_text(line_bot_api, reply_token, '本月 AI 評價額度已達上限 😢')
+        return None
+
+    summary = GroqAPI.summarize_for_search(name=cafe.name, reviews=cafe.reviews)
+    if not summary:
+        ApiUsageService.revert_ai_call(user.id)
+        logger.warning(f'AI 評價產生失敗，已回復使用者 {user.id} 額度: {cafe.name} ({cafe.place_id})')
+        reply_text(line_bot_api, reply_token, 'AI 評價暫時無法使用，請稍後再試')
+        return None
+
+    # 條件式寫入：背景任務若已先寫入則不覆蓋，改回覆 DB 版本，確保只有一份摘要
+    updated = Cafe.objects.filter(
+        Q(ai_summary__isnull=True) | Q(ai_summary=''), pk=cafe.pk
+    ).update(ai_summary=summary)
+    if not updated:
+        cafe.refresh_from_db(fields=['ai_summary'])
+        logger.info(f'ai_summary 已由其他流程寫入，改用 DB 版本: {cafe.name} ({cafe.place_id})')
+        return cafe.ai_summary or summary
+
+    logger.info(f'已於使用者點擊時產生 AI 摘要: {cafe.name} ({cafe.place_id})')
+    return summary
 
 
 def handle_view_detail(line_bot_api, reply_token, user, params):
