@@ -27,7 +27,8 @@
 - `is_cafe_stale(cafe)`：`last_refreshed` 為空或距今 ≥ 30 天。
 - `refresh_cafe_now(cafe) -> bool`：取得 `LockService.acquire(str(cafe.id), 'refresh', ttl=600)`，成功才呼叫 `refresh_cafe_data(cafe.id, trigger_photo_upload=False)`；成功時 `cafe.refresh_from_db()` 並回傳 `True`。取不到 lock、刷新回傳非 `success`、或拋出例外，皆記錄 log 並回傳 `False`，呼叫端沿用既有資料。
 - `refresh_cafe_if_stale(cafe) -> bool`：過期才呼叫 `refresh_cafe_now`。
-- 理由：單筆、多筆、照片重試三處共用同一份 lock 與失敗處理，避免邏輯分散。
+- `refresh_photo_reference(place_id, old_reference) -> str | None`：照片 reference 被拒時呼叫 `refresh_cafe_now`，回傳新的 reference（見 Decision 5）。
+- 理由：「什麼時候要重抓店家資料」的判斷（30 天過期、照片 reference 被拒）全部集中在這個模組，單筆、多筆、照片重試三處共用同一份 lock 與失敗處理；builder 層只負責呼叫，不自己做資料決策。
 
 **2. 照片失效時做完整刷新，而非只取 photo 欄位**
 - reference 失效的店家幾乎都已超過 30 天，本來就該完整刷新。只取 photo 會導致之後 30 天刷新再打一次完整 Detail，總共兩次；完整刷新會重設 `last_refreshed`，總共只打一次。
@@ -40,14 +41,15 @@
 - 前提是移除 `event_handlers.py` 中先行取得 `refresh` lock 的 `.delay()`；否則同步刷新永遠取不到 lock。
 
 **4. 多筆結果分兩階段平行：先刷新過期店家，再解析照片**
-- 階段一：對 DB 命中且過期的店家，以 `ThreadPoolExecutor` 平行呼叫 `refresh_cafe_if_stale`，worker 結束前 `connections.close_all()`（沿用 `parallelize-carousel-photo-resolve` Decision 3）。完成後以刷新後的 `cafe.to_dict()` 作為該店資訊。
+- 兩個階段共用 `LineMessageBuilder._run_concurrently(items, worker, key, fallback, error_label)`：負責 `ThreadPoolExecutor`、每個 worker 結束前 `connections.close_all()`（沿用 `parallelize-carousel-photo-resolve` Decision 3）、單一 item 例外時記錄並回退 fallback。
+- 階段一：對 DB 命中且過期的店家平行呼叫 `refresh_cafe_now`。完成後以刷新後的 `cafe.to_dict()` 作為該店資訊。
 - 階段二：沿用既有 `_resolve_photo_urls_concurrently`，不變更其介面。
 - 理由：保留既有照片平行解析的介面與測試；兩階段最壞等待時間為「最慢刷新 + 最慢照片解析」，與每店 pipeline 的最壞情況相近。
 - 替代方案：每店一個 worker 依序做「刷新 → 解析照片」。放棄原因：需改變既有 `_resolve_photo_urls_concurrently` 的回傳介面，效能差異不大。
 
 **5. `get_photo_url` 遇到 400/403 時刷新並重試一次**
 - `resolve_photo_url(photo_reference, on_rejected=None)`：HEAD 請求拆到 `_request_photo_url(photo_reference) -> (url, status_code)`；status 為 400 或 403 且有 `on_rejected` 時呼叫它，回傳新 reference 才以新 reference 重新解析一次，最多重試一次。未提供 `on_rejected` 時維持原行為。
-- `get_photo_url` 傳入 `on_rejected=lambda: _refresh_photo_reference(place_id, photo_reference)`。`_refresh_photo_reference` 查出 `Cafe`，`refresh_cafe_now` 成功且新 reference 非空、與舊的不同，才回傳新 reference；reference 未改變時記錄「被拒原因非 reference 過期」。
+- `get_photo_url` 傳入 `on_rejected=lambda: refresh_photo_reference(place_id, photo_reference)`。`refresh_photo_reference`（位於 `cafe_refresh`）查出 `Cafe`，`refresh_cafe_now` 成功且新 reference 非空、與舊的不同，才回傳新 reference；reference 未改變時記錄「被拒原因非 reference 過期」。
 - 以 callback 注入而非讓 `get_photo_url` 自己判斷 status，是為了維持 `resolve_photo_url` 仍回傳 `str`，既有呼叫端不受影響。
 - 400 與 403 都處理：實測同一個過期 reference 先後回應 403 與 400；403 也可能是金鑰或額度問題，由 Decision 7 的暫停機制避免浪費。
 - 不論重試結果，`_trigger_s3_upload` 仍只呼叫一次（維持既有解耦）。

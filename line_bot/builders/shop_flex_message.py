@@ -8,7 +8,7 @@ from line_bot.utils import parse_opening_hours
 
 from cafe.tasks import download_and_upload_cafe_photo
 from cafe.models import Cafe
-from cafe.services.cafe_refresh import refresh_cafe_now
+from cafe.services.cafe_refresh import refresh_photo_reference
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class FlexMessageBuilder:
                 resolved_url = FlexMessageBuilder.resolve_photo_url(
                     photo_reference,
                     # reference 被 Google 拒絕（多半是過期）時，同步刷新店家資料取得新 reference
-                    on_rejected=lambda: FlexMessageBuilder._refresh_photo_reference(place_id, photo_reference),
+                    on_rejected=lambda: refresh_photo_reference(place_id, photo_reference),
                 )
             else:
                 resolved_url = FlexMessageBuilder.DEFAULT_PHOTO_URL
@@ -161,34 +161,6 @@ class FlexMessageBuilder:
             f'解析 Google photo URL 非 200 (status: {response.status_code}, reference: {photo_reference})'
         )
         return FlexMessageBuilder.DEFAULT_PHOTO_URL, response.status_code
-
-    @staticmethod
-    def _refresh_photo_reference(place_id: str, old_reference: str):
-        """
-        photo_reference 被拒絕時，同步刷新店家資料並回傳新的 reference
-
-        Returns:
-            str | None: 新的 reference；找不到店家、刷新被跳過或失敗、reference 未改變或為空時回傳 None
-        """
-        if not place_id:
-            return None
-
-        try:
-            cafe = Cafe.objects.filter(place_id=place_id).first()
-            if not cafe or not refresh_cafe_now(cafe):
-                return None
-        except Exception as e:
-            logger.error(f'刷新 photo_reference 失敗 (place_id: {place_id}): {e}', exc_info=True)
-            return None
-
-        new_reference = cafe.photo_reference
-        if not new_reference:
-            logger.warning(f'刷新後店家沒有照片 reference (place_id: {place_id})')
-            return None
-        if new_reference == old_reference:
-            logger.warning(f'刷新後 photo_reference 未改變，被拒原因非 reference 過期 (place_id: {place_id})')
-            return None
-        return new_reference
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:

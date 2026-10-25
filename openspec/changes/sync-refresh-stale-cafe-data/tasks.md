@@ -31,3 +31,9 @@
 - [x] 3.2 `uv run ruff check .`、`uv run python manage.py check`、`makemigrations --check --dry-run` 通過
 - [x] 3.3 本機 Docker 實測：對 3 間 `photo_reference` 已失效、超過 30 天的店家執行多筆結果，3 間皆同步刷新並顯示 `lh3.googleusercontent.com` 真實照片，每間只送出一次 S3 上傳 task，Celery 上傳全部成功
 - [x] 3.4 `openspec validate sync-refresh-stale-cafe-data --strict` 通過
+
+## 4. 重構（測試維持全綠）
+
+- [x] 4.1 `message_sender.py`：刷新與照片解析兩組 thread pool 寫法重複，抽成 `_run_concurrently`；移除 `_refresh_single_cafe`、`_resolve_single_photo_url`。測試未修改。
+- [x] 4.2 `_refresh_photo_reference` 由 `FlexMessageBuilder` 搬到 `cafe/services/cafe_refresh.py` 的 `refresh_photo_reference`，「是否重抓」的判斷全部集中在 `cafe_refresh`。對應測試隨程式碼搬到 `cafe/tests/test_cafe_refresh.py`，斷言不變，只改呼叫對象與 patch 目標；`get_photo_url` 接線測試的 patch 目標改為 `line_bot.builders.shop_flex_message.refresh_photo_reference`。
+- [x] 4.3 `uv run pytest -q` 501 passed（數量與重構前相同）；`uv run ruff check .` 通過。

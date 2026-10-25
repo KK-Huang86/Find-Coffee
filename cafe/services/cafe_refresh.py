@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from cafe.models import Cafe
 from cafe.tasks import refresh_cafe_data
 from utils.utils import LockService
 
@@ -53,3 +54,31 @@ def refresh_cafe_if_stale(cafe):
     if not is_cafe_stale(cafe):
         return False
     return refresh_cafe_now(cafe)
+
+
+def refresh_photo_reference(place_id, old_reference):
+    """
+    Google 拒絕 photo_reference（多半是過期）時，同步刷新店家資料並回傳新的 reference
+
+    Returns:
+        str | None: 新的 reference；找不到店家、刷新被跳過或失敗、reference 未改變或為空時回傳 None
+    """
+    if not place_id:
+        return None
+
+    try:
+        cafe = Cafe.objects.filter(place_id=place_id).first()
+        if not cafe or not refresh_cafe_now(cafe):
+            return None
+    except Exception as e:
+        logger.error(f'刷新 photo_reference 失敗 (place_id: {place_id}): {e}', exc_info=True)
+        return None
+
+    new_reference = cafe.photo_reference
+    if not new_reference:
+        logger.warning(f'刷新後店家沒有照片 reference (place_id: {place_id})')
+        return None
+    if new_reference == old_reference:
+        logger.warning(f'刷新後 photo_reference 未改變，被拒原因非 reference 過期 (place_id: {place_id})')
+        return None
+    return new_reference

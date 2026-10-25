@@ -1,11 +1,8 @@
 import pytest
-import logging
-
 from unittest.mock import MagicMock, patch
 
 from line_bot.builders.shop_flex_message import FlexMessageBuilder
 from line_bot.tests.factories import CafeFactory
-from cafe.models import Cafe
 
 
 # FlexMessageBuilder.get_photo_url
@@ -117,7 +114,7 @@ class TestGetPhotoUrlRefreshOnRejectedReference:
             return f'https://lh3.googleusercontent.com/{on_rejected()}.jpg'
 
         with patch.object(FlexMessageBuilder, 'resolve_photo_url', side_effect=fake_resolve), \
-             patch.object(FlexMessageBuilder, '_refresh_photo_reference', return_value='new_ref') as mock_refresh, \
+             patch('line_bot.builders.shop_flex_message.refresh_photo_reference', return_value='new_ref') as mock_refresh, \
              patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
             result = FlexMessageBuilder.get_photo_url(info)
 
@@ -133,7 +130,7 @@ class TestGetPhotoUrlRefreshOnRejectedReference:
             return 'https://lh3.googleusercontent.com/new.jpg'
 
         with patch.object(FlexMessageBuilder, 'resolve_photo_url', side_effect=fake_resolve), \
-             patch.object(FlexMessageBuilder, '_refresh_photo_reference', return_value='new_ref'), \
+             patch('line_bot.builders.shop_flex_message.refresh_photo_reference', return_value='new_ref'), \
              patch.object(FlexMessageBuilder, '_trigger_s3_upload') as mock_upload:
             FlexMessageBuilder.get_photo_url(info)
 
@@ -143,91 +140,11 @@ class TestGetPhotoUrlRefreshOnRejectedReference:
         """allow_sync_resolve=False 時不解析、也不刷新"""
         info = {'photo_s3_url': '', 'photo_reference': 'old_ref', 'place_id': 'p1'}
 
-        with patch.object(FlexMessageBuilder, '_refresh_photo_reference') as mock_refresh, \
+        with patch('line_bot.builders.shop_flex_message.refresh_photo_reference') as mock_refresh, \
              patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
             FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=False)
 
         mock_refresh.assert_not_called()
-
-
-@pytest.mark.django_db
-class TestRefreshPhotoReference:
-    """測試 FlexMessageBuilder._refresh_photo_reference"""
-
-    def test_returns_new_reference_after_refresh(self):
-        """刷新成功且 reference 改變時，回傳新 reference"""
-        cafe = CafeFactory(place_id='p1', photo_reference='old_ref')
-
-        def fake_refresh_now(c):
-            Cafe.objects.filter(id=c.id).update(photo_reference='new_ref')
-            c.refresh_from_db()
-            return True
-
-        with patch('line_bot.builders.shop_flex_message.refresh_cafe_now', side_effect=fake_refresh_now) as mock_now:
-            result = FlexMessageBuilder._refresh_photo_reference('p1', 'old_ref')
-
-        assert result == 'new_ref'
-        assert mock_now.call_args.args[0].id == cafe.id
-
-    def test_returns_none_when_cafe_not_found(self):
-        """找不到店家時回傳 None，不刷新"""
-        with patch('line_bot.builders.shop_flex_message.refresh_cafe_now') as mock_now:
-            result = FlexMessageBuilder._refresh_photo_reference('missing', 'old_ref')
-
-        assert result is None
-        mock_now.assert_not_called()
-
-    def test_returns_none_when_refresh_skipped_or_failed(self):
-        """refresh_cafe_now 回傳 False（剛刷新過 / 失敗）時回傳 None"""
-        CafeFactory(place_id='p1', photo_reference='old_ref')
-
-        with patch('line_bot.builders.shop_flex_message.refresh_cafe_now', return_value=False):
-            result = FlexMessageBuilder._refresh_photo_reference('p1', 'old_ref')
-
-        assert result is None
-
-    def test_returns_none_and_warns_when_reference_unchanged(self, caplog):
-        """刷新後 reference 未改變，代表不是過期問題，回傳 None 並記錄 warning"""
-        CafeFactory(place_id='p1', photo_reference='old_ref')
-
-        with patch('line_bot.builders.shop_flex_message.refresh_cafe_now', return_value=True), \
-             caplog.at_level(logging.WARNING, logger='line_bot.builders.shop_flex_message'):
-            result = FlexMessageBuilder._refresh_photo_reference('p1', 'old_ref')
-
-        assert result is None
-        assert any('p1' in r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
-
-    def test_returns_none_when_refreshed_reference_is_empty(self):
-        """刷新後店家已沒有照片（reference 為空），回傳 None"""
-        CafeFactory(place_id='p1', photo_reference='old_ref')
-
-        def fake_refresh_now(c):
-            Cafe.objects.filter(id=c.id).update(photo_reference='')
-            c.refresh_from_db()
-            return True
-
-        with patch('line_bot.builders.shop_flex_message.refresh_cafe_now', side_effect=fake_refresh_now):
-            result = FlexMessageBuilder._refresh_photo_reference('p1', 'old_ref')
-
-        assert result is None
-
-    def test_returns_none_when_place_id_empty(self):
-        """place_id 為空時不查詢、不刷新"""
-        with patch('line_bot.builders.shop_flex_message.refresh_cafe_now') as mock_now:
-            result = FlexMessageBuilder._refresh_photo_reference('', 'old_ref')
-
-        assert result is None
-        mock_now.assert_not_called()
-
-    def test_exception_is_logged_and_returns_none(self, caplog):
-        """查詢或刷新拋出例外時記錄 error，回傳 None，不中斷照片流程"""
-        with patch('line_bot.builders.shop_flex_message.Cafe.objects.filter', side_effect=RuntimeError('db down')), \
-             caplog.at_level(logging.ERROR, logger='line_bot.builders.shop_flex_message'):
-            result = FlexMessageBuilder._refresh_photo_reference('p1', 'old_ref')
-
-        assert result is None
-        assert any('db down' in r.getMessage() for r in caplog.records)
-
 
 # FlexMessageBuilder.resolve_photo_url
 
