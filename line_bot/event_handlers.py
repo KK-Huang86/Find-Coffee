@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = config('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = config('LINE_CHANNEL_SECRET')
 
-configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
+# 壓測時以環境變數指向 mock server，避免打到真的 LINE API
+LINE_API_HOST = config('LINE_API_HOST', default='https://api.line.me')
+configuration = Configuration(host=LINE_API_HOST, access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 

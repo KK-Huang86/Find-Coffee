@@ -30,6 +30,18 @@ class TestDownloadAndUploadCafePhotoForce:
         mock_get.assert_called_once()
         assert result == {'status': 'failed', 'reason': 'invalid_content_type'}
 
+    def test_downloads_from_google_photo_url_setting(self, mocker):
+        """下載照片呼叫 GoogleAPI.PHOTO_URL（壓測時可指向 mock server）"""
+        mocker.patch('cafe.tasks.GoogleAPI.PHOTO_URL', 'http://mock-google/maps/api/place/photo')
+        response = mocker.MagicMock()
+        response.headers = {'Content-Type': 'text/html'}
+        mock_get = mocker.patch('cafe.tasks.requests.get', return_value=response)
+        cafe = CafeFactory(photo_reference='ref1', photo_s3_url='')
+
+        download_and_upload_cafe_photo(cafe.id)
+
+        assert mock_get.call_args.args[0].startswith('http://mock-google/maps/api/place/photo?photo_reference=ref1')
+
     def test_force_still_skips_without_photo_reference(self, mocker):
         """force=True 但沒有 photo_reference 時仍跳過"""
         mock_get = mocker.patch('cafe.tasks.requests.get')

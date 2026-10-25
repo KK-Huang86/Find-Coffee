@@ -16,7 +16,11 @@ class OutOfServiceAreaError(Exception):
 
 class GoogleAPI:
     GOOGLE_API_KEY = config('GOOGLE_API_KEY')
-    BASE_URL = 'https://maps.googleapis.com/maps/api/place'
+    # 壓測時以環境變數指向 mock server，避免打到真的 Google
+    MAPS_BASE_URL = config('GOOGLE_MAPS_BASE_URL', default='https://maps.googleapis.com')
+    BASE_URL = f'{MAPS_BASE_URL}/maps/api/place'
+    PHOTO_URL = f'{BASE_URL}/photo'
+    GEOCODE_URL = f'{MAPS_BASE_URL}/maps/api/geocode/json'
 
     # 金鑰被拒或額度用盡時，所有店家的 Detail 都會失敗，暫停一段時間避免每間店都白打一次
     DETAIL_PAUSE_CACHE_KEY = 'google:places_detail:paused'
@@ -181,7 +185,7 @@ class GoogleAPI:
     def _geocode_address(address):
         """將地址轉換為經緯度"""
 
-        search_url = 'https://maps.googleapis.com/maps/api/geocode/json'
+        search_url = GoogleAPI.GEOCODE_URL
         params = {
             'address': address,
             'key': GoogleAPI.GOOGLE_API_KEY,

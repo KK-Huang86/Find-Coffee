@@ -9,6 +9,7 @@ from line_bot.utils import parse_opening_hours
 from cafe.tasks import download_and_upload_cafe_photo
 from cafe.models import Cafe
 from cafe.services.cafe_refresh import refresh_photo_reference
+from integrations.google.api import GoogleAPI
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,7 @@ class FlexMessageBuilder:
             tuple: (圖片 URL 或預設圖, HTTP status code；請求例外時為 None)
         """
         photo_api_url = (
-            f'https://maps.googleapis.com/maps/api/place/photo'
+            f'{GoogleAPI.PHOTO_URL}'
             f'?photo_reference={photo_reference}'
             f'&maxwidth=400'
             f'&key={config("GOOGLE_API_KEY")}'

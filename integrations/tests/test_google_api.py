@@ -7,6 +7,29 @@ from requests.exceptions import RequestException, Timeout
 from integrations.google.api import GoogleAPI, OutOfServiceAreaError
 
 
+class TestGoogleEndpoints:
+    """Google API 端點由 GOOGLE_MAPS_BASE_URL 組成，預設為正式網址（壓測時指向 mock server）"""
+
+    def test_default_base_url_is_google(self):
+        """未設定環境變數時使用 Google 正式網址"""
+        assert GoogleAPI.MAPS_BASE_URL == 'https://maps.googleapis.com'
+
+    def test_endpoints_derive_from_base_url(self):
+        """Places、Photo、Geocode 端點皆由 MAPS_BASE_URL 組成"""
+        assert GoogleAPI.BASE_URL == 'https://maps.googleapis.com/maps/api/place'
+        assert GoogleAPI.PHOTO_URL == 'https://maps.googleapis.com/maps/api/place/photo'
+        assert GoogleAPI.GEOCODE_URL == 'https://maps.googleapis.com/maps/api/geocode/json'
+
+    def test_geocode_uses_geocode_url(self, mocker):
+        """_geocode_address 呼叫 GEOCODE_URL"""
+        mocker.patch.object(GoogleAPI, 'GEOCODE_URL', 'http://mock-google/maps/api/geocode/json')
+        mock_get = mocker.patch('integrations.google.api.requests.get', side_effect=Timeout)
+
+        GoogleAPI._geocode_address('台北市')
+
+        assert mock_get.call_args.args[0] == 'http://mock-google/maps/api/geocode/json'
+
+
 class TestCleanTaiwanAddress:
     """測試 GoogleAPI._clean_taiwan_address"""
 

@@ -234,6 +234,18 @@ class TestResolvePhotoUrl:
 
         assert not [r for r in caplog.records if r.levelname == 'WARNING']
 
+    def test_uses_google_photo_url_setting(self):
+        """照片解析呼叫 GoogleAPI.PHOTO_URL（壓測時可指向 mock server）"""
+        from integrations.google.api import GoogleAPI
+
+        with patch.object(GoogleAPI, 'PHOTO_URL', 'http://mock-google/maps/api/place/photo'), \
+             patch('line_bot.builders.shop_flex_message.requests.head',
+                   return_value=self._response(200, 'http://mock-google/image.jpg')) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            FlexMessageBuilder.resolve_photo_url('ref1')
+
+        assert mock_head.call_args.args[0].startswith('http://mock-google/maps/api/place/photo?photo_reference=ref1')
+
     def _response(self, status_code, url=''):
         resp = MagicMock()
         resp.status_code = status_code

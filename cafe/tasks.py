@@ -5,6 +5,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from cafe.models import Cafe
+from integrations.google.api import GoogleAPI
 from integrations.groq.api import GroqAPI
 from integrations.services import ApiUsageService
 
@@ -57,7 +58,7 @@ def download_and_upload_cafe_photo(self, cafe_id, force=False):
 
         # 4. 從 Google 下載照片
         photo_url = (
-            f'https://maps.googleapis.com/maps/api/place/photo'
+            f'{GoogleAPI.PHOTO_URL}'
             f'?photo_reference={cafe.photo_reference}'
             f'&maxwidth=400'
             f'&key={config("GOOGLE_API_KEY")}'
