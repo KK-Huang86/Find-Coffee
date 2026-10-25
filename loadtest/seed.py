@@ -16,9 +16,14 @@ seed 為已快取狀態，讓量到的只有 Geocoding + Nearby Search 的差異
 - address_cold：每個 iteration 搜尋不同地址 → 每次都未命中（等同沒有快取時的成本）
 - address_hot：所有 iteration 搜尋同一個地址 → 只有第一次打 Google，同時進來的請求等鎖（擊穿防護）
 - address_miss：所有 iteration 搜尋同一個查不到的地址 → 空結果被快取（穿透防護）
+
+雪崩防護情境：
+- refresh_spread：所有店家在同一時間匯入（last_refreshed = now - AGE_HOURS），已有 S3 照片；
+  依 AGE_HOURS 量測有幾間店被判定過期而同步刷新，驗證過期門檻分散在 25～30 天
 """
 import os
 import sys
+from datetime import timedelta
 
 import django
 
@@ -36,11 +41,12 @@ from users.models import User  # noqa: E402
 SCENARIO = os.environ['SCENARIO']
 GROUPS = int(os.environ.get('GROUPS', '30'))
 SHOPS_PER_GROUP = int(os.environ.get('SHOPS_PER_GROUP', '10'))
+AGE_HOURS = float(os.environ.get('AGE_HOURS', '0'))
 
 if settings.DATABASES['default']['NAME'] != 'find_coffee_loadtest':
     sys.exit(f'拒絕執行：目前資料庫為 {settings.DATABASES["default"]["NAME"]}，只能在 find_coffee_loadtest 執行')
 ADDRESS_SCENARIOS = ('address_cold', 'address_hot', 'address_miss')
-if SCENARIO not in ('cached', 'stale', 'expired_photo') + ADDRESS_SCENARIOS:
+if SCENARIO not in ('cached', 'stale', 'expired_photo', 'refresh_spread') + ADDRESS_SCENARIOS:
     sys.exit(f'未知情境: {SCENARIO}')
 
 
@@ -68,6 +74,10 @@ def _cafe(place_id, name, state):
     now = timezone.now()
     if state == 'cached':
         base.update(last_refreshed=now, photo_reference=f'fresh_{place_id}',
+                    photo_s3_url=f'https://cdn.example.com/{place_id}.jpg', photo_updated_at=now)
+    elif state == 'refresh_spread':
+        # 同一批匯入：所有店家 last_refreshed 相同；已有 S3 照片，量到的外部呼叫只有過期刷新的 Places Detail
+        base.update(last_refreshed=now - timedelta(hours=AGE_HOURS), photo_reference=f'fresh_{place_id}',
                     photo_s3_url=f'https://cdn.example.com/{place_id}.jpg', photo_updated_at=now)
     elif state == 'stale':
         base.update(last_refreshed=None, photo_reference=f'expired_{place_id}', photo_s3_url='')
