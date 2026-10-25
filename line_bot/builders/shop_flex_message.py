@@ -516,7 +516,7 @@ class FlexMessageBuilder:
                 }
             ])
         else:
-            # 單筆結果時：顯示「看地圖」、「打電話」與「官方網站」
+            # 單筆結果時：顯示「看地圖」、「打電話」與「網站」
             flex_message['footer']['contents'].append({
                 'type': 'button',
                 'style': 'primary',
@@ -543,7 +543,7 @@ class FlexMessageBuilder:
                     'style': 'link',
                     'action': {
                         'type': 'uri',
-                        'label': '官方網站',
+                        'label': '網站',
                         'uri': info.get('website')
                     }
                 })

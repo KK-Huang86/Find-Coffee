@@ -1,6 +1,6 @@
 ## Context
 
-店家電話來源有兩條：Google Places `formatted_phone_number`（如 `02 2345 6789`，缺值時為 `無提供`），以及 `Cafe.phone`（建立時缺值寫入 `未提供電話`）。卡片 footer 目前在單筆時顯示「看地圖」與「官方網站」。
+店家電話來源有兩條：Google Places `formatted_phone_number`（如 `02 2345 6789`，缺值時為 `無提供`），以及 `Cafe.phone`（建立時缺值寫入 `未提供電話`）。卡片 footer 目前在單筆時顯示「看地圖」與「網站」。
 
 ## Goals / Non-Goals
 
@@ -32,7 +32,7 @@ postback 需要 server 回覆訊息，無法直接開啟撥號畫面；LINE URI 
 
 ### Decision 3：按鈕順序
 
-footer 依序為「看地圖」（primary）、「打電話」、「官方網站」。最多 3 顆，horizontal layout 仍可容納。
+footer 依序為「看地圖」（primary）、「打電話」、「網站」。最多 3 顆；原本的「官方網站」在 3 顆按鈕並排時文字會溢出，因此改為「網站」。
 
 ## Risks / Trade-offs
 

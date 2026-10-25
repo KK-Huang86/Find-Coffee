@@ -413,12 +413,12 @@ class TestCreateShopFlexMessage:
         assert name_element['text'] == '星巴克信義門市'
 
     def test_single_result_footer_has_map_and_website(self):
-        """單筆結果 (is_multiple=False)：footer 有地圖和官方網站按鈕"""
+        """單筆結果 (is_multiple=False)：footer 有地圖和網站按鈕"""
         info = self._make_info(website='https://starbucks.com.tw')
         result = FlexMessageBuilder.create_shop_flex_message(info, is_multiple=False)
         footer_actions = [btn['action']['label'] for btn in result['footer']['contents']]
         assert '看地圖' in footer_actions
-        assert '官方網站' in footer_actions
+        assert '網站' in footer_actions
 
     def test_single_result_footer_no_website_only_map(self):
         """單筆結果且無官方網站時，footer 只有地圖按鈕"""
@@ -426,14 +426,14 @@ class TestCreateShopFlexMessage:
         result = FlexMessageBuilder.create_shop_flex_message(info, is_multiple=False)
         footer_labels = [btn['action']['label'] for btn in result['footer']['contents']]
         assert '看地圖' in footer_labels
-        assert '官方網站' not in footer_labels
+        assert '網站' not in footer_labels
 
     def test_single_result_footer_no_website_string(self):
-        """website 為 '無提供' 字串時，不顯示官方網站按鈕"""
+        """website 為 '無提供' 字串時，不顯示網站按鈕"""
         info = self._make_info(website='無提供')
         result = FlexMessageBuilder.create_shop_flex_message(info, is_multiple=False)
         footer_labels = [btn['action']['label'] for btn in result['footer']['contents']]
-        assert '官方網站' not in footer_labels
+        assert '網站' not in footer_labels
 
     def test_multiple_results_footer_has_map_and_select(self):
         """多筆結果 (is_multiple=True)：footer 有地圖和選擇這間按鈕"""
@@ -638,9 +638,9 @@ class TestPhoneCallButton:
         assert call_btn['action']['uri'] == 'tel:0223456789'
 
     def test_button_order_map_call_website(self):
-        """按鈕順序為看地圖、打電話、官方網站"""
+        """按鈕順序為看地圖、打電話、網站"""
         result = FlexMessageBuilder.create_shop_flex_message(self._make_info(), is_multiple=False)
-        assert self._footer_labels(result) == ['看地圖', '打電話', '官方網站']
+        assert self._footer_labels(result) == ['看地圖', '打電話', '網站']
 
     def test_button_order_without_website(self):
         """無官方網站時為看地圖、打電話"""
