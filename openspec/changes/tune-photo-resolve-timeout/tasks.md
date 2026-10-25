@@ -16,3 +16,7 @@
 - [x] 3.1 `uv run pytest -q` 全數通過（438 passed）
 - [x] 3.2 `uv run ruff check .`、`uv run python manage.py check` 通過
 - [x] 3.3 `openspec validate tune-photo-resolve-timeout --strict` 通過
+
+## 需求對應
+
+- [x] 照片即時解析失敗需留下可追查紀錄：1.1、1.2、2.1、3.1

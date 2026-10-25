@@ -18,3 +18,8 @@
 - [x] 3.1 `uv run pytest -q` 513 passed；`ruff check .`、`manage.py check` 通過
 - [x] 3.2 `loadtest/run.sh` 實跑 VUS=1 / VUS=5 三種情境，checks 100%；mock 呼叫次數符合預期，無未 mock 端點的呼叫；結果記錄於 `loadtest/README.md`
 - [x] 3.3 `openspec validate add-carousel-loadtest --strict` 通過
+
+## 需求對應
+
+- [x] 外部 API 位址可由設定切換：1.1、1.2、1.3、1.4、2.1、2.2、2.3
+- [x] 壓測不得呼叫真實外部服務：2.4（`run.sh` 執行前檢查、假金鑰、`seed.py` 資料庫檢查）、3.2

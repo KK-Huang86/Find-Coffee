@@ -50,3 +50,12 @@
 - 刪除 `test_tasks.py` 的 `TestRefreshCafeData`：task 已刪除。欄位更新與 AI 摘要相關測試以相同斷言移到 `test_cafe_refresh.py`；`test_trigger_photo_upload_no_s3_url`（刷新時觸發首次上傳）因 Decision 6 不再適用而刪除；`test_trigger_photo_upload_expired`（清空 S3 後上傳）改為「不清空、以 `force=True` 背景重新下載」（Decision 8）。
 - `test_event_handlers.py` 的背景刷新測試：原 patch `refresh_cafe_data.delay`，task 刪除後改為斷言流程中沒有送出任何 Celery 任務。
 - `test_cafe_refresh.py` 的 `TestRefreshCafeNow`：原 mock `refresh_cafe_data`，改為 mock `GoogleAPI.get_shop_detail`，斷言意圖不變。
+
+## 需求對應
+
+- [x] 過期店家資料於回覆前同步更新：1.1、1.5、1.6、1.7、2.1、2.5、2.6、2.7、4.1、3.3
+- [x] 同一店家短時間內不重複更新：1.1（lock 相關測試）、2.1、5.1
+- [x] 更新失敗時以既有資料回覆：1.1、1.5、1.6、5.1（寫入失敗不留半套資料）、5.3
+- [x] 外部來源拒絕服務時暫停更新呼叫：1.3、2.3
+- [x] 照片過期時背景重新下載且不中斷顯示：5.1、5.3
+- [x] 照片識別碼被拒絕時同步更新並重試一次：1.4、2.4、4.2
