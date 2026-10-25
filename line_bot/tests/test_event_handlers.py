@@ -128,7 +128,7 @@ class TestHandleMessage:
             patch('line_bot.event_handlers.show_loading'),
             patch('line_bot.event_handlers.SearchHistoryService.add_search'),
             patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result'),
-            patch('cafe.tasks.refresh_cafe_data.delay') as mock_delay,
+            patch('celery.app.task.Task.delay') as mock_delay,
         ):
             mock_messaging_cls.return_value = MagicMock()
             handle_message(event)

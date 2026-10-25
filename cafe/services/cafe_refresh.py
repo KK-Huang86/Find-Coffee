@@ -4,12 +4,14 @@ from datetime import timedelta
 from django.utils import timezone
 
 from cafe.models import Cafe
-from cafe.tasks import refresh_cafe_data
+from cafe.tasks import download_and_upload_cafe_photo, generate_cafe_ai_summary
+from integrations.google.api import GoogleAPI
 from utils.utils import LockService
 
 logger = logging.getLogger(__name__)
 
 DATA_REFRESH_DAYS = 30
+PHOTO_REFRESH_DAYS = 180
 # 同一間店 TTL 內最多刷新一次；成功後 last_refreshed 已更新不會再進來，失敗時避免每次查詢都重打 Places Detail
 REFRESH_LOCK_TTL_SECONDS = 600
 
@@ -24,29 +26,68 @@ def is_cafe_stale(cafe, now=None):
 
 def refresh_cafe_now(cafe):
     """
-    同步刷新店家資料，成功時 cafe 會重新從 DB 載入。
+    同步向 Google 刷新店家資料，成功時 cafe 物件與 DB 皆為最新資料。
 
-    S3 上傳不在這裡觸發，統一由請求流程的 FlexMessageBuilder.get_photo_url 觸發，避免同一次請求重複送出 task。
+    - 同一間店 REFRESH_LOCK_TTL_SECONDS 內最多刷新一次
+    - 刷新失敗或發生例外時記錄 log、回傳 False，cafe 維持原資料，呼叫端沿用既有資料回覆
+    - 沒有 S3 照片時不在這裡觸發上傳，統一由 FlexMessageBuilder.get_photo_url 觸發，避免重複送出 task
 
     Returns:
-        bool: 是否成功刷新；取不到 lock、刷新失敗或發生例外皆回傳 False，呼叫端沿用既有資料
+        bool: 是否成功刷新
     """
     if not LockService.acquire(str(cafe.id), 'refresh', ttl=REFRESH_LOCK_TTL_SECONDS):
         logger.info(f'跳過刷新（{REFRESH_LOCK_TTL_SECONDS} 秒內已刷新或刷新中）: cafe_id={cafe.id}')
         return False
 
     try:
-        result = refresh_cafe_data(cafe.id, trigger_photo_upload=False)
+        result = GoogleAPI.get_shop_detail(cafe.place_id)
+        if not result:
+            logger.warning(f'Google API 無回傳資料，沿用既有資料: place_id={cafe.place_id}')
+            return False
+        old_reviews = cafe.reviews
+        _apply_google_detail(cafe, result)
     except Exception as e:
-        logger.error(f'同步刷新店家資料發生例外，沿用既有資料: cafe_id={cafe.id}, error={e}', exc_info=True)
+        logger.error(f'同步刷新店家資料發生例外，沿用既有資料: place_id={cafe.place_id}, error={e}', exc_info=True)
+        cafe.refresh_from_db()  # 丟掉已套用到記憶體但沒寫入成功的欄位
         return False
 
-    if not result or result.get('status') != 'success':
-        logger.warning(f'同步刷新店家資料失敗，沿用既有資料: cafe_id={cafe.id}, result={result}')
-        return False
+    # reviews 有變化，或先前尚未成功產生 ai_summary，重新觸發 AI 摘要產生（重試機會）
+    reviews_changed = result.get('reviews') is not None and result.get('reviews') != old_reviews
+    if reviews_changed or not cafe.ai_summary:
+        generate_cafe_ai_summary.delay(cafe.id)
 
-    cafe.refresh_from_db()
+    _queue_photo_refresh_if_expired(cafe)
+
+    logger.info(f'已同步刷新咖啡店資料: {cafe.name} ({cafe.place_id})')
     return True
+
+
+def _apply_google_detail(cafe, result):
+    """把 Places Detail 結果寫入 cafe；API 沒回傳（None）的欄位保留原值"""
+    for field in (
+        'name', 'address', 'phone', 'rating', 'user_ratings_total',
+        'website', 'google_maps', 'photo_reference', 'reviews',
+    ):
+        value = result.get(field)
+        if value is not None:
+            setattr(cafe, field, value)
+
+    cafe.last_refreshed = timezone.now()
+    cafe.save()
+
+
+def _queue_photo_refresh_if_expired(cafe):
+    """
+    S3 照片超過 PHOTO_REFRESH_DAYS 天時，以背景任務強制重新下載。
+
+    不先清空舊的 photo_s3_url：新照片上傳完成前使用者仍看得到舊照片。
+    """
+    if not cafe.photo_s3_url or not cafe.photo_updated_at:
+        return
+    if timezone.now() - cafe.photo_updated_at < timedelta(days=PHOTO_REFRESH_DAYS):
+        return
+    logger.info(f'S3 照片超過 {PHOTO_REFRESH_DAYS} 天，背景重新下載: place_id={cafe.place_id}')
+    download_and_upload_cafe_photo.delay(cafe.id, force=True)
 
 
 def refresh_cafe_if_stale(cafe):

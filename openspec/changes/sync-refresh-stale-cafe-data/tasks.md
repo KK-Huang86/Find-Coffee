@@ -37,3 +37,16 @@
 - [x] 4.1 `message_sender.py`：刷新與照片解析兩組 thread pool 寫法重複，抽成 `_run_concurrently`；移除 `_refresh_single_cafe`、`_resolve_single_photo_url`。測試未修改。
 - [x] 4.2 `_refresh_photo_reference` 由 `FlexMessageBuilder` 搬到 `cafe/services/cafe_refresh.py` 的 `refresh_photo_reference`，「是否重抓」的判斷全部集中在 `cafe_refresh`。對應測試隨程式碼搬到 `cafe/tests/test_cafe_refresh.py`，斷言不變，只改呼叫對象與 patch 目標；`get_photo_url` 接線測試的 patch 目標改為 `line_bot.builders.shop_flex_message.refresh_photo_reference`。
 - [x] 4.3 `uv run pytest -q` 501 passed（數量與重構前相同）；`uv run ruff check .` 通過。
+
+## 5. 刪除 refresh_cafe_data task，180 天照片更新維持背景執行
+
+- [x] 5.1 測試先行：`cafe/tests/test_cafe_refresh.py` 改為 mock `GoogleAPI.get_shop_detail`，並將原 `TestRefreshCafeData` 的欄位更新、None 保留原值、AI 摘要觸發等測試以相同斷言移入（`TestRefreshCafeNowFieldUpdate`）；新增寫入失敗不留半套資料、180 天照片（超過、剛好 180 天、未滿、無 S3、無 `photo_updated_at`、刷新失敗）測試；`test_tasks.py` 新增 `download_and_upload_cafe_photo` 的 `force` 測試
+- [x] 5.2 紅燈確認（service 尚未 import `GoogleAPI`，相關測試全數 setup error）
+- [x] 5.3 實作：`refresh_cafe_now` 內含 Detail 呼叫與欄位更新（`_apply_google_detail`）、`_queue_photo_refresh_if_expired`；刪除 `refresh_cafe_data` 與 `trigger_photo_upload`；`download_and_upload_cafe_photo` 新增 `force`
+- [x] 5.4 `uv run pytest -q` 505 passed；`ruff check .`、`manage.py check` 通過
+
+### 既有測試的調整（商業邏輯變更）
+
+- 刪除 `test_tasks.py` 的 `TestRefreshCafeData`：task 已刪除。欄位更新與 AI 摘要相關測試以相同斷言移到 `test_cafe_refresh.py`；`test_trigger_photo_upload_no_s3_url`（刷新時觸發首次上傳）因 Decision 6 不再適用而刪除；`test_trigger_photo_upload_expired`（清空 S3 後上傳）改為「不清空、以 `force=True` 背景重新下載」（Decision 8）。
+- `test_event_handlers.py` 的背景刷新測試：原 patch `refresh_cafe_data.delay`，task 刪除後改為斷言流程中沒有送出任何 Celery 任務。
+- `test_cafe_refresh.py` 的 `TestRefreshCafeNow`：原 mock `refresh_cafe_data`，改為 mock `GoogleAPI.get_shop_detail`，斷言意圖不變。

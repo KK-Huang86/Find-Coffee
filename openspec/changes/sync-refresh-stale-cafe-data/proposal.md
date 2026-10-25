@@ -16,7 +16,8 @@
 - 移除店名搜尋中的 `refresh_cafe_data.delay()` 背景刷新，避免與同步刷新重複呼叫 Places Detail
 - 同一間店的刷新以 Redis lock（`lock:<cafe_id>:refresh`，TTL 600 秒）限制，TTL 內最多刷新一次；同步刷新失敗或拋出例外時回退使用既有資料並記錄 log，不阻斷回覆
 - Google Photo API 回應 400 或 403 時，於同一執行緒同步刷新該店資料取得新的 `photo_reference`，並以新 reference 重新解析一次（最多重試一次）
-- 同步刷新不再由 `refresh_cafe_data` 觸發 S3 上傳，統一由 `get_photo_url` 觸發，避免同一次請求重複送出上傳 task
+- 同步刷新不觸發首次 S3 上傳，統一由 `get_photo_url` 觸發，避免同一次請求重複送出上傳 task
+- 刪除 `refresh_cafe_data` Celery task（已無非同步呼叫端），刷新邏輯移入 `cafe/services/cafe_refresh.py`；S3 照片超過 180 天時維持以背景任務重新下載，且不先清空舊照片
 - `GoogleAPI.get_shop_detail` 在 Places 回應非 `OK` 時記錄 `status` 與 `error_message`；遇到 `REQUEST_DENIED` 或 `OVER_QUERY_LIMIT`（金鑰或額度問題，非 reference 過期）時暫停所有 Places Detail 呼叫 300 秒，避免每間店都白打一次
 
 ## Capabilities
@@ -32,7 +33,7 @@
 ## Impact
 
 - `cafe/services/cafe_refresh.py`（新增）：過期判斷、同步刷新（含 lock 與失敗回退）
-- `cafe/tasks.py`：`refresh_cafe_data` 新增 `trigger_photo_upload` 參數（預設 `True`，維持 Celery 呼叫的既有行為）
+- `cafe/tasks.py`：刪除 `refresh_cafe_data`；`download_and_upload_cafe_photo` 新增 `force` 參數
 - `line_bot/handlers/helpers.py`：`get_or_create_cafe_info` 改用共用的同步刷新服務
 - `line_bot/builders/message_sender.py`：多筆結果先平行刷新過期店家，再平行解析照片
 - `line_bot/builders/shop_flex_message.py`：`get_photo_url` 遇到 400/403 時刷新並重試

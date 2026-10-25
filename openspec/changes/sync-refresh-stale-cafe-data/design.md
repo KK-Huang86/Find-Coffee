@@ -25,7 +25,7 @@
 
 **1. 同步刷新抽成 `cafe/services/cafe_refresh.py`**
 - `is_cafe_stale(cafe)`：`last_refreshed` 為空或距今 ≥ 30 天。
-- `refresh_cafe_now(cafe) -> bool`：取得 `LockService.acquire(str(cafe.id), 'refresh', ttl=600)`，成功才呼叫 `refresh_cafe_data(cafe.id, trigger_photo_upload=False)`；成功時 `cafe.refresh_from_db()` 並回傳 `True`。取不到 lock、刷新回傳非 `success`、或拋出例外，皆記錄 log 並回傳 `False`，呼叫端沿用既有資料。
+- `refresh_cafe_now(cafe) -> bool`：取得 `LockService.acquire(str(cafe.id), 'refresh', ttl=600)`，成功才呼叫 Places Detail 並更新欄位（見 Decision 8），成功回傳 `True`。取不到 lock、刷新回傳非 `success`、或拋出例外，皆記錄 log 並回傳 `False`，呼叫端沿用既有資料。
 - `refresh_cafe_if_stale(cafe) -> bool`：過期才呼叫 `refresh_cafe_now`。
 - `refresh_photo_reference(place_id, old_reference) -> str | None`：照片 reference 被拒時呼叫 `refresh_cafe_now`，回傳新的 reference（見 Decision 5）。
 - 理由：「什麼時候要重抓店家資料」的判斷（30 天過期、照片 reference 被拒）全部集中在這個模組，單筆、多筆、照片重試三處共用同一份 lock 與失敗處理；builder 層只負責呼叫，不自己做資料決策。
@@ -54,14 +54,22 @@
 - 400 與 403 都處理：實測同一個過期 reference 先後回應 403 與 400；403 也可能是金鑰或額度問題，由 Decision 7 的暫停機制避免浪費。
 - 不論重試結果，`_trigger_s3_upload` 仍只呼叫一次（維持既有解耦）。
 
-**6. 同步刷新不觸發 S3 上傳**
-- `refresh_cafe_data` 新增 `trigger_photo_upload=True` 參數；同步刷新傳 `False`。請求流程中統一由 `get_photo_url` → `_trigger_s3_upload` 觸發，該函式讀取 DB 最新的 `photo_s3_url`，180 天照片過期被清空時也能正確觸發。
-- Celery 直接呼叫（預設 `True`）行為不變。
+**6. 同步刷新不觸發「首次」S3 上傳**
+- 沒有 S3 照片時，`refresh_cafe_now` 不送上傳 task；請求流程中統一由 `get_photo_url` → `_trigger_s3_upload` 觸發，避免同一次請求重複送出。
+- 已有 S3 照片但超過 180 天的「重新下載」由 `refresh_cafe_now` 送出（Decision 8），此時 `get_photo_url` 看到 S3 照片存在不會觸發，兩者不重複。
 
 **7. Places Detail 非 `OK` 時記錄並暫停**
 - `get_shop_detail` 在 `status != 'OK'` 時記錄 `status`、`error_message` 與 `place_id`（不含 API key）。
 - `REQUEST_DENIED` 或 `OVER_QUERY_LIMIT` 時設定 cache key `google:places_detail:paused`（TTL 300 秒）；暫停期間 `get_shop_detail` 直接回傳 `{}` 並記錄 log，不發出請求。
 - 理由：金鑰或額度問題會讓所有店家的 Detail 都失敗，不暫停的話每間店都會白打一次。
+
+**8. 刪除 `refresh_cafe_data` task，180 天照片更新維持背景執行**
+- 30 天資料刷新全部改為請求流程中同步執行後，已沒有任何地方以 `.delay()` 呼叫 `refresh_cafe_data`。保留它會讓讀者在 `tasks.py` 與 `cafe_refresh.py` 之間來回跳，且 `trigger_photo_upload` 參數只是為了相容這個歷史包袱。
+- 「打 Places Detail + 更新欄位 + 觸發 AI 摘要」搬進 `cafe_refresh.refresh_cafe_now`（`_apply_google_detail`），task 刪除，`trigger_photo_upload` 參數一併移除。
+- 寫入失敗時 `cafe.refresh_from_db()`，丟掉已套用到記憶體但沒寫入成功的欄位，呼叫端不會拿到半套新資料。
+- 180 天照片更新：同步刷新成功後，若 S3 照片的 `photo_updated_at` 已達 180 天，送出 `download_and_upload_cafe_photo.delay(cafe.id, force=True)`。**不再先清空 `photo_s3_url`**：新照片上傳完成前使用者仍看到舊照片，不會在這段期間退回即時解析或預設圖。`download_and_upload_cafe_photo` 新增 `force` 參數，已有 S3 照片時仍重新下載並覆蓋。
+- 已知限制：S3 key 固定為 `cafe-photos/{place_id}.jpg`，上傳時設定 `CacheControl: max-age=31536000`，覆蓋同一個 key 後 CloudFront 與 LINE 端可能仍快取舊圖。此問題在本次修改前即存在，另開 change 處理（例如 key 加上版本）。
+- 部署注意：佇列中若殘留舊的 `refresh_cafe_data` 訊息，worker 會回報 unregistered task；部署前確認佇列中沒有該 task。
 
 ## Risks / Trade-offs
 
