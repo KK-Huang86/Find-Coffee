@@ -117,9 +117,14 @@ class FlexMessageBuilder:
         )
 
         try:
-            response = requests.head(photo_api_url, allow_redirects=True, timeout=2)
+            # (connect, read)：連線 2 秒內要建立，讀取最多等 4 秒
+            response = requests.head(photo_api_url, allow_redirects=True, timeout=(2, 4))
             if response.status_code == 200:
                 return response.url
+            # 不記錄 photo_api_url，避免 API key 寫入 log
+            logger.warning(
+                f'解析 Google photo URL 非 200 (status: {response.status_code}, reference: {photo_reference})'
+            )
         except requests.RequestException as e:
             logger.warning(f'解析 Google photo URL 失敗 (reference: {photo_reference}): {e}')
         return FlexMessageBuilder.DEFAULT_PHOTO_URL

@@ -135,6 +135,60 @@ class TestResolvePhotoUrl:
 
         assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
 
+    def test_uses_split_connect_and_read_timeout(self):
+        """requests.head 使用 (connect, read) 分開的 timeout：連線 2 秒、讀取 4 秒"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = 'https://lh3.googleusercontent.com/photo.jpg'
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            FlexMessageBuilder.resolve_photo_url('valid_ref')
+
+        assert mock_head.call_args.kwargs['timeout'] == (2, 4)
+
+    @pytest.mark.parametrize('status_code', [204, 302, 400, 403, 404, 500])
+    def test_logs_warning_with_status_code_when_not_200(self, status_code, caplog):
+        """HTTP 狀態非 200 時，記錄一筆 warning，內容包含 status code 與 photo_reference"""
+        mock_response = MagicMock()
+        mock_response.status_code = status_code
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'), \
+             caplog.at_level('WARNING', logger='line_bot.builders.shop_flex_message'):
+            result = FlexMessageBuilder.resolve_photo_url('some_ref')
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        warnings = [r for r in caplog.records if r.levelname == 'WARNING']
+        assert len(warnings) == 1
+        assert str(status_code) in warnings[0].getMessage()
+        assert 'some_ref' in warnings[0].getMessage()
+
+    def test_non_200_log_does_not_leak_api_key(self, caplog):
+        """非 200 的 log 不得包含 API key（photo API URL 內含 key，不可整串寫入 log）"""
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='secret_key_123'), \
+             caplog.at_level('WARNING', logger='line_bot.builders.shop_flex_message'):
+            FlexMessageBuilder.resolve_photo_url('some_ref')
+
+        assert all('secret_key_123' not in r.getMessage() for r in caplog.records)
+
+    def test_does_not_log_warning_on_success(self, caplog):
+        """200 成功時不記錄 warning"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = 'https://lh3.googleusercontent.com/photo.jpg'
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'), \
+             caplog.at_level('WARNING', logger='line_bot.builders.shop_flex_message'):
+            FlexMessageBuilder.resolve_photo_url('valid_ref')
+
+        assert not [r for r in caplog.records if r.levelname == 'WARNING']
+
     def test_returns_default_on_request_exception(self):
         """requests 拋出例外時，回傳預設圖"""
         import requests as req_lib
