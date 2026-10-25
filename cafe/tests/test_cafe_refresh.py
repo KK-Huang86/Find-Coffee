@@ -9,6 +9,7 @@ from django.utils import timezone
 from cafe.models import Cafe
 from cafe.services.cafe_refresh import (
     is_cafe_stale,
+    refresh_threshold,
     refresh_cafe_if_stale,
     refresh_cafe_now,
     refresh_photo_reference,
@@ -43,11 +44,54 @@ class TestIsCafeStale:
         cafe = CafeFactory(last_refreshed=now - timedelta(days=30))
         assert is_cafe_stale(cafe, now=now) is True
 
-    def test_within_30_days_is_not_stale(self):
-        """未滿 30 天不過期"""
+    # 商業邏輯變更（add-cache-protection）：過期門檻由固定 30 天改為依 place_id 分散在 25～30 天（防快取雪崩），
+    # 「29 天 23 小時一定不過期」不再成立，改為驗證「略低於自己的門檻不過期」「達到門檻過期」
+    def test_just_below_own_threshold_is_not_stale(self):
+        """略低於自己的門檻時不過期"""
         now = timezone.now()
-        cafe = CafeFactory(last_refreshed=now - timedelta(days=29, hours=23))
+        cafe = CafeFactory()
+        cafe.last_refreshed = now - refresh_threshold(cafe) + timedelta(seconds=1)
         assert is_cafe_stale(cafe, now=now) is False
+
+    def test_reaching_own_threshold_is_stale(self):
+        """達到自己的門檻時過期（邊界）"""
+        now = timezone.now()
+        cafe = CafeFactory()
+        cafe.last_refreshed = now - refresh_threshold(cafe)
+        assert is_cafe_stale(cafe, now=now) is True
+
+    @pytest.mark.parametrize('place_id', ['a', 'ChIJN1t_tDeuEmsRUsoyG83frY4', 'pid_0', 'pid_99'])
+    def test_never_exceeds_30_days_without_refresh(self, place_id):
+        """任何店家達到 30 天都一定過期"""
+        now = timezone.now()
+        cafe = CafeFactory(place_id=place_id, last_refreshed=now - timedelta(days=30))
+        assert is_cafe_stale(cafe, now=now) is True
+
+
+@pytest.mark.django_db
+class TestRefreshThreshold:
+    """測試 refresh_threshold：依 place_id 分散在 25～30 天（防快取雪崩）"""
+
+    def test_within_25_to_30_days(self):
+        """門檻介於 25 天到 30 天"""
+        for i in range(200):
+            threshold = refresh_threshold(CafeFactory.build(place_id=f'pid_{i}'))
+            assert timedelta(days=25) <= threshold <= timedelta(days=30)
+
+    def test_same_place_id_is_deterministic(self):
+        """同一間店的門檻固定，不會這次過期、下次又不過期"""
+        cafe = CafeFactory.build(place_id='ChIJN1t_tDeuEmsRUsoyG83frY4')
+        assert len({refresh_threshold(cafe) for _ in range(20)}) == 1
+
+    def test_batch_is_spread(self):
+        """100 間不同店家的門檻分布在多個值"""
+        thresholds = {refresh_threshold(CafeFactory.build(place_id=f'pid_{i}')) for i in range(100)}
+        assert len(thresholds) >= 50
+
+    @pytest.mark.parametrize('place_id', ['', None])
+    def test_missing_place_id_uses_30_days(self, place_id):
+        """沒有 place_id 時退回 30 天，不拋例外"""
+        assert refresh_threshold(CafeFactory.build(place_id=place_id)) == timedelta(days=30)
 
     def test_just_refreshed_is_not_stale(self):
         """剛更新過不過期"""
