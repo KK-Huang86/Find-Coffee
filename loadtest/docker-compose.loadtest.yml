@@ -1,0 +1,73 @@
+# 壓測專用服務，與開發環境隔離：獨立 DB、獨立 Redis db、外部 API 全部指向 mock server，且不啟動 celery worker。
+# 用法見 loadtest/README.md，請透過 loadtest/run.sh 執行。
+services:
+  mock-external:
+    container_name: find-coffee-mock-external
+    image: python:3.13-slim
+    profiles: [loadtest]
+    command: python /mock/mock_server.py
+    volumes:
+      - ./loadtest/mock_server.py:/mock/mock_server.py:ro
+    environment:
+      - DETAIL_LATENCY_MS=${DETAIL_LATENCY_MS:-300}
+      - PHOTO_LATENCY_MS=${PHOTO_LATENCY_MS:-150}
+      - LINE_LATENCY_MS=${LINE_LATENCY_MS:-50}
+    ports:
+      - "8081:8080"
+    networks:
+      - find_coffee_network
+
+  pgbouncer-loadtest:
+    container_name: find-coffee-pgbouncer-loadtest
+    image: edoburu/pgbouncer:v1.25.2-p0
+    profiles: [loadtest]
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=find_coffee_loadtest
+      - POOL_MODE=transaction
+      - MAX_DB_CONNECTIONS=20
+      - DEFAULT_POOL_SIZE=10
+      - AUTH_TYPE=md5
+    depends_on:
+      - db
+    networks:
+      - find_coffee_network
+
+  web-loadtest:
+    container_name: find-coffee-web-loadtest
+    build: .
+    profiles: [loadtest]
+    volumes:
+      - .:/app
+      - /app/.venv
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=False
+      - ALLOWED_HOSTS=localhost,127.0.0.1,web-loadtest
+      - DB_HOST=pgbouncer-loadtest
+      - DB_PORT=5432
+      - DB_NAME=find_coffee_loadtest
+      - REDIS_URL=redis://redis:6379/2
+      - CELERY_BROKER_URL=redis://redis:6379/3
+      # 外部服務全部指向 mock；金鑰一律為假值，即使有請求漏到真的 Google / LINE 也只會被拒絕、不會計費或推播
+      - GOOGLE_MAPS_BASE_URL=http://mock-external:8080
+      - GOOGLE_API_KEY=loadtest-fake-key
+      - LINE_API_HOST=http://mock-external:8080
+      - LINE_CHANNEL_ACCESS_TOKEN=loadtest-fake-token
+      - LINE_CHANNEL_SECRET=loadtest-secret
+      - GROQ_API_KEY=loadtest-fake-key
+      - AWS_ACCESS_KEY_ID=loadtest-fake
+      - AWS_SECRET_ACCESS_KEY=loadtest-fake
+    ports:
+      - "8001:8000"
+    depends_on:
+      - pgbouncer-loadtest
+      - redis
+      - mock-external
+    networks:
+      - find_coffee_network

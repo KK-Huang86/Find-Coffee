@@ -1,9 +1,7 @@
 import logging
-from datetime import timedelta
 from decouple import config
 from urllib.parse import parse_qs
 
-from django.utils import timezone
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
@@ -32,14 +30,15 @@ from line_bot.state import StateManager
 from line_bot.utils import show_loading
 from users.models import User
 from cafe.models import Cafe
-from cafe.tasks import refresh_cafe_data
 from utils.utils import LockService
 
 logger = logging.getLogger(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = config('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = config('LINE_CHANNEL_SECRET')
 
-configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
+# 壓測時以環境變數指向 mock server，避免打到真的 LINE API
+LINE_API_HOST = config('LINE_API_HOST', default='https://api.line.me')
+configuration = Configuration(host=LINE_API_HOST, access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
@@ -71,11 +70,7 @@ def handle_message(event):
             cached_cafes = Cafe.objects.filter(name__icontains=text)[:10]
 
             if cached_cafes:
-                now = timezone.now()
-                for cafe in cached_cafes:
-                    if cafe.last_refreshed is None or now - cafe.last_refreshed >= timedelta(days=30):
-                        if LockService.acquire(str(cafe.id), 'refresh', ttl=600): # 避免不同人同時觸發更新
-                            refresh_cafe_data.delay(cafe.id)
+                # 過期資料由 send_shop_result 在回覆前同步刷新，這裡不另外送背景任務
                 shops = [{'place_id': cafe.place_id} for cafe in cached_cafes]
             else:
                 # 本地沒有，打 Google API

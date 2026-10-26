@@ -16,6 +16,7 @@ from line_bot.builders.shop_flex_message import FlexMessageBuilder
 from line_bot.builders.postback import PostbackBuilder
 
 from cafe.models import Cafe
+from cafe.services.cafe_refresh import is_cafe_stale, refresh_cafe_now
 
 logger = logging.getLogger(__name__)
 
@@ -32,46 +33,57 @@ class LineMessageBuilder:
         return get_or_create_cafe_info(place_id, user_id)
 
     @staticmethod
-    def _resolve_single_photo_url(info):
+    def _run_concurrently(items, worker, key, fallback, error_label):
         """
-        單筆店家的照片解析 worker，供 ThreadPoolExecutor 平行呼叫。
+        對每個 item 平行呼叫 worker，回傳 {key(item): 結果}。
 
-        在 worker 執行緒結束前明確關閉該執行緒持有的 Django DB 連線，避免
-        PgBouncer transaction pooling 下遺留未關閉的連線（見 design.md Decision 3）。
-        用 connections.close_all() 而非 close_old_connections()：後者是否關閉
-        取決於 CONN_MAX_AGE 設定（本專案雖固定為 0，效果上等同必關閉，但屬間接
-        依賴），close_all() 不論設定為何皆保證關閉，行為更明確、不隨設定變動。
+        - 每個 worker 結束前關閉該執行緒持有的 Django DB 連線，避免 PgBouncer transaction pooling 下遺留連線。
+          用 connections.close_all() 而非 close_old_connections()：後者是否關閉取決於 CONN_MAX_AGE，
+          close_all() 不論設定為何皆保證關閉（見 parallelize-carousel-photo-resolve design.md Decision 3）。
+        - 任一 item 拋出例外時記錄 error，該 item 結果為 fallback(item)，不影響其他 item。
         """
-        try:
-            return FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=True)
-        finally:
-            connections.close_all()
+        if not items:
+            return {}
+
+        def run(item):
+            try:
+                return worker(item)
+            finally:
+                connections.close_all()
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=len(items)) as executor:
+            future_to_item = {executor.submit(run, item): item for item in items}
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
+                try:
+                    results[key(item)] = future.result()
+                except Exception as e:
+                    logger.error(f'{error_label}，key: {key(item)}, error: {e}')
+                    results[key(item)] = fallback(item)
+        return results
+
+    @staticmethod
+    def _refresh_stale_cafes_concurrently(cafes):
+        """平行同步刷新過期店家；成功的 cafe 物件就地更新為 DB 最新資料，失敗則沿用既有資料"""
+        LineMessageBuilder._run_concurrently(
+            cafes,
+            worker=refresh_cafe_now,
+            key=lambda cafe: cafe.place_id,
+            fallback=lambda cafe: False,
+            error_label='平行刷新店家資料失敗，沿用既有資料',
+        )
 
     @staticmethod
     def _resolve_photo_urls_concurrently(infos):
-        """
-        對多筆店家平行呼叫 get_photo_url，回傳 {place_id: photo_url} 對照表。
-
-        任一店家解析拋出例外時，該店家回退為預設圖，不影響其他店家的結果。
-        """
-        if not infos:
-            return {}
-
-        photo_url_map = {}
-        with ThreadPoolExecutor(max_workers=len(infos)) as executor:
-            future_to_place_id = {
-                executor.submit(LineMessageBuilder._resolve_single_photo_url, info): info['place_id']
-                for info in infos
-            }
-            for future in as_completed(future_to_place_id):
-                place_id = future_to_place_id[future]
-                try:
-                    photo_url_map[place_id] = future.result()
-                except Exception as e:
-                    logger.error(f'平行解析照片 URL 失敗，place_id: {place_id}, error: {e}')
-                    photo_url_map[place_id] = FlexMessageBuilder.DEFAULT_PHOTO_URL
-
-        return photo_url_map
+        """平行解析多筆店家照片，回傳 {place_id: photo_url}；失敗的店家回退預設圖"""
+        return LineMessageBuilder._run_concurrently(
+            infos,
+            worker=lambda info: FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=True),
+            key=lambda info: info['place_id'],
+            fallback=lambda info: FlexMessageBuilder.DEFAULT_PHOTO_URL,
+            error_label='平行解析照片 URL 失敗',
+        )
 
     @staticmethod
     def send_shop_result(line_bot_api, reply_token, shops, user, quick_reply=None):
@@ -143,10 +155,16 @@ class LineMessageBuilder:
         if 2 <= len(shops) <= 10:
             # 多筆結果：先批次查 DB，減少 Google API 呼叫次數
             place_ids = [shop['place_id'] for shop in shops]
-            cached_cafes = {
-                cafe.place_id: cafe.to_dict()
+            cafes_by_place_id = {
+                cafe.place_id: cafe
                 for cafe in Cafe.objects.filter(place_id__in=place_ids)
             }
+
+            # 過期店家在回覆前平行同步刷新，避免使用者拿到舊資料（失敗則沿用既有資料）
+            LineMessageBuilder._refresh_stale_cafes_concurrently(
+                [cafe for cafe in cafes_by_place_id.values() if is_cafe_stale(cafe)]
+            )
+            cached_cafes = {place_id: cafe.to_dict() for place_id, cafe in cafes_by_place_id.items()}
 
             # ① 收集所有店家的完整資訊（含 DB 快取命中與 Google API 補查）
             info_ds = []

@@ -3,6 +3,7 @@ import re
 from decouple import config
 
 import requests
+from django.core.cache import cache
 from requests.exceptions import RequestException, Timeout
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,16 @@ class OutOfServiceAreaError(Exception):
 
 class GoogleAPI:
     GOOGLE_API_KEY = config('GOOGLE_API_KEY')
-    BASE_URL = 'https://maps.googleapis.com/maps/api/place'
+    # 壓測時以環境變數指向 mock server，避免打到真的 Google
+    MAPS_BASE_URL = config('GOOGLE_MAPS_BASE_URL', default='https://maps.googleapis.com')
+    BASE_URL = f'{MAPS_BASE_URL}/maps/api/place'
+    PHOTO_URL = f'{BASE_URL}/photo'
+    GEOCODE_URL = f'{MAPS_BASE_URL}/maps/api/geocode/json'
+
+    # 金鑰被拒或額度用盡時，所有店家的 Detail 都會失敗，暫停一段時間避免每間店都白打一次
+    DETAIL_PAUSE_CACHE_KEY = 'google:places_detail:paused'
+    DETAIL_PAUSE_SECONDS = 300
+    DETAIL_PAUSE_STATUSES = ('REQUEST_DENIED', 'OVER_QUERY_LIMIT')
 
     # 台北、新北、基隆的邊界框
     AREA_BOUNDS = {
@@ -100,6 +110,10 @@ class GoogleAPI:
     def get_shop_detail(place_id):
         # Place Details 取得完整資訊
 
+        if cache.get(GoogleAPI.DETAIL_PAUSE_CACHE_KEY):
+            logger.warning(f'Places Detail 暫停中（金鑰被拒或額度用盡），跳過 place_id: {place_id}')
+            return {}
+
         details_url = f'{GoogleAPI.BASE_URL}/details/json'
         details_params = {
             'place_id': place_id,
@@ -121,7 +135,19 @@ class GoogleAPI:
             logger.error(f'Google API 請求失敗: {e}')
             return {}
 
-        if details_result.get('status') != 'OK' or not details_result.get('result'):
+        status = details_result.get('status')
+        if status != 'OK':
+            # 不記錄 request URL / params，避免 API key 寫入 log
+            logger.warning(
+                f'Places Detail 回應非 OK (status: {status}, place_id: {place_id}, '
+                f'error_message: {details_result.get("error_message")})'
+            )
+            if status in GoogleAPI.DETAIL_PAUSE_STATUSES:
+                cache.set(GoogleAPI.DETAIL_PAUSE_CACHE_KEY, status, timeout=GoogleAPI.DETAIL_PAUSE_SECONDS)
+                logger.error(f'Places Detail 回應 {status}，暫停所有 Detail 呼叫 {GoogleAPI.DETAIL_PAUSE_SECONDS} 秒')
+            return {}
+
+        if not details_result.get('result'):
             return {}
 
         result = details_result.get('result', {})
@@ -159,7 +185,7 @@ class GoogleAPI:
     def _geocode_address(address):
         """將地址轉換為經緯度"""
 
-        search_url = 'https://maps.googleapis.com/maps/api/geocode/json'
+        search_url = GoogleAPI.GEOCODE_URL
         params = {
             'address': address,
             'key': GoogleAPI.GOOGLE_API_KEY,

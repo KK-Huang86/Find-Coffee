@@ -26,7 +26,8 @@ class TestGetPhotoUrl:
              patch.object(FlexMessageBuilder, '_trigger_s3_upload') as mock_upload:
             result = FlexMessageBuilder.get_photo_url(info)
 
-        mock_resolve.assert_called_once_with('ref123')
+        mock_resolve.assert_called_once()
+        assert mock_resolve.call_args.args[0] == 'ref123'
         mock_upload.assert_called_once_with('p1')
         assert result == resolved
 
@@ -87,7 +88,8 @@ class TestGetPhotoUrl:
              patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
             result = FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=True)
 
-        mock_resolve.assert_called_once_with('ref123')
+        mock_resolve.assert_called_once()
+        assert mock_resolve.call_args.args[0] == 'ref123'
         assert result == resolved
 
     def test_s3_url_returned_regardless_of_allow_sync_resolve(self):
@@ -100,6 +102,49 @@ class TestGetPhotoUrl:
         assert result_true == 'https://s3.example.com/photo.jpg'
         assert result_false == 'https://s3.example.com/photo.jpg'
 
+
+class TestGetPhotoUrlRefreshOnRejectedReference:
+    """測試 get_photo_url 在 reference 被拒絕時的刷新與重試接線"""
+
+    def test_passes_on_rejected_callback_that_refreshes_this_cafe(self):
+        """get_photo_url 傳給 resolve_photo_url 的 on_rejected 會以 (place_id, 舊 reference) 刷新"""
+        info = {'photo_s3_url': '', 'photo_reference': 'old_ref', 'place_id': 'p1'}
+
+        def fake_resolve(photo_reference, on_rejected=None):
+            return f'https://lh3.googleusercontent.com/{on_rejected()}.jpg'
+
+        with patch.object(FlexMessageBuilder, 'resolve_photo_url', side_effect=fake_resolve), \
+             patch('line_bot.builders.shop_flex_message.refresh_photo_reference', return_value='new_ref') as mock_refresh, \
+             patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
+            result = FlexMessageBuilder.get_photo_url(info)
+
+        mock_refresh.assert_called_once_with('p1', 'old_ref')
+        assert result == 'https://lh3.googleusercontent.com/new_ref.jpg'
+
+    def test_triggers_s3_upload_once_even_when_refreshed(self):
+        """reference 被拒並刷新重試後，背景上傳仍只觸發一次"""
+        info = {'photo_s3_url': '', 'photo_reference': 'old_ref', 'place_id': 'p1'}
+
+        def fake_resolve(photo_reference, on_rejected=None):
+            on_rejected()
+            return 'https://lh3.googleusercontent.com/new.jpg'
+
+        with patch.object(FlexMessageBuilder, 'resolve_photo_url', side_effect=fake_resolve), \
+             patch('line_bot.builders.shop_flex_message.refresh_photo_reference', return_value='new_ref'), \
+             patch.object(FlexMessageBuilder, '_trigger_s3_upload') as mock_upload:
+            FlexMessageBuilder.get_photo_url(info)
+
+        mock_upload.assert_called_once_with('p1')
+
+    def test_skipped_sync_resolve_never_refreshes(self):
+        """allow_sync_resolve=False 時不解析、也不刷新"""
+        info = {'photo_s3_url': '', 'photo_reference': 'old_ref', 'place_id': 'p1'}
+
+        with patch('line_bot.builders.shop_flex_message.refresh_photo_reference') as mock_refresh, \
+             patch.object(FlexMessageBuilder, '_trigger_s3_upload'):
+            FlexMessageBuilder.get_photo_url(info, allow_sync_resolve=False)
+
+        mock_refresh.assert_not_called()
 
 # FlexMessageBuilder.resolve_photo_url
 
@@ -134,6 +179,161 @@ class TestResolvePhotoUrl:
             result = FlexMessageBuilder.resolve_photo_url('some_ref')
 
         assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+
+    def test_uses_split_connect_and_read_timeout(self):
+        """requests.head 使用 (connect, read) 分開的 timeout：連線 2 秒、讀取 4 秒"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = 'https://lh3.googleusercontent.com/photo.jpg'
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            FlexMessageBuilder.resolve_photo_url('valid_ref')
+
+        assert mock_head.call_args.kwargs['timeout'] == (2, 4)
+
+    @pytest.mark.parametrize('status_code', [204, 302, 400, 403, 404, 500])
+    def test_logs_warning_with_status_code_when_not_200(self, status_code, caplog):
+        """HTTP 狀態非 200 時，記錄一筆 warning，內容包含 status code 與 photo_reference"""
+        mock_response = MagicMock()
+        mock_response.status_code = status_code
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'), \
+             caplog.at_level('WARNING', logger='line_bot.builders.shop_flex_message'):
+            result = FlexMessageBuilder.resolve_photo_url('some_ref')
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        warnings = [r for r in caplog.records if r.levelname == 'WARNING']
+        assert len(warnings) == 1
+        assert str(status_code) in warnings[0].getMessage()
+        assert 'some_ref' in warnings[0].getMessage()
+
+    def test_non_200_log_does_not_leak_api_key(self, caplog):
+        """非 200 的 log 不得包含 API key（photo API URL 內含 key，不可整串寫入 log）"""
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='secret_key_123'), \
+             caplog.at_level('WARNING', logger='line_bot.builders.shop_flex_message'):
+            FlexMessageBuilder.resolve_photo_url('some_ref')
+
+        assert all('secret_key_123' not in r.getMessage() for r in caplog.records)
+
+    def test_does_not_log_warning_on_success(self, caplog):
+        """200 成功時不記錄 warning"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = 'https://lh3.googleusercontent.com/photo.jpg'
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=mock_response), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'), \
+             caplog.at_level('WARNING', logger='line_bot.builders.shop_flex_message'):
+            FlexMessageBuilder.resolve_photo_url('valid_ref')
+
+        assert not [r for r in caplog.records if r.levelname == 'WARNING']
+
+    def test_uses_google_photo_url_setting(self):
+        """照片解析呼叫 GoogleAPI.PHOTO_URL（壓測時可指向 mock server）"""
+        from integrations.google.api import GoogleAPI
+
+        with patch.object(GoogleAPI, 'PHOTO_URL', 'http://mock-google/maps/api/place/photo'), \
+             patch('line_bot.builders.shop_flex_message.requests.head',
+                   return_value=self._response(200, 'http://mock-google/image.jpg')) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            FlexMessageBuilder.resolve_photo_url('ref1')
+
+        assert mock_head.call_args.args[0].startswith('http://mock-google/maps/api/place/photo?photo_reference=ref1')
+
+    def _response(self, status_code, url=''):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.url = url
+        return resp
+
+    @pytest.mark.parametrize('status_code', [400, 403])
+    def test_rejected_reference_calls_on_rejected_and_retries_with_new_reference(self, status_code):
+        """400/403 時呼叫 on_rejected 取得新 reference，並以新 reference 重新解析一次"""
+        responses = [self._response(status_code), self._response(200, 'https://lh3.googleusercontent.com/new.jpg')]
+        on_rejected = MagicMock(return_value='new_ref')
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', side_effect=responses) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref', on_rejected=on_rejected)
+
+        assert result == 'https://lh3.googleusercontent.com/new.jpg'
+        on_rejected.assert_called_once_with()
+        assert mock_head.call_count == 2
+        assert 'photo_reference=new_ref' in mock_head.call_args_list[1].args[0]
+
+    def test_retries_at_most_once_when_new_reference_also_rejected(self):
+        """新 reference 仍被拒時不再重試，回傳預設圖"""
+        on_rejected = MagicMock(return_value='new_ref')
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=self._response(403)) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref', on_rejected=on_rejected)
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        assert mock_head.call_count == 2
+        on_rejected.assert_called_once()
+
+    def test_no_retry_when_on_rejected_returns_none(self):
+        """on_rejected 拿不到新 reference 時不重試，回傳預設圖"""
+        on_rejected = MagicMock(return_value=None)
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=self._response(400)) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref', on_rejected=on_rejected)
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        assert mock_head.call_count == 1
+
+    @pytest.mark.parametrize('status_code', [204, 302, 404, 429, 500])
+    def test_other_non_200_does_not_call_on_rejected(self, status_code):
+        """400/403 以外的非 200 不觸發刷新"""
+        on_rejected = MagicMock(return_value='new_ref')
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=self._response(status_code)), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref', on_rejected=on_rejected)
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        on_rejected.assert_not_called()
+
+    def test_request_exception_does_not_call_on_rejected(self):
+        """逾時等請求例外不觸發刷新"""
+        import requests as req_lib
+        on_rejected = MagicMock(return_value='new_ref')
+
+        with patch('line_bot.builders.shop_flex_message.requests.head', side_effect=req_lib.Timeout('slow')), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref', on_rejected=on_rejected)
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        on_rejected.assert_not_called()
+
+    def test_success_does_not_call_on_rejected(self):
+        """200 成功時不觸發刷新"""
+        on_rejected = MagicMock(return_value='new_ref')
+
+        with patch('line_bot.builders.shop_flex_message.requests.head',
+                   return_value=self._response(200, 'https://lh3.googleusercontent.com/ok.jpg')), \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref', on_rejected=on_rejected)
+
+        assert result == 'https://lh3.googleusercontent.com/ok.jpg'
+        on_rejected.assert_not_called()
+
+    def test_rejected_without_on_rejected_returns_default(self):
+        """未提供 on_rejected 時，400/403 維持原行為回傳預設圖"""
+        with patch('line_bot.builders.shop_flex_message.requests.head', return_value=self._response(403)) as mock_head, \
+             patch('line_bot.builders.shop_flex_message.config', return_value='fake_key'):
+            result = FlexMessageBuilder.resolve_photo_url('old_ref')
+
+        assert result == FlexMessageBuilder.DEFAULT_PHOTO_URL
+        assert mock_head.call_count == 1
 
     def test_returns_default_on_request_exception(self):
         """requests 拋出例外時，回傳預設圖"""

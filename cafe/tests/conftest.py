@@ -15,6 +15,6 @@ def mock_photo_task(mocker):
 
 @pytest.fixture(autouse=True)
 def mock_summary_task(mocker):
-    """Mock generate_cafe_ai_summary.delay（autouse：refresh_cafe_data 每次更新後都會評估是否觸發，
+    """Mock generate_cafe_ai_summary.delay（autouse：cafe_refresh.refresh_cafe_now 每次更新後都會評估是否觸發，
     沒 mock 會真的打 Celery broker，違反 unit test 不得真實呼叫 Redis/Celery 的規則）"""
     return mocker.patch('cafe.tasks.generate_cafe_ai_summary.delay')

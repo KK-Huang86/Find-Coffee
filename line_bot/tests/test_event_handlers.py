@@ -113,6 +113,28 @@ class TestHandleMessage:
         shops_arg = mock_send.call_args[0][2]
         assert any(s['place_id'] == cafe.place_id for s in shops_arg)
 
+    def test_waiting_shop_name_stale_cafe_does_not_queue_background_refresh(self):
+        """店名搜尋命中過期店家時不再送出背景刷新任務（改由回覆前同步刷新）"""
+        user = UserFactory()
+        CafeFactory(name='星巴克信義店', last_refreshed=None)
+        event = self._make_event(user.line_user_id, '星巴克')
+
+        with (
+            patch('line_bot.event_handlers.ApiClient'),
+            patch('line_bot.event_handlers.MessagingApi') as mock_messaging_cls,
+            patch('line_bot.event_handlers.StateManager.get_state', return_value=UserState.WAITING_SHOP_NAME),
+            patch('line_bot.event_handlers.StateManager.reset_state'),
+            patch('line_bot.event_handlers.LockService.acquire', return_value=True),
+            patch('line_bot.event_handlers.show_loading'),
+            patch('line_bot.event_handlers.SearchHistoryService.add_search'),
+            patch('line_bot.event_handlers.LineMessageBuilder.send_shop_result'),
+            patch('celery.app.task.Task.delay') as mock_delay,
+        ):
+            mock_messaging_cls.return_value = MagicMock()
+            handle_message(event)
+
+        mock_delay.assert_not_called()
+
     def test_waiting_shop_name_falls_back_to_google(self):
         """WAITING_SHOP_NAME 時，DB 無資料，呼叫 Google API"""
         user = UserFactory()
