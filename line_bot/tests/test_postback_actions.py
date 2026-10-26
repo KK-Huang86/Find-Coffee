@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from linebot.v3.messaging import FlexMessage
 
 from cafe.models import Cafe
-from line_bot.constants import MenuAction, UserState
+from line_bot.constants import MenuAction, UserState, QUOTA_EXCEEDED
 from line_bot.handlers.postback_actions import (
     handle_favorite,
     handle_unfavorite,
@@ -13,6 +13,7 @@ from line_bot.handlers.postback_actions import (
     handle_menu,
     handle_all_pet_search,
     handle_description_search_text,
+    handle_ask_ai,
 )
 from cafe.services.search_service import CafeSearchResult
 from line_bot.tests.factories import CafeFactory, UserFactory
@@ -78,6 +79,214 @@ class TestHandleUnfavorite:
         mock_remove.assert_called_once()
         call_args = mock_api.reply_message.call_args[0][0]
         assert call_args.messages[0].text == '已取消收藏'
+
+
+@pytest.mark.django_db
+class TestHandleAskAi:
+    """測試 handle_ask_ai：優先讀 ai_summary，空值時當場產生並存入"""
+
+    MODULE = 'line_bot.handlers.postback_actions'
+
+    def _reply_text(self, mock_api):
+        return mock_api.reply_message.call_args[0][0].messages[0].text
+
+    def _patch_db_lookup(self):
+        """每次呼叫都從 DB 重讀，模擬真實的 get_or_create_cafe_info"""
+        def _lookup(place_id, user_id):
+            cafe = Cafe.objects.filter(place_id=place_id).first()
+            return (cafe.to_dict(), cafe) if cafe else (None, None)
+        return patch(f'{self.MODULE}.get_or_create_cafe_info', side_effect=_lookup)
+
+    def _patch_quota(self, can_increment=True):
+        return (
+            patch(f'{self.MODULE}.ApiUsageService.try_increment_ai_calls', return_value=can_increment),
+            patch(f'{self.MODULE}.ApiUsageService.revert_ai_call'),
+        )
+
+    def test_missing_place_id_replies_not_found(self):
+        """缺 place_id 時回覆找不到，不查詢店家"""
+        user = UserFactory()
+        mock_api = MagicMock()
+
+        with patch(f'{self.MODULE}.get_or_create_cafe_info') as mock_get:
+            handle_ask_ai(mock_api, 'test_token', user, {})
+
+        mock_get.assert_not_called()
+        assert self._reply_text(mock_api) == '找不到該咖啡店'
+
+    def test_cafe_not_found_replies_not_found(self):
+        """找不到店家時回覆找不到，不呼叫 Groq"""
+        user = UserFactory()
+        mock_api = MagicMock()
+
+        with patch(f'{self.MODULE}.get_or_create_cafe_info', return_value=(None, None)), \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search') as mock_summarize:
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': 'invalid'})
+
+        mock_summarize.assert_not_called()
+        assert self._reply_text(mock_api) == '找不到該咖啡店'
+
+    def test_google_quota_exceeded_replies_quota_message(self):
+        """建立店家時 Google 額度用盡，回覆額度訊息"""
+        user = UserFactory()
+        mock_api = MagicMock()
+
+        with patch(f'{self.MODULE}.get_or_create_cafe_info', return_value=(QUOTA_EXCEEDED, None)), \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search') as mock_summarize:
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': 'pid'})
+
+        mock_summarize.assert_not_called()
+        assert self._reply_text(mock_api) == '本月 API 查詢額度已達上限 😢'
+
+    def test_existing_summary_replies_without_groq_or_quota(self):
+        """已有 ai_summary：直接回覆，不呼叫 Groq、不扣額度"""
+        user = UserFactory()
+        cafe = CafeFactory(name='安靜咖啡', ai_summary='適合讀書的安靜咖啡店。', reviews=['安靜'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment as mock_increment, revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search') as mock_summarize:
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_summarize.assert_not_called()
+        mock_increment.assert_not_called()
+        assert self._reply_text(mock_api) == '🤖 AI 評價｜安靜咖啡\n\n適合讀書的安靜咖啡店。'
+
+    @pytest.mark.parametrize('empty_summary', [None, ''])
+    def test_missing_summary_generates_and_saves(self, empty_summary):
+        """ai_summary 為空：扣使用者額度、呼叫 Groq 一次、寫入 DB 並回覆"""
+        user = UserFactory()
+        cafe = CafeFactory(name='新店', ai_summary=empty_summary, reviews=['拿鐵好喝', '有插座'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment as mock_increment, revert as mock_revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search', return_value='新產生的摘要') as mock_summarize:
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_increment.assert_called_once_with(user.id)
+        mock_revert.assert_not_called()
+        mock_summarize.assert_called_once_with(name='新店', reviews=['拿鐵好喝', '有插座'])
+        cafe.refresh_from_db()
+        assert cafe.ai_summary == '新產生的摘要'
+        assert self._reply_text(mock_api) == '🤖 AI 評價｜新店\n\n新產生的摘要'
+
+    def test_save_does_not_touch_other_fields(self):
+        """寫入 ai_summary 不影響其他欄位"""
+        user = UserFactory()
+        cafe = CafeFactory(ai_summary=None, reviews=['好喝'], favorite_count=5, name='原名')
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment, revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search', return_value='摘要'):
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        cafe.refresh_from_db()
+        assert cafe.favorite_count == 5
+        assert cafe.name == '原名'
+
+    def test_repeated_click_calls_groq_only_once(self):
+        """第一次點擊產生並寫入後，第二次點擊直接讀 DB"""
+        user = UserFactory()
+        cafe = CafeFactory(ai_summary=None, reviews=['好喝'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment as mock_increment, revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search', return_value='摘要') as mock_summarize:
+            handle_ask_ai(mock_api, 'token_1', user, {'place_id': cafe.place_id})
+            handle_ask_ai(mock_api, 'token_2', user, {'place_id': cafe.place_id})
+
+        assert mock_summarize.call_count == 1
+        assert mock_increment.call_count == 1
+        assert self._reply_text(mock_api).endswith('摘要')
+
+    @pytest.mark.parametrize('reviews', [[], None])
+    def test_no_reviews_replies_insufficient_without_groq_or_quota(self, reviews):
+        """ai_summary 為空且沒有評論：回覆評論不足，不呼叫 Groq、不扣額度"""
+        user = UserFactory()
+        cafe = CafeFactory(ai_summary=None, reviews=reviews)
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment as mock_increment, revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search') as mock_summarize:
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_summarize.assert_not_called()
+        mock_increment.assert_not_called()
+        assert self._reply_text(mock_api) == '這間店目前評論不足，AI 暫時無法評價 😢'
+
+    def test_user_quota_exhausted_replies_quota_message(self):
+        """使用者 AI 額度用盡：不呼叫 Groq，ai_summary 維持空值"""
+        user = UserFactory()
+        cafe = CafeFactory(ai_summary=None, reviews=['好喝'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota(can_increment=False)
+
+        with self._patch_db_lookup(), increment, revert as mock_revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search') as mock_summarize:
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_summarize.assert_not_called()
+        mock_revert.assert_not_called()
+        cafe.refresh_from_db()
+        assert cafe.ai_summary is None
+        assert self._reply_text(mock_api) == '本月 AI 評價額度已達上限 😢'
+
+    @pytest.mark.parametrize('groq_result', [None, ''])
+    def test_groq_failure_reverts_quota_and_keeps_summary(self, groq_result):
+        """Groq 回傳空結果：回復使用者額度，ai_summary 維持原值"""
+        user = UserFactory()
+        cafe = CafeFactory(ai_summary=None, reviews=['好喝'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment, revert as mock_revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search', return_value=groq_result):
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_revert.assert_called_once_with(user.id)
+        cafe.refresh_from_db()
+        assert cafe.ai_summary is None
+        assert self._reply_text(mock_api) == 'AI 評價暫時無法使用，請稍後再試'
+
+    def test_background_task_wrote_first_keeps_db_version(self):
+        """等待 Groq 期間背景任務先寫入：不覆蓋 DB，回覆 DB 版本"""
+        user = UserFactory()
+        cafe = CafeFactory(name='競爭店', ai_summary=None, reviews=['好喝'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        def _summarize_while_task_writes(**kwargs):
+            Cafe.objects.filter(pk=cafe.pk).update(ai_summary='背景任務摘要')
+            return '點擊產生的摘要'
+
+        with self._patch_db_lookup(), increment, revert as mock_revert, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search', side_effect=_summarize_while_task_writes):
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_revert.assert_not_called()
+        cafe.refresh_from_db()
+        assert cafe.ai_summary == '背景任務摘要'
+        assert self._reply_text(mock_api) == '🤖 AI 評價｜競爭店\n\n背景任務摘要'
+
+    def test_does_not_use_redis_cache(self):
+        """AI 評價只存 DB，不再讀寫 Redis 快取"""
+        user = UserFactory()
+        cafe = CafeFactory(ai_summary=None, reviews=['好喝'])
+        mock_api = MagicMock()
+        increment, revert = self._patch_quota()
+
+        with self._patch_db_lookup(), increment, revert, \
+             patch('django.core.cache.cache') as mock_cache, \
+             patch(f'{self.MODULE}.GroqAPI.summarize_for_search', return_value='摘要'):
+            handle_ask_ai(mock_api, 'test_token', user, {'place_id': cafe.place_id})
+
+        mock_cache.get.assert_not_called()
+        mock_cache.set.assert_not_called()
 
 
 @pytest.mark.django_db
