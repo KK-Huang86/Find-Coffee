@@ -4,9 +4,8 @@
 
 ## What Changes
 
-- 咖啡店 Flex 卡片在地址、電話、營業時間下方新增「🤖 評論摘要」區塊，以小字灰色顯示 `ai_summary`
-  - 單筆詳細卡片：顯示完整摘要（設行數上限作為防護）
-  - 多筆 carousel 卡片：最多顯示 2 行，超出以省略號截斷
+- 咖啡店 Flex 卡片（單筆詳細與多筆 carousel）在地址、電話、營業時間下方留白並以分隔線區隔後，新增「🤖 評論摘要」區塊，以小字、灰色、斜體完整顯示 `ai_summary`
+  - 另設字數上限保護 LINE 訊息大小，避免模型不守字數時整則回覆失敗
   - 店家尚無摘要（尚未產生、無評論、產生失敗）時整個區塊不顯示，不放 placeholder
 - 改寫 AI 摘要的 prompt：由 100 字改為 50–60 字，兼顧人閱讀與描述搜尋比對，要求寫出具體特色與推薦品項（例如美式、肉桂捲），避免空泛形容詞
 - 摘要更新時機不變：沿用既有 30 天店家資料刷新，評論有變化或摘要為空時才重新產生；不新增欄位、不新增獨立的摘要過期規則
@@ -16,7 +15,7 @@
 
 ### New Capabilities
 
-- `cafe-ai-summary-display`：定義咖啡店 Flex 卡片（單筆與多筆）顯示 AI 摘要的位置、樣式、行數限制與無摘要時的行為。
+- `cafe-ai-summary-display`：定義咖啡店 Flex 卡片（單筆與多筆）顯示 AI 摘要的位置、樣式、字數上限與無摘要時的行為。
 
 ### Modified Capabilities
 
@@ -28,4 +27,4 @@
 - **`line_bot/builders/shop_flex_message.py`**：`create_shop_flex_message` 新增摘要區塊
 - **測試**：`integrations` Groq prompt 測試、`line_bot/tests/builders/test_shop_flex_message.py`
 - 不影響 DB schema、Celery task 流程、額度控管與 postback 路由
-- 既有的 100 字舊摘要會保留到該店下次評論變動才被新 prompt 取代，期間由行數上限保護版面
+- 既有的 100 字舊摘要會保留到該店下次評論變動才被新 prompt 取代，約 100 字的舊摘要仍會完整顯示

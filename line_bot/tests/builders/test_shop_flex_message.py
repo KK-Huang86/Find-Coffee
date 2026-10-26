@@ -793,27 +793,42 @@ class TestShopFlexMessageAiSummary:
         assert detail_index < index - 1
         assert index == len(contents) - 1
 
-    def test_single_summary_style_is_small_and_muted(self):
-        """單筆：摘要文字為 xs 灰字、可換行、maxLines 4"""
-        _, box = self._find_summary_box(self._build(ai_summary=self.SUMMARY))
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_summary_style_is_small_muted_and_italic(self, is_multiple):
+        """單筆與多筆：摘要文字為 xs 灰色斜體、可換行（商業邏輯變更：由行數截斷改為完整呈現並改用斜體，見 spec「卡片完整顯示 AI 評論摘要」）"""
+        _, box = self._find_summary_box(self._build(is_multiple=is_multiple, ai_summary=self.SUMMARY))
         text = self._summary_text(box)
 
-        assert text['size'] == 'xs'
-        assert text['color'] == '#999999'
-        assert text['wrap'] is True
-        assert text['maxLines'] == 4
-
-    def test_multiple_shows_summary_with_two_max_lines(self):
-        """多筆：同樣顯示摘要區塊，但 maxLines 為 2"""
-        bubble = self._build(is_multiple=True, ai_summary=self.SUMMARY)
-
-        _, box = self._find_summary_box(bubble)
-
-        assert box is not None
-        text = self._summary_text(box)
         assert text['text'] == self.SUMMARY
         assert text['size'] == 'xs'
-        assert text['maxLines'] == 2
+        assert text['color'] == '#999999'
+        assert text['style'] == 'italic'
+        assert text['wrap'] is True
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_summary_is_not_line_truncated(self, is_multiple):
+        """單筆與多筆：摘要不設 maxLines，內容完整呈現"""
+        _, box = self._find_summary_box(self._build(is_multiple=is_multiple, ai_summary=self.SUMMARY))
+
+        assert 'maxLines' not in self._summary_text(box)
+
+    def test_old_100_char_summary_is_shown_in_full(self):
+        """舊版約 100 字的摘要完整顯示，不被截斷"""
+        old_summary = '咖' * 100
+
+        _, box = self._find_summary_box(self._build(is_multiple=True, ai_summary=old_summary))
+
+        assert self._summary_text(box)['text'] == old_summary
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_whitespace_between_detail_and_summary(self, is_multiple):
+        """店家資訊與摘要之間留白：separator 上方 xxl、摘要 box 上方 lg，大於詳細資訊 box 的 lg 間距"""
+        bubble = self._build(is_multiple=is_multiple, ai_summary=self.SUMMARY)
+        index, box = self._find_summary_box(bubble)
+        separator = bubble['body']['contents'][index - 1]
+
+        assert separator['margin'] == 'xxl'
+        assert box['margin'] == 'lg'
 
     def test_summary_is_stripped(self):
         """摘要前後空白與換行會被去除"""
@@ -870,7 +885,7 @@ class TestShopFlexMessageAiSummary:
         assert self._summary_text(box)['text'] == summary
 
     def test_char_limit_leaves_room_for_old_100_char_summaries(self):
-        """字數上限需大於舊版 100 字摘要，舊資料不會被字數上限截斷（只受 maxLines 影響）"""
+        """字數上限需大於舊版 100 字摘要，舊資料不會被字數上限截斷"""
         assert FlexMessageBuilder.AI_SUMMARY_MAX_CHARS >= 100
 
     def test_single_footer_and_tags_unchanged_with_summary(self):

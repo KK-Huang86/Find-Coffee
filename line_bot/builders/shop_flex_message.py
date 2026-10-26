@@ -25,10 +25,7 @@ class FlexMessageBuilder:
     # 撥號號碼位數範圍（上限依 E.164）
     PHONE_MIN_DIGITS = 3
     PHONE_MAX_DIGITS = 15
-    # AI 評論摘要行數上限：單筆 50–60 字約 3 行，多留 1 行容納舊版較長摘要；多筆壓成 2 行避免撐高整排 carousel
-    AI_SUMMARY_MAX_LINES_SINGLE = 4
-    AI_SUMMARY_MAX_LINES_MULTIPLE = 2
-    # maxLines 只裁畫面不裁 payload；模型不守字數時以此上限保護 LINE bubble / carousel 大小限制
+    # AI 評論摘要完整呈現不限行數；模型不守字數時以此上限保護 LINE bubble / carousel 大小限制
     AI_SUMMARY_MAX_CHARS = 120
     # 標籤樣式配置
     TAG_STYLES = {
@@ -353,7 +350,7 @@ class FlexMessageBuilder:
         return '今日未營業'
 
     @staticmethod
-    def _create_ai_summary_contents(summary, max_lines: int) -> list:
+    def _create_ai_summary_contents(summary) -> list:
         """
         建立 AI 評論摘要的 separator 與內容 box
 
@@ -370,12 +367,12 @@ class FlexMessageBuilder:
         return [
             {
                 'type': 'separator',
-                'margin': 'lg'
+                'margin': 'xxl'
             },
             {
                 'type': 'box',
                 'layout': 'vertical',
-                'margin': 'md',
+                'margin': 'lg',
                 'spacing': 'xs',
                 'contents': [
                     {
@@ -391,7 +388,7 @@ class FlexMessageBuilder:
                         'wrap': True,
                         'color': '#999999',
                         'size': 'xs',
-                        'maxLines': max_lines
+                        'style': 'italic'
                     }
                 ]
             }
@@ -582,12 +579,10 @@ class FlexMessageBuilder:
             # 插入到 body contents 的第三個位置（店名、評分之後）
             flex_message['body']['contents'].insert(2, tags_box)
 
-        # AI 評論摘要放在詳細資訊之後；多筆 carousel 會被最高的卡片撐高，所以行數壓得比單筆少
-        summary_contents = FlexMessageBuilder._create_ai_summary_contents(
-            info.get('ai_summary'),
-            max_lines=FlexMessageBuilder.AI_SUMMARY_MAX_LINES_MULTIPLE if is_multiple else FlexMessageBuilder.AI_SUMMARY_MAX_LINES_SINGLE,
+        # AI 評論摘要放在詳細資訊之後，單筆與多筆皆完整呈現
+        flex_message['body']['contents'].extend(
+            FlexMessageBuilder._create_ai_summary_contents(info.get('ai_summary'))
         )
-        flex_message['body']['contents'].extend(summary_contents)
 
         if is_multiple:
             # 多筆結果時：顯示「看地圖」與「選擇這間」
