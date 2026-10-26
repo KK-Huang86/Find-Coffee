@@ -22,5 +22,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/live/', liveness),
     path('health/ready/', readiness),
+    path('', include('cafe.urls')),
     path('', include('line_bot.urls')),
 ]

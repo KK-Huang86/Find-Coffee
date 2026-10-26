@@ -298,3 +298,29 @@ class CafeNomadCache(models.Model):
             'limited_time': self.limited_time,
             'address': self.address,
         }
+
+
+class FavoriteMap(models.Model):
+    """使用者的個人咖啡地圖：收藏 snapshot 與生成限流狀態（見 favorite-cafe-map change）"""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='favorite_map', verbose_name='使用者')
+    # 公開存取用，不可猜、不含 LINE user ID
+    token = models.CharField(max_length=64, unique=True, verbose_name='存取 token')
+    snapshot = models.JSONField(default=dict, verbose_name='收藏 snapshot')
+    # 收藏 cafe id 集合的 sha256，用來判斷收藏是否變動
+    fingerprint = models.CharField(max_length=64, verbose_name='收藏 fingerprint')
+    generated_at = models.DateTimeField(verbose_name='最後生成時間')
+    daily_count = models.PositiveSmallIntegerField(default=0, verbose_name='當日生成次數')
+    # Asia/Taipei 日期
+    daily_count_date = models.DateField(verbose_name='生成次數所屬日期')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.user_id} 的咖啡地圖'
+
+    class Meta:
+        db_table = 'favorite_maps'
+        verbose_name = '咖啡地圖'
+        verbose_name_plural = '咖啡地圖列表'

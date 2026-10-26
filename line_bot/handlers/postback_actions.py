@@ -7,6 +7,7 @@ from urllib.parse import urlencode, quote
 from linebot.v3.messaging import ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, QuickReply, QuickReplyItem, PostbackAction, TemplateMessage
 
 from cafe.models import Cafe, CafeAttributeVote
+from cafe.services.favorite_map import request_favorite_map
 from integrations.groq.api import GroqAPI
 from cafe.services.search_service import CafeSearchService
 from cafe.services.vote_service import VoteService
@@ -428,15 +429,16 @@ def _reply_favorites_page(line_bot_api, reply_token, user, offset):
     page_num = offset // FAVORITES_PAGE_SIZE + 1
     flex_msg = FavoritesPageBuilder.build_page_message(favorites, page_num)
 
+    quick_reply_items = []
     if has_more:
         next_data = urlencode({
             'action': 'next_page',
             'search_type': 'favorites',
             'offset': offset + FAVORITES_PAGE_SIZE,
         })
-        flex_msg.quick_reply = QuickReply(items=[
-            QuickReplyItem(action=PostbackAction(label='➡️ 下一頁', data=next_data))
-        ])
+        quick_reply_items.append(QuickReplyItem(action=PostbackAction(label='➡️ 下一頁', data=next_data)))
+    quick_reply_items.append(QuickReplyBuilder.create_favorite_map_item())
+    flex_msg.quick_reply = QuickReply(items=quick_reply_items)
 
     line_bot_api.reply_message(
         ReplyMessageRequest(reply_token=reply_token, messages=[flex_msg])
@@ -484,6 +486,24 @@ def _menu_more_info(line_bot_api, reply_token, user):
             ]
         )
     )
+
+
+FAVORITE_MAP_PRIVACY_NOTE = '擁有連結的人都能查看，請斟酌分享。'
+
+
+def _menu_favorite_map(line_bot_api, reply_token, user):
+    """我的咖啡地圖：同步生成或沿用既有 snapshot，以 reply token 回傳連結（不用 push，避免消耗訊息額度）"""
+    result = request_favorite_map(user)
+    url = result.url
+    messages = {
+        'created': f'🗺️ 你的咖啡地圖完成了！\n{url}\n\n{FAVORITE_MAP_PRIVACY_NOTE}',
+        'generated': f'🗺️ 咖啡地圖已更新為最新收藏\n{url}\n\n{FAVORITE_MAP_PRIVACY_NOTE}',
+        'unchanged': f'🗺️ 你的咖啡地圖\n{url}',
+        'cooldown': f'🗺️ 你的咖啡地圖\n{url}\n\n收藏有變動，約 {result.wait_minutes} 分鐘後可以更新地圖 ⏳',
+        'daily_limit': f'🗺️ 你的咖啡地圖\n{url}\n\n今天的更新次數已用完，明天再來更新吧 ☕️',
+        'no_favorites': '您還沒有收藏任何咖啡店喔～\n收藏幾間後再來看看你的咖啡地圖吧！❤️',
+    }
+    reply_text(line_bot_api, reply_token, messages.get(result.status, '咖啡地圖暫時無法產生，請稍後再試 🙏'))
 
 
 def _menu_district_search(line_bot_api, reply_token, user):
@@ -565,6 +585,7 @@ MENU_HANDLERS = {
     MenuAction.FAVORITES: _menu_favorites,
     MenuAction.RECENT_SEARCH: _menu_recent_search,
     MenuAction.MORE_INFO: _menu_more_info,
+    MenuAction.FAVORITE_MAP: _menu_favorite_map,
     MenuAction.DISTRICT_SEARCH: _menu_district_search,
     MenuAction.PET_SEARCH: _menu_pet_search,
     MenuAction.PET_FRIENDLY_SEARCH: _menu_pet_friendly_search,

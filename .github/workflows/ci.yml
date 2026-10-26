@@ -73,6 +73,15 @@ jobs:
       - name: Run tests
         run: uv run pytest -v --cov --cov-report=term-missing --cov-report=xml
 
+      # 咖啡地圖前端純邏輯（cafe/static/cafe/map/map-core.js），使用 Node 內建 test runner，無額外相依
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run frontend tests
+        run: node --test 'cafe/tests/js/*.test.mjs'
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

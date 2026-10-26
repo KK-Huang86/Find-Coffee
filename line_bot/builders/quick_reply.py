@@ -162,7 +162,18 @@ class QuickReplyBuilder:
                         data=f'action=menu&type={MenuAction.DESCRIPTION_SEARCH}'
                     )
                 ),
+                QuickReplyBuilder.create_favorite_map_item(),
             ]
+        )
+
+    @staticmethod
+    def create_favorite_map_item():
+        """「我的咖啡地圖」入口，供更多資訊與收藏清單共用"""
+        return QuickReplyItem(
+            action=PostbackAction(
+                label='🗺️ 我的咖啡地圖',
+                data=f'action=menu&type={MenuAction.FAVORITE_MAP}'
+            )
         )
 
     @staticmethod

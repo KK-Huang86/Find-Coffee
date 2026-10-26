@@ -87,3 +87,4 @@ class MenuAction:
     PET_SEARCH = 'pet_search'
     PET_FRIENDLY_SEARCH = 'pet_friendly_search'
     DESCRIPTION_SEARCH = 'description_search'
+    FAVORITE_MAP = 'favorite_map'

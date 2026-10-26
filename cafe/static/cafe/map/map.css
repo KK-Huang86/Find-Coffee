@@ -1,0 +1,502 @@
+/* 咖啡地圖：「烘焙」色系，焦糖店家點、深焙棕主色、抹茶綠標籤 */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #FAF7F2;
+  --surface: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --text: #2B211A;
+  --muted: #7C6F63;
+  --border: #E6DED3;
+  --primary: #5A3825;
+  --on-primary: #FFFFFF;
+  --marker: #C07A2C;
+  --marker-stroke: #FFFFFF;
+  --ring: #5A3825;
+  --cluster: #5A3825;
+  --tag: #4E7655;
+  --tag-bg: #EAF1EA;
+  --chip-active-bg: #5A3825;
+  --chip-active-text: #FFFFFF;
+  --shadow: 0 8px 28px rgba(43, 33, 26, 0.14);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121417;
+  --surface: #1C1F24;
+  --surface-raised: #23272D;
+  --text: #EDE6DC;
+  --muted: #A49A8E;
+  --border: #2E3238;
+  --primary: #E0A96D;
+  --on-primary: #1C1208;
+  --marker: #E0A96D;
+  --marker-stroke: #121417;
+  --ring: #EDE6DC;
+  --cluster: #C07A2C;
+  --tag: #8FBF97;
+  --tag-bg: #1F2B22;
+  --chip-active-bg: #E0A96D;
+  --chip-active-text: #1C1208;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- 版型：手機為全螢幕地圖 + 底部抽屜 ---------- */
+
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: var(--sheet-height, 176px);
+  max-height: 92dvh;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow);
+  transition: height 0.25s ease;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.panel[data-sheet="peek"] { --sheet-height: 176px; }
+.panel[data-sheet="half"] { --sheet-height: 52dvh; }
+.panel[data-sheet="full"] { --sheet-height: 92dvh; }
+
+.panel-handle {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 0 4px;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.panel-handle-bar {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 16px 10px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--primary);
+  fill: none;
+  stroke: var(--on-primary);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.icon-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+/* ---------- 篩選 ---------- */
+
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.filters::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--chip-active-bg);
+  background: var(--chip-active-bg);
+  color: var(--chip-active-text);
+}
+
+/* ---------- 清單 ---------- */
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--border);
+}
+
+.cafe-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cafe-item {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cafe-item:hover,
+.cafe-item[aria-current="true"] {
+  background: var(--bg);
+}
+
+.cafe-item[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--marker);
+}
+
+.cafe-item-name {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cafe-item-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.cafe-item .tags {
+  margin-top: 6px;
+}
+
+/* ---------- 狀態 ---------- */
+
+.status {
+  padding: 28px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.status p {
+  margin: 0 0 12px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button-secondary {
+  background: transparent;
+  color: var(--primary);
+}
+
+/* ---------- 店家卡片 ---------- */
+
+.card {
+  overflow: hidden;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.card-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.card-photo-placeholder {
+  display: grid;
+  place-items: center;
+}
+
+.card-photo-placeholder svg {
+  width: 56px;
+  height: 56px;
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.card-body {
+  padding: 14px 16px 16px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.card-meta,
+.card-address {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.card-rating {
+  color: var(--marker);
+  font-weight: 700;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--tag-bg);
+  color: var(--tag);
+  font-size: 12px;
+}
+
+.card-section {
+  margin: 12px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--tag);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.card-section-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 16px 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.detail .card {
+  margin: 10px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* ---------- MapLibre popup 與控制項 ---------- */
+
+.maplibregl-popup.cafe-popup .maplibregl-popup-content {
+  width: 320px;
+  max-width: calc(100vw - 48px);
+  padding: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.maplibregl-popup.cafe-popup .maplibregl-popup-tip {
+  border-top-color: var(--surface-raised);
+  border-bottom-color: var(--surface-raised);
+}
+
+.maplibregl-popup.cafe-popup .maplibregl-popup-close-button {
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #FFFFFF;
+  font-size: 18px;
+  line-height: 1;
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-group,
+:root[data-theme="dark"] .maplibregl-ctrl-attrib {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-group button + button {
+  border-top-color: var(--border);
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-attrib a {
+  color: var(--muted);
+}
+
+/* ---------- 桌面：左側欄 + 地圖 ---------- */
+
+@media (min-width: 768px) {
+  .app {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+  }
+
+  .map {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .panel {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    height: auto;
+    max-height: none;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .panel-handle {
+    display: none;
+  }
+
+  .panel-header {
+    padding-top: 18px;
+  }
+
+  .filters {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}

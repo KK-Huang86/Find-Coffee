@@ -20,11 +20,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
+# Docker image 將 static 收集到 /app 之外（見 Dockerfile），避免 docker compose 掛載 .:/app 時蓋掉 manifest
+STATIC_ROOT = config('STATIC_ROOT', default=str(BASE_DIR / 'staticfiles'))
+# 根目錄 static/ 放的是文件與 Rich Menu 素材，不透過 /static/ 對外公開，所以不列入 STATICFILES_DIRS
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY')
@@ -52,6 +50,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -136,8 +135,19 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
+# STATIC_URL / STATIC_ROOT 定義於檔案開頭；生產環境由 WhiteNoise serve（nginx 沒有 /static/ location）
 
-STATIC_URL = 'static/'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'core.storage.StaticStorage',
+    },
+}
+
+# 對外公開網址，用於組出咖啡地圖連結；尚無網域前預設 localhost
+PUBLIC_BASE_URL = config('PUBLIC_BASE_URL', default='http://localhost:8000')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

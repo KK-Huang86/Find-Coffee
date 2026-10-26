@@ -1,12 +1,11 @@
 import logging
-import re
-import unicodedata
 import requests
 from datetime import date
 from typing import Union
 from decouple import config
 
 from line_bot.utils import parse_opening_hours
+from utils.phone import build_tel_uri
 
 from cafe.tasks import download_and_upload_cafe_photo
 from cafe.models import Cafe
@@ -20,11 +19,6 @@ class FlexMessageBuilder:
     WEEKDAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
     CLOSED_TEXTS = {'休息', '公休', 'Closed'}
     DEFAULT_PHOTO_URL = 'https://developers.line.biz/assets/images/services/bot-designer-icon.png'
-    # 電話分機標記，標記之後的內容不併入撥號號碼
-    PHONE_EXTENSION_PATTERN = re.compile(r'#|分機|ext|轉|,|;', re.IGNORECASE)
-    # 撥號號碼位數範圍（上限依 E.164）
-    PHONE_MIN_DIGITS = 3
-    PHONE_MAX_DIGITS = 15
     # 標籤樣式配置
     TAG_STYLES = {
         'socket': {
@@ -181,19 +175,7 @@ class FlexMessageBuilder:
         Returns:
             str | None: 例如 'tel:0223456789'；電話缺失或格式不合法時回傳 None
         """
-        if not isinstance(phone, str):
-            return None
-
-        # 全形數字、符號轉半形，並截斷分機
-        normalized = unicodedata.normalize('NFKC', phone).strip()
-        normalized = FlexMessageBuilder.PHONE_EXTENSION_PATTERN.split(normalized, maxsplit=1)[0]
-
-        digits = re.sub(r'\D', '', normalized)
-        if not FlexMessageBuilder.PHONE_MIN_DIGITS <= len(digits) <= FlexMessageBuilder.PHONE_MAX_DIGITS:
-            return None
-
-        prefix = '+' if normalized.startswith('+') else ''
-        return f'tel:{prefix}{digits}'
+        return build_tel_uri(phone)
 
     @staticmethod
     def _create_attribute_tags(info: dict) -> list:
