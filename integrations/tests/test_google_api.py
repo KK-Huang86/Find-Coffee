@@ -631,3 +631,364 @@ class TestSearchNearbyCoffeeShopsServiceArea:
 
         with pytest.raises(OutOfServiceAreaError):
             GoogleAPI.search_nearby_coffee_shops(address='台中市中區')
+
+
+def _google_response(payload):
+    response = MagicMock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    return response
+
+
+def _text_search_ok(name='測試咖啡', place_id='pid_1', lat=25.04, lng=121.55):
+    return _google_response({
+        'status': 'OK',
+        'results': [{'name': name, 'place_id': place_id, 'geometry': {'location': {'lat': lat, 'lng': lng}}}],
+    })
+
+
+def _geocode_ok(lat=25.04, lng=121.55):
+    return _google_response({'status': 'OK', 'results': [{'geometry': {'location': {'lat': lat, 'lng': lng}}}]})
+
+
+def _nearby_ok(place_id='pid_n'):
+    return _google_response({
+        'status': 'OK',
+        'results': [{'place_id': place_id, 'name': '附近咖啡', 'rating': 4.5, 'user_ratings_total': 100}],
+    })
+
+
+@pytest.fixture
+def capture_ttl(mocker):
+    """TTL 不加隨機偏移，並記錄寫入快取時的 timeout"""
+    mocker.patch('utils.cache_guard.random.uniform', return_value=1.0)
+    from django.core.cache import cache
+    return mocker.patch('utils.cache_guard.cache.set', wraps=cache.set)
+
+
+class TestSearchCoffeeShopsCache:
+    """Text Search 結果快取"""
+
+    def test_same_query_calls_google_once(self, mocker):
+        """相同店名搜尋兩次，只呼叫 Google 一次，結果相同"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_text_search_ok())
+
+        first = GoogleAPI.search_coffee_shops('星巴克')
+        second = GoogleAPI.search_coffee_shops('星巴克')
+
+        assert mock_get.call_count == 1
+        assert first == second == [{'name': '測試咖啡', 'place_id': 'pid_1'}]
+
+    def test_equivalent_queries_share_cache(self, mocker):
+        """只差在空白、大小寫、全形半形的查詢共用快取"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_text_search_ok())
+
+        GoogleAPI.search_coffee_shops('Louisa 信義')
+        GoogleAPI.search_coffee_shops('  ｌｏｕｉｓａ   信義 ')
+
+        assert mock_get.call_count == 1
+
+    def test_different_queries_call_google_separately(self, mocker):
+        """不同查詢各自呼叫 Google"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_text_search_ok())
+
+        GoogleAPI.search_coffee_shops('星巴克')
+        GoogleAPI.search_coffee_shops('路易莎')
+
+        assert mock_get.call_count == 2
+
+    def test_success_ttl_is_24_hours(self, mocker, capture_ttl):
+        """有結果時快取 24 小時"""
+        mocker.patch('integrations.google.api.requests.get', return_value=_text_search_ok())
+
+        GoogleAPI.search_coffee_shops('星巴克')
+
+        assert capture_ttl.call_args.kwargs['timeout'] == 86400
+
+    def test_zero_results_cached_with_short_ttl(self, mocker, capture_ttl):
+        """ZERO_RESULTS 快取 10 分鐘，期間不再呼叫 Google（防穿透）"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': 'ZERO_RESULTS', 'results': []}),
+        )
+
+        assert GoogleAPI.search_coffee_shops('不存在的店') == []
+        assert GoogleAPI.search_coffee_shops('不存在的店') == []
+
+        assert mock_get.call_count == 1
+        assert capture_ttl.call_args.kwargs['timeout'] == 600
+
+    def test_all_results_outside_service_area_is_cached(self, mocker):
+        """結果全部在服務範圍外被過濾成空清單，屬於確定的結果，也會快取"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_text_search_ok(lat=24.15, lng=120.67),
+        )
+
+        assert GoogleAPI.search_coffee_shops('台中的店') == []
+        GoogleAPI.search_coffee_shops('台中的店')
+
+        assert mock_get.call_count == 1
+
+    @pytest.mark.parametrize('error', [Timeout, RequestException('boom')])
+    def test_network_error_is_not_cached(self, mocker, error):
+        """逾時或連線失敗不快取，下次重新呼叫 Google"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', side_effect=error)
+
+        assert GoogleAPI.search_coffee_shops('星巴克') == []
+        GoogleAPI.search_coffee_shops('星巴克')
+
+        assert mock_get.call_count == 2
+
+    @pytest.mark.parametrize('status', ['REQUEST_DENIED', 'OVER_QUERY_LIMIT', 'UNKNOWN_ERROR', 'INVALID_REQUEST'])
+    def test_error_status_is_not_cached(self, mocker, status):
+        """Google 回錯誤狀態時不快取"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': status}),
+        )
+
+        assert GoogleAPI.search_coffee_shops('星巴克') == []
+        GoogleAPI.search_coffee_shops('星巴克')
+
+        assert mock_get.call_count == 2
+
+    def test_recovers_after_transient_error(self, mocker):
+        """暫時性錯誤後 Google 恢復，下次查詢拿到正常結果"""
+        mocker.patch(
+            'integrations.google.api.requests.get',
+            side_effect=[Timeout, _text_search_ok()],
+        )
+
+        assert GoogleAPI.search_coffee_shops('星巴克') == []
+        assert GoogleAPI.search_coffee_shops('星巴克') == [{'name': '測試咖啡', 'place_id': 'pid_1'}]
+
+
+class TestGeocodeCache:
+    """Geocoding 結果快取"""
+
+    def test_same_address_calls_google_once(self, mocker):
+        """相同地址解析兩次，只呼叫 Google 一次"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_geocode_ok())
+
+        first = GoogleAPI._geocode_address('台北市信義路五段7號')
+        second = GoogleAPI._geocode_address(' 台北市信義路五段7號 ')
+
+        assert mock_get.call_count == 1
+        assert first == second == {'lat': 25.04, 'lng': 121.55}
+
+    def test_success_ttl_is_7_days(self, mocker, capture_ttl):
+        """有結果時快取 7 天"""
+        mocker.patch('integrations.google.api.requests.get', return_value=_geocode_ok())
+
+        GoogleAPI._geocode_address('台北市')
+
+        assert capture_ttl.call_args.kwargs['timeout'] == 7 * 86400
+
+    def test_zero_results_cached(self, mocker, capture_ttl):
+        """查不到的地址快取 10 分鐘"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': 'ZERO_RESULTS', 'results': []}),
+        )
+
+        assert GoogleAPI._geocode_address('亂打的地址') == {}
+        GoogleAPI._geocode_address('亂打的地址')
+
+        assert mock_get.call_count == 1
+        assert capture_ttl.call_args.kwargs['timeout'] == 600
+
+    @pytest.mark.parametrize('error', [Timeout, RequestException('boom')])
+    def test_network_error_is_not_cached(self, mocker, error):
+        """逾時或連線失敗不快取"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', side_effect=error)
+
+        GoogleAPI._geocode_address('台北市')
+        GoogleAPI._geocode_address('台北市')
+
+        assert mock_get.call_count == 2
+
+    @pytest.mark.parametrize('status', ['REQUEST_DENIED', 'OVER_QUERY_LIMIT', 'UNKNOWN_ERROR'])
+    def test_error_status_is_not_cached(self, mocker, status):
+        """Google 回錯誤狀態時不快取"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': status}),
+        )
+
+        GoogleAPI._geocode_address('台北市')
+        GoogleAPI._geocode_address('台北市')
+
+        assert mock_get.call_count == 2
+
+
+class TestSearchNearbyCache:
+    """Nearby Search 結果快取"""
+
+    def test_same_location_calls_google_once(self, mocker):
+        """相同座標搜尋兩次，只呼叫 Nearby Search 一次"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_nearby_ok())
+
+        first = GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+        second = GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+
+        assert mock_get.call_count == 1
+        assert first == second
+        assert first[0]['place_id'] == 'pid_n'
+
+    def test_nearby_coordinates_share_cache(self, mocker):
+        """四捨五入到小數第 4 位後相同的座標共用快取"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_nearby_ok())
+
+        GoogleAPI.search_nearby_coffee_shops(lat=25.040001, lng=121.550001)
+        GoogleAPI.search_nearby_coffee_shops(lat=25.040049, lng=121.549951)
+
+        assert mock_get.call_count == 1
+
+    def test_distinct_coordinates_call_google_separately(self, mocker):
+        """小數第 4 位不同的座標各自呼叫"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', return_value=_nearby_ok())
+
+        GoogleAPI.search_nearby_coffee_shops(lat=25.0401, lng=121.55)
+        GoogleAPI.search_nearby_coffee_shops(lat=25.0402, lng=121.55)
+
+        assert mock_get.call_count == 2
+
+    def test_address_search_twice_calls_google_twice_in_total(self, mocker):
+        """地址搜尋兩次：第一次 Geocoding + Nearby，第二次全部命中快取"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            side_effect=[_geocode_ok(), _nearby_ok()],
+        )
+
+        first = GoogleAPI.search_nearby_coffee_shops(address='台北市信義區')
+        second = GoogleAPI.search_nearby_coffee_shops(address='台北市信義區')
+
+        assert mock_get.call_count == 2
+        assert first == second
+
+    def test_out_of_service_area_still_raises_without_nearby_call(self, mocker):
+        """地址在服務範圍外：每次都拋例外，且不呼叫 Nearby Search"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_geocode_ok(lat=24.15, lng=120.67),
+        )
+
+        with pytest.raises(OutOfServiceAreaError):
+            GoogleAPI.search_nearby_coffee_shops(address='台中市')
+        with pytest.raises(OutOfServiceAreaError):
+            GoogleAPI.search_nearby_coffee_shops(address='台中市')
+
+        assert mock_get.call_count == 1
+
+    def test_zero_results_cached(self, mocker):
+        """附近沒有咖啡店（ZERO_RESULTS）也快取"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': 'ZERO_RESULTS', 'results': []}),
+        )
+
+        assert GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55) == []
+        GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+
+        assert mock_get.call_count == 1
+
+    @pytest.mark.parametrize('error', [Timeout, RequestException('boom')])
+    def test_network_error_is_not_cached(self, mocker, error):
+        """逾時或連線失敗不快取"""
+        mock_get = mocker.patch('integrations.google.api.requests.get', side_effect=error)
+
+        GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+        GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+
+        assert mock_get.call_count == 2
+
+    def test_error_status_is_not_cached(self, mocker):
+        """Google 回錯誤狀態時不快取"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': 'OVER_QUERY_LIMIT'}),
+        )
+
+        GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+        GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+
+        assert mock_get.call_count == 2
+
+    def test_success_ttl_is_24_hours(self, mocker, capture_ttl):
+        """有結果時快取 24 小時"""
+        mocker.patch('integrations.google.api.requests.get', return_value=_nearby_ok())
+
+        GoogleAPI.search_nearby_coffee_shops(lat=25.04, lng=121.55)
+
+        assert capture_ttl.call_args.kwargs['timeout'] == 86400
+
+
+class TestMissingPlaceCache:
+    """Places Detail 無效 place_id 記錄（防穿透）"""
+
+    @pytest.mark.parametrize('status', ['NOT_FOUND', 'INVALID_REQUEST'])
+    def test_missing_status_marks_place_and_skips_next_call(self, mocker, status):
+        """NOT_FOUND / INVALID_REQUEST 記錄為無效，之後不再呼叫 Google"""
+        mock_get = mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': status}),
+        )
+
+        assert GoogleAPI.get_shop_detail('bad_pid') == {}
+        assert GoogleAPI.is_known_missing_place('bad_pid') is True
+        assert GoogleAPI.get_shop_detail('bad_pid') == {}
+
+        assert mock_get.call_count == 1
+
+    @pytest.mark.parametrize('status', ['REQUEST_DENIED', 'OVER_QUERY_LIMIT', 'UNKNOWN_ERROR'])
+    def test_error_status_is_not_marked_missing(self, mocker, status):
+        """暫時性或設定錯誤不記錄為無效 place_id"""
+        mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': status}),
+        )
+
+        GoogleAPI.get_shop_detail('pid')
+
+        assert GoogleAPI.is_known_missing_place('pid') is False
+
+    @pytest.mark.parametrize('error', [Timeout, RequestException('boom')])
+    def test_network_error_is_not_marked_missing(self, mocker, error):
+        """逾時或連線失敗不記錄為無效 place_id"""
+        mocker.patch('integrations.google.api.requests.get', side_effect=error)
+
+        GoogleAPI.get_shop_detail('pid')
+
+        assert GoogleAPI.is_known_missing_place('pid') is False
+
+    def test_missing_mark_ttl_is_1_hour(self, mocker):
+        """無效 place_id 記錄 1 小時（含隨機偏移）"""
+        mocker.patch('utils.cache_guard.random.uniform', return_value=1.0)
+        mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': 'NOT_FOUND'}),
+        )
+        from django.core.cache import cache
+        mock_set = mocker.patch('integrations.google.api.cache.set', wraps=cache.set)
+
+        GoogleAPI.get_shop_detail('bad_pid')
+
+        timeouts = [c.kwargs.get('timeout') for c in mock_set.call_args_list]
+        assert 3600 in timeouts
+
+    def test_other_place_id_unaffected(self, mocker):
+        """一個 place_id 無效不影響其他 place_id"""
+        mocker.patch(
+            'integrations.google.api.requests.get',
+            return_value=_google_response({'status': 'NOT_FOUND'}),
+        )
+
+        GoogleAPI.get_shop_detail('bad_pid')
+
+        assert GoogleAPI.is_known_missing_place('other_pid') is False
+
+    @pytest.mark.parametrize('place_id', [None, ''])
+    def test_empty_place_id_is_not_missing(self, place_id):
+        """空的 place_id 回傳 False，不查快取"""
+        assert GoogleAPI.is_known_missing_place(place_id) is False

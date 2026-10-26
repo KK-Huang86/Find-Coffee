@@ -1,4 +1,5 @@
 import pytest
+from contextlib import contextmanager
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,7 @@ from cafe.models import Cafe
 from line_bot.constants import QUOTA_EXCEEDED
 from line_bot.handlers.helpers import get_or_create_cafe_info, reply_text, reply_cafe_detail
 from line_bot.tests.factories import CafeFactory, UserFactory
+from utils.distributed_lock import distributed_lock
 
 
 @pytest.mark.django_db
@@ -192,6 +194,166 @@ class TestGetOrCreateCafeInfo:
             get_or_create_cafe_info(cafe.place_id, user_id=1)
 
         mock_summary_task.delay.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestGetOrCreateCafeInfoProtection:
+    """新店建立的穿透與擊穿防護"""
+
+    PLACE_ID = 'new_place_id'
+    MODULE = 'line_bot.handlers.helpers'
+
+    def _google_data(self, name='新咖啡店'):
+        return {
+            'place_id': self.PLACE_ID,
+            'name': name,
+            'address': '台北市信義區',
+            'lat': 25.033,
+            'lng': 121.564,
+        }
+
+    def _patches(self, google_return=None, google_side_effect=None):
+        return (
+            patch(f'{self.MODULE}.ApiUsageService.try_increment_detail_calls', return_value=True),
+            patch(f'{self.MODULE}.GoogleAPI.get_shop_detail',
+                  return_value=google_return, side_effect=google_side_effect),
+            patch(f'{self.MODULE}.CafeAttributeMatcher.match_and_sync_attributes', return_value=False),
+            patch(f'{self.MODULE}.refresh_cafe_if_stale', return_value=False),
+        )
+
+    def test_known_missing_place_skips_google_and_quota(self):
+        """place_id 已確認無效：不扣額度、不呼叫 Google，回傳找不到"""
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return=self._google_data())
+
+        with patch(f'{self.MODULE}.GoogleAPI.is_known_missing_place', return_value=True), \
+             increment as mock_increment, google as mock_google, match, refresh:
+            result = get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        assert result == (None, None)
+        mock_increment.assert_not_called()
+        mock_google.assert_not_called()
+
+    def test_creates_under_lock_named_by_place_id(self):
+        """建立新店時以 place_id 加鎖"""
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return=self._google_data())
+
+        with patch(f'{self.MODULE}.distributed_lock', wraps=distributed_lock) as mock_lock, \
+             increment, google, match, refresh:
+            get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        mock_lock.assert_called_once_with(f'cafe:create:{self.PLACE_ID}', timeout=10)
+
+    def test_lock_released_after_creation(self):
+        """建立完成後鎖被釋放"""
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return=self._google_data())
+
+        with increment, google, match, refresh:
+            get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        with distributed_lock(f'cafe:create:{self.PLACE_ID}') as acquired:
+            assert acquired is True
+
+    def test_existing_cafe_does_not_take_lock(self):
+        """DB 已有店家時不加鎖"""
+        user = UserFactory()
+        cafe = CafeFactory(last_refreshed=timezone.now())
+        increment, google, match, refresh = self._patches()
+
+        with patch(f'{self.MODULE}.distributed_lock') as mock_lock, increment, google, match, refresh:
+            get_or_create_cafe_info(cafe.place_id, user.id)
+
+        mock_lock.assert_not_called()
+
+    def test_double_check_after_acquiring_lock(self):
+        """取得鎖時前一個持有者剛建立完成：直接回傳 DB 資料，不扣額度、不呼叫 Google"""
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return=self._google_data())
+
+        @contextmanager
+        def lock_after_other_holder_created(name, timeout=10):
+            CafeFactory(place_id=self.PLACE_ID, name='別人建立的店')
+            yield True
+
+        with patch(f'{self.MODULE}.distributed_lock', side_effect=lock_after_other_holder_created), \
+             increment as mock_increment, google as mock_google, match, refresh:
+            info_d, cafe = get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        assert info_d['name'] == '別人建立的店'
+        assert cafe.place_id == self.PLACE_ID
+        mock_increment.assert_not_called()
+        mock_google.assert_not_called()
+
+    def test_waits_for_holder_and_returns_created_cafe(self):
+        """鎖被他人持有：等待 DB 出現該店後回傳，不扣額度、不呼叫 Google（防擊穿）"""
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return=self._google_data())
+        polls = []
+
+        def holder_creates_on_second_poll(_seconds):
+            polls.append(_seconds)
+            if len(polls) == 2:
+                CafeFactory(place_id=self.PLACE_ID, name='持有者建立的店')
+
+        with patch(f'{self.MODULE}.time.sleep', side_effect=holder_creates_on_second_poll), \
+             increment as mock_increment, google as mock_google, match, refresh, \
+             distributed_lock(f'cafe:create:{self.PLACE_ID}'):
+            info_d, cafe = get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        assert info_d['name'] == '持有者建立的店'
+        assert len(polls) == 2
+        mock_increment.assert_not_called()
+        mock_google.assert_not_called()
+
+    def test_wait_timeout_creates_itself(self, caplog):
+        """等待逾時仍沒有該店：自行建立並記錄 warning（可用性優先）"""
+        import logging
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return=self._google_data())
+
+        with caplog.at_level(logging.WARNING), \
+             patch(f'{self.MODULE}.time.sleep') as mock_sleep, \
+             increment as mock_increment, google as mock_google, match, refresh, \
+             distributed_lock(f'cafe:create:{self.PLACE_ID}'):
+            info_d, cafe = get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        assert mock_sleep.call_count == 20
+        mock_increment.assert_called_once_with(user.id)
+        mock_google.assert_called_once_with(self.PLACE_ID)
+        assert info_d['name'] == '新咖啡店'
+        assert Cafe.objects.filter(place_id=self.PLACE_ID).count() == 1
+        assert self.PLACE_ID in caplog.text
+
+    def test_integrity_error_returns_existing_cafe(self):
+        """建立時撞到 place_id unique 限制：改讀既有資料，不回傳錯誤"""
+        user = UserFactory()
+
+        def other_process_creates_first(place_id):
+            CafeFactory(place_id=self.PLACE_ID, name='另一個 process 建立的店')
+            return self._google_data(name='我拿到的資料')
+
+        increment, google, match, refresh = self._patches(google_side_effect=other_process_creates_first)
+
+        with increment, google, match, refresh:
+            info_d, cafe = get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        assert info_d['name'] == '另一個 process 建立的店'
+        assert cafe.place_id == self.PLACE_ID
+        assert Cafe.objects.filter(place_id=self.PLACE_ID).count() == 1
+
+    def test_google_failure_does_not_wait_for_db(self):
+        """持有鎖且 Google 失敗：回傳找不到，鎖被釋放"""
+        user = UserFactory()
+        increment, google, match, refresh = self._patches(google_return={})
+
+        with increment, google, match, refresh:
+            result = get_or_create_cafe_info(self.PLACE_ID, user.id)
+
+        assert result == (None, None)
+        with distributed_lock(f'cafe:create:{self.PLACE_ID}') as acquired:
+            assert acquired is True
 
 
 class TestReplyText:
