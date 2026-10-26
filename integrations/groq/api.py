@@ -17,15 +17,20 @@ Google 評分：{rating}（{user_ratings_total} 則評論）
 
 請用繁體中文回答，150 字以內。"""
 
-SUMMARIZE_FOR_SEARCH_PROMPT = """你是一位咖啡店描述專家。請根據以下用戶評論，寫一段這間咖啡店的摘要，
-內容需包含氛圍、適合族群、環境特色（例如是否安靜、適合工作或聊天）。這段摘要會被用來比對其他使用者的搜尋描述，
-請盡量具體描述明顯的特徵。
+SUMMARIZE_FOR_SEARCH_PROMPT = """你是一位咖啡店描述專家。請根據以下用戶評論，寫一段這間咖啡店的摘要。
+這段摘要會直接顯示在咖啡店卡片上給使用者快速判斷要不要去，也會被用來比對其他使用者的搜尋描述（例如「美式」、「肉桂捲」、「安靜」）。
+
+撰寫要求：
+- 優先寫出評論中提到的推薦品項，並保留品項原名（例如手沖、美式、肉桂捲），不要改寫成「甜點」、「飲品」等泛稱
+- 寫出具體的環境特徵（例如安靜、有插座、適合工作、適合聊天、座位多寡）
+- 避免「很棒」、「氛圍不錯」等空泛形容詞
+- 評論沒提到的內容不要自行推測
 
 咖啡店名稱：{name}
 用戶評論：
 {reviews}
 
-請用繁體中文回答，100 字以內，只寫摘要內容本身，不要加任何前綴、標題或引號。"""
+請用繁體中文回答，50 到 60 字，只寫摘要內容本身，不要加任何前綴、標題或引號。"""
 
 SEARCH_DESCRIPTION_ALLOWED_FIELDS = ('limited_time', 'has_socket', 'pet_friendly', 'has_pet')
 SEARCH_DESCRIPTION_ALLOWED_VALUES = ('yes', 'maybe', 'no', None)
@@ -78,7 +83,7 @@ class GroqAPI:
 
     @classmethod
     def summarize_for_search(cls, name: str, reviews: list) -> str | None:
-        """產生可落地儲存的摘要文字，供描述搜尋比對用"""
+        """產生可落地儲存的摘要文字，同時用於咖啡店卡片顯示與描述搜尋比對；空白結果視同失敗回傳 None"""
         if not reviews:
             return None
         try:
@@ -90,7 +95,8 @@ class GroqAPI:
                 model='openai/gpt-oss-20b',
                 messages=[{'role': 'user', 'content': prompt}],
             )
-            return response.choices[0].message.content
+            content = (response.choices[0].message.content or '').strip()
+            return content or None
         except Exception as e:
             logger.error(f'Groq API 呼叫失敗（summarize_for_search）: {e}', exc_info=True)
             return None

@@ -25,6 +25,11 @@ class FlexMessageBuilder:
     # 撥號號碼位數範圍（上限依 E.164）
     PHONE_MIN_DIGITS = 3
     PHONE_MAX_DIGITS = 15
+    # AI 評論摘要行數上限：單筆 50–60 字約 3 行，多留 1 行容納舊版較長摘要；多筆壓成 2 行避免撐高整排 carousel
+    AI_SUMMARY_MAX_LINES_SINGLE = 4
+    AI_SUMMARY_MAX_LINES_MULTIPLE = 2
+    # maxLines 只裁畫面不裁 payload；模型不守字數時以此上限保護 LINE bubble / carousel 大小限制
+    AI_SUMMARY_MAX_CHARS = 120
     # 標籤樣式配置
     TAG_STYLES = {
         'socket': {
@@ -348,6 +353,51 @@ class FlexMessageBuilder:
         return '今日未營業'
 
     @staticmethod
+    def _create_ai_summary_contents(summary, max_lines: int) -> list:
+        """
+        建立 AI 評論摘要的 separator 與內容 box
+
+        摘要不是字串或去除空白後為空時回傳空 list，卡片不顯示任何摘要相關元素；
+        超過 AI_SUMMARY_MAX_CHARS 時截斷並加上省略號
+        """
+        if not isinstance(summary, str) or not summary.strip():
+            return []
+
+        summary = summary.strip()
+        if len(summary) > FlexMessageBuilder.AI_SUMMARY_MAX_CHARS:
+            summary = summary[:FlexMessageBuilder.AI_SUMMARY_MAX_CHARS] + '…'
+
+        return [
+            {
+                'type': 'separator',
+                'margin': 'lg'
+            },
+            {
+                'type': 'box',
+                'layout': 'vertical',
+                'margin': 'md',
+                'spacing': 'xs',
+                'contents': [
+                    {
+                        'type': 'text',
+                        'text': '🤖 評論摘要',
+                        'color': '#aaaaaa',
+                        'size': 'xs',
+                        'weight': 'bold'
+                    },
+                    {
+                        'type': 'text',
+                        'text': summary,
+                        'wrap': True,
+                        'color': '#999999',
+                        'size': 'xs',
+                        'maxLines': max_lines
+                    }
+                ]
+            }
+        ]
+
+    @staticmethod
     def create_shop_flex_message(info, is_multiple=False, photo_url_override=None):
 
         def _generate_star_icons(rating):
@@ -531,6 +581,13 @@ class FlexMessageBuilder:
             tags_box = FlexMessageBuilder._create_tags_box(attribute_tags)
             # 插入到 body contents 的第三個位置（店名、評分之後）
             flex_message['body']['contents'].insert(2, tags_box)
+
+        # AI 評論摘要放在詳細資訊之後；多筆 carousel 會被最高的卡片撐高，所以行數壓得比單筆少
+        summary_contents = FlexMessageBuilder._create_ai_summary_contents(
+            info.get('ai_summary'),
+            max_lines=FlexMessageBuilder.AI_SUMMARY_MAX_LINES_MULTIPLE if is_multiple else FlexMessageBuilder.AI_SUMMARY_MAX_LINES_SINGLE,
+        )
+        flex_message['body']['contents'].extend(summary_contents)
 
         if is_multiple:
             # 多筆結果時：顯示「看地圖」與「選擇這間」
