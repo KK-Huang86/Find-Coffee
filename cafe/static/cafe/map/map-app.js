@@ -2,9 +2,13 @@
 import {
   BASEMAP_STYLES,
   FILTERS,
+  GROUPS,
   attributeTags,
   computeView,
+  countFilters,
+  countGroups,
   filterCafes,
+  groupOf,
   safeHttpUrl,
   safeTelUri,
   toGeoJSON,
@@ -13,6 +17,9 @@ import {
 const THEME_KEY = 'find-coffee-map:theme';
 const SHEET_STATES = ['peek', 'half', 'full'];
 const SOURCE_ID = 'cafes';
+// 選取店家時至少放大到此層級；需大於 clusterMaxZoom，店家才不會被包在群集裡
+const SELECT_ZOOM = 16;
+const CLUSTER_MAX_ZOOM = 14;
 const desktopQuery = window.matchMedia('(min-width: 768px)');
 
 const els = {
@@ -25,6 +32,7 @@ const els = {
   detail: document.getElementById('detail'),
   list: document.getElementById('cafe-list'),
   themeToggle: document.getElementById('theme-toggle'),
+  legend: document.getElementById('legend'),
 };
 
 const state = {
@@ -32,7 +40,10 @@ const state = {
   cafes: [],
   visible: [],
   activeFilters: new Set(),
+  hiddenGroups: new Set(),
+  legendOpen: desktopQuery.matches,
   selectedId: null,
+  selectedMarker: null,
   map: null,
   popup: null,
 };
@@ -65,6 +76,14 @@ function svg(pathDefs, className) {
   }
   return node;
 }
+
+// 篩選 chip 圖示（自繪線稿）
+const FILTER_ICONS = {
+  socket: ['M9 3v5', 'M15 3v5', 'M6 8h12v3a6 6 0 0 1-12 0Z', 'M12 17v4'],
+  no_time_limit: ['M12 7v5l3 2', 'M4 12a8 8 0 1 0 16 0 8 8 0 1 0-16 0'],
+  pet_friendly: ['M7 14c0-2.5 2.2-4 5-4s5 1.5 5 4-2 4-5 4-5-1.5-5-4Z', 'M6 8.5a1.5 1.5 0 1 0 0 .1', 'M10 5.5a1.5 1.5 0 1 0 0 .1', 'M14 5.5a1.5 1.5 0 1 0 0 .1', 'M18 8.5a1.5 1.5 0 1 0 0 .1'],
+  has_pet: ['M5 20v-9l-1-6 4 3h8l4-3-1 6v9Z', 'M9.5 13h.01', 'M14.5 13h.01', 'M11 16.5h2'],
+};
 
 const CUP_PATHS = ['M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5Z', 'M17 10h1.5a2.5 2.5 0 0 1 0 5H17', 'M8 3.5c0 1.5 1.5 1.5 1.5 3', 'M12 3.5c0 1.5 1.5 1.5 1.5 3'];
 
@@ -167,12 +186,58 @@ function renderFilters() {
   els.filters.replaceChildren(...FILTERS.map((filter) => {
     const button = el('button', {
       className: 'chip',
-      text: filter.label,
       attrs: { type: 'button', 'aria-pressed': String(state.activeFilters.has(filter.id)) },
-    });
+    }, [
+      svg(FILTER_ICONS[filter.id], 'chip-icon'),
+      el('span', { text: filter.label }),
+      el('span', { className: 'chip-count', text: String(state.filterCounts?.[filter.id] ?? 0) }),
+    ]);
     button.addEventListener('click', () => toggleFilter(filter.id));
     return button;
   }));
+}
+
+// ---------- 地圖圖例（依工作友善程度分色，可點選顯示或隱藏） ----------
+
+function renderLegend() {
+  const counts = countGroups(state.cafes);
+  const shownOnMap = state.visible.length;
+  const toggle = el('button', {
+    className: 'legend-toggle',
+    attrs: { type: 'button', 'aria-expanded': String(state.legendOpen) },
+  }, [
+    el('span', { className: 'legend-dots' }, GROUPS.map((g) => el('span', { className: 'group-dot', attrs: { 'data-group': g.id } }))),
+    el('span', { text: `地圖上 ${shownOnMap} 間` }),
+    svg(['M6 9l6 6 6-6'], 'legend-chevron'),
+  ]);
+  toggle.addEventListener('click', () => {
+    state.legendOpen = !state.legendOpen;
+    renderLegend();
+  });
+
+  const rows = GROUPS.map((group) => {
+    const shown = !state.hiddenGroups.has(group.id);
+    const row = el('button', {
+      className: 'legend-row',
+      attrs: { type: 'button', 'aria-pressed': String(shown) },
+    }, [
+      el('span', { className: 'group-dot', attrs: { 'data-group': group.id } }),
+      el('span', { className: 'legend-label', text: group.label }),
+      el('span', { className: 'legend-count', text: String(counts[group.id]) }),
+    ]);
+    row.addEventListener('click', () => toggleGroup(group.id));
+    return row;
+  });
+
+  els.legend.replaceChildren(toggle);
+  if (state.legendOpen) els.legend.append(el('div', { className: 'legend-rows', attrs: { role: 'group', 'aria-label': '分組' } }, rows));
+  els.legend.hidden = state.cafes.length === 0;
+}
+
+function toggleGroup(id) {
+  if (state.hiddenGroups.has(id)) state.hiddenGroups.delete(id);
+  else state.hiddenGroups.add(id);
+  applyFilters();
 }
 
 function toggleFilter(id) {
@@ -183,13 +248,15 @@ function toggleFilter(id) {
 
 function clearFilters() {
   state.activeFilters.clear();
+  state.hiddenGroups.clear();
   applyFilters();
 }
 
 function applyFilters() {
-  state.visible = filterCafes(state.cafes, state.activeFilters);
+  state.visible = filterCafes(state.cafes, state.activeFilters, state.hiddenGroups);
   if (state.selectedId && !state.visible.some((c) => c.place_id === state.selectedId)) clearSelection();
   renderFilters();
+  renderLegend();
   renderList();
   updateMapData();
 }
@@ -197,7 +264,8 @@ function applyFilters() {
 function renderSummary() {
   const total = state.cafes.length;
   const shown = state.visible.length;
-  const parts = [state.activeFilters.size ? `${shown} / ${total} 間` : `共 ${total} 間`];
+  const filtered = state.activeFilters.size || state.hiddenGroups.size;
+  const parts = [filtered ? `${shown} / ${total} 間` : `共 ${total} 間`];
   const generatedAt = new Date(state.snapshot.generated_at);
   if (!Number.isNaN(generatedAt.getTime())) {
     parts.push(`更新於 ${generatedAt.toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}`);
@@ -230,7 +298,8 @@ function renderList() {
       metaText ? el('span', { className: 'cafe-item-meta', text: metaText }) : null,
       buildTags(cafe.attributes),
     ]);
-    button.addEventListener('click', () => selectCafe(cafe.place_id, { zoomIn: true }));
+    button.prepend(el('span', { className: 'group-dot', attrs: { 'data-group': groupOf(cafe), 'aria-hidden': 'true' } }));
+    button.addEventListener('click', () => selectCafe(cafe.place_id));
     return el('li', {}, [button]);
   }));
 }
@@ -241,21 +310,29 @@ function findCafe(placeId) {
   return state.cafes.find((c) => c.place_id === placeId) || null;
 }
 
-// 選取後店家點在畫面上的位置：桌面留空間給上方 popup，手機避開底部抽屜
+// 選取後店家在畫面上的位置（相對地圖中心）：桌面放在偏下方讓上方 popup 有空間，手機放在抽屜上方可見區域的中央
 function selectionOffset() {
-  return isDesktop() ? [0, 170] : [0, -Math.round(window.innerHeight * 0.26)];
+  const height = els.map.clientHeight;
+  return isDesktop() ? [0, Math.round(height * 0.28)] : [0, -Math.round(height * 0.26)];
 }
 
-function selectCafe(placeId, { zoomIn = false } = {}) {
+function selectCafe(placeId) {
   const cafe = findCafe(placeId);
   if (!cafe) return;
   state.selectedId = placeId;
-  updateSelectedLayer();
+  updateSelectedMarker(cafe);
   markListSelection();
 
   if (state.map) {
-    const zoom = zoomIn ? Math.max(state.map.getZoom(), 15) : state.map.getZoom();
-    state.map.flyTo({ center: [cafe.lng, cafe.lat], zoom, offset: selectionOffset(), speed: 1.4 });
+    state.map.flyTo({
+      center: [cafe.lng, cafe.lat],
+      zoom: Math.max(state.map.getZoom(), SELECT_ZOOM),
+      offset: selectionOffset(),
+      speed: 1.2,
+      curve: 1.4,
+      maxDuration: 1600,
+      essential: true,
+    });
   }
 
   if (isDesktop()) {
@@ -267,7 +344,7 @@ function selectCafe(placeId, { zoomIn = false } = {}) {
 
 function clearSelection() {
   state.selectedId = null;
-  updateSelectedLayer();
+  updateSelectedMarker(null);
   markListSelection();
   if (state.popup) {
     const popup = state.popup;
@@ -294,7 +371,7 @@ function showPopup(cafe) {
     state.popup = null;
     old.remove();
   }
-  const popup = new window.maplibregl.Popup({ className: 'cafe-popup', anchor: 'bottom', offset: 16, maxWidth: 'none', focusAfterOpen: false })
+  const popup = new window.maplibregl.Popup({ className: 'cafe-popup', anchor: 'bottom', offset: 46, maxWidth: 'none', focusAfterOpen: false })
     .setLngLat([cafe.lng, cafe.lat])
     .setDOMContent(buildCard(cafe))
     .addTo(state.map);
@@ -302,7 +379,7 @@ function showPopup(cafe) {
     if (state.popup === popup) {
       state.popup = null;
       state.selectedId = null;
-      updateSelectedLayer();
+      updateSelectedMarker(null);
       markListSelection();
     }
   });
@@ -340,21 +417,30 @@ function stepSheet(delta) {
   setSheet(SHEET_STATES[next]);
 }
 
+// 把手與標題列都可以上下拖曳切換抽屜高度；標題列上的按鈕維持原本行為
 function setupSheet() {
+  const header = els.panel.querySelector('.panel-header');
   let startY = null;
-  els.handle.addEventListener('pointerdown', (event) => {
+
+  const onDown = (event) => {
+    if (isDesktop() || event.target.closest('button:not(.panel-handle)')) return;
     startY = event.clientY;
-    els.handle.setPointerCapture(event.pointerId);
-  });
-  els.handle.addEventListener('pointerup', (event) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onUp = (event) => {
     if (startY === null) return;
     const dy = event.clientY - startY;
     startY = null;
     if (dy < -30) stepSheet(1);
     else if (dy > 30) stepSheet(-1);
-    else setSheet(els.panel.dataset.sheet === 'peek' ? 'half' : 'peek');
-  });
-  els.handle.addEventListener('pointercancel', () => { startY = null; });
+    else if (event.currentTarget === els.handle) setSheet(els.panel.dataset.sheet === 'peek' ? 'half' : 'peek');
+  };
+
+  for (const target of [els.handle, header]) {
+    target.addEventListener('pointerdown', onDown);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', () => { startY = null; });
+  }
 }
 
 // ---------- 主題 ----------
@@ -402,7 +488,7 @@ function addCafeLayers() {
     data: toGeoJSON(state.visible),
     cluster: true,
     clusterRadius: 50,
-    clusterMaxZoom: 15,
+    clusterMaxZoom: CLUSTER_MAX_ZOOM,
   });
 
   const stroke = cssVar('--marker-stroke');
@@ -436,34 +522,37 @@ function addCafeLayers() {
     id: 'cafe-points',
     type: 'circle',
     source: SOURCE_ID,
-    filter: ['!', ['has', 'point_count']],
+    filter: pointsFilter(),
     paint: {
-      'circle-color': cssVar('--marker'),
+      'circle-color': ['match', ['get', 'group'], ...GROUPS.flatMap((g) => [g.id, cssVar(`--group-${g.id}`)]), cssVar('--group-unknown')],
       'circle-radius': 7,
       'circle-stroke-width': 2,
       'circle-stroke-color': stroke,
     },
   });
-  map.addLayer({
-    id: 'cafe-selected',
-    type: 'circle',
-    source: SOURCE_ID,
-    filter: selectedFilter(),
-    paint: {
-      'circle-color': cssVar('--marker'),
-      'circle-radius': 10,
-      'circle-stroke-width': 4,
-      'circle-stroke-color': cssVar('--ring'),
-    },
-  });
 }
 
-function selectedFilter() {
-  return ['all', ['!', ['has', 'point_count']], ['==', ['get', 'place_id'], state.selectedId || '']];
+// 選取中的店家改由圖釘呈現，從圓點圖層排除，避免圓點露在針尖底下
+function pointsFilter() {
+  return ['all', ['!', ['has', 'point_count']], ['!=', ['get', 'place_id'], state.selectedId || '']];
 }
 
-function updateSelectedLayer() {
-  if (state.map?.getLayer('cafe-selected')) state.map.setFilter('cafe-selected', selectedFilter());
+// 選取的店家以 HTML 標記呈現：不受群集影響、針尖對準座標，並可用 CSS 做跳動動畫
+function updateSelectedMarker(cafe) {
+  if (state.selectedMarker) {
+    state.selectedMarker.remove();
+    state.selectedMarker = null;
+  }
+  if (state.map?.getLayer('cafe-points')) state.map.setFilter('cafe-points', pointsFilter());
+  if (!cafe || !state.map || !window.maplibregl) return;
+
+  const pin = el('div', { className: 'selected-pin', attrs: { 'data-group': groupOf(cafe), 'aria-hidden': 'true' } }, [
+    el('span', { className: 'selected-pin-head' }, [svg(CUP_PATHS, 'selected-pin-icon')]),
+    el('span', { className: 'selected-pin-shadow' }),
+  ]);
+  state.selectedMarker = new window.maplibregl.Marker({ element: pin, anchor: 'bottom' })
+    .setLngLat([cafe.lng, cafe.lat])
+    .addTo(state.map);
 }
 
 function updateMapData() {
@@ -541,8 +630,10 @@ async function start() {
 
   state.snapshot = snapshot;
   state.cafes = snapshot.cafes.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng));
-  state.visible = filterCafes(state.cafes, state.activeFilters);
+  state.filterCounts = countFilters(state.cafes);
+  state.visible = filterCafes(state.cafes, state.activeFilters, state.hiddenGroups);
   renderFilters();
+  renderLegend();
   renderList();
   if (!state.map) setupMap();
   else updateMapData();

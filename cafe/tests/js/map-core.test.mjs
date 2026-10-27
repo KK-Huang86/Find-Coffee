@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   FILTERS,
+  GROUPS,
+  groupOf,
+  countFilters,
+  countGroups,
   filterCafes,
   toGeoJSON,
   safeHttpUrl,
@@ -87,12 +91,12 @@ describe('filterCafes', () => {
 });
 
 describe('toGeoJSON', () => {
-  test('轉為 FeatureCollection，座標為 [lng, lat]，properties 帶索引與 place_id', () => {
+  test('轉為 FeatureCollection，座標為 [lng, lat]，properties 帶索引、place_id 與分組', () => {
     const geojson = toGeoJSON([cafe('a', {}, { lat: 25.1, lng: 121.5 }), cafe('b', {}, { lat: 24.9, lng: 121.2 })]);
     assert.equal(geojson.type, 'FeatureCollection');
     assert.deepEqual(geojson.features, [
-      { type: 'Feature', id: 0, geometry: { type: 'Point', coordinates: [121.5, 25.1] }, properties: { index: 0, place_id: 'a' } },
-      { type: 'Feature', id: 1, geometry: { type: 'Point', coordinates: [121.2, 24.9] }, properties: { index: 1, place_id: 'b' } },
+      { type: 'Feature', id: 0, geometry: { type: 'Point', coordinates: [121.5, 25.1] }, properties: { index: 0, place_id: 'a', group: 'unknown' } },
+      { type: 'Feature', id: 1, geometry: { type: 'Point', coordinates: [121.2, 24.9] }, properties: { index: 1, place_id: 'b', group: 'unknown' } },
     ]);
   });
 
@@ -177,5 +181,96 @@ describe('attributeTags', () => {
     assert.deepEqual(attributeTags({ has_socket: 'no', pet_friendly: 'no', has_pet: 'no' }), []);
     assert.deepEqual(attributeTags({ has_socket: null, limited_time: 'weird' }), []);
     assert.deepEqual(attributeTags(undefined), []);
+  });
+});
+
+describe('GROUPS', () => {
+  test('四個互斥分組，依判斷優先順序排列', () => {
+    assert.deepEqual(GROUPS.map((g) => g.id), ['work', 'pet', 'other', 'unknown']);
+    assert.deepEqual(GROUPS.map((g) => g.label), ['適合工作', '毛孩友善', '其他', '尚無資料']);
+  });
+});
+
+describe('groupOf', () => {
+  test('有插座且不限時為適合工作（含視座位、視情況）', () => {
+    for (const has_socket of ['yes', 'maybe']) {
+      for (const limited_time of ['no', 'maybe']) {
+        assert.equal(groupOf(cafe('x', { has_socket, limited_time })), 'work', `${has_socket}/${limited_time}`);
+      }
+    }
+  });
+
+  test('適合工作優先於毛孩友善', () => {
+    assert.equal(groupOf(cafe('x', { has_socket: 'yes', limited_time: 'no', pet_friendly: 'yes', has_pet: 'yes' })), 'work');
+  });
+
+  test('寵物友善為歡迎，或店內有貓狗為有，歸為毛孩友善', () => {
+    assert.equal(groupOf(cafe('x', { pet_friendly: 'yes' })), 'pet');
+    assert.equal(groupOf(cafe('x', { has_pet: 'yes' })), 'pet');
+    assert.equal(groupOf(cafe('x', { has_socket: 'yes', limited_time: 'yes', has_pet: 'yes' })), 'pet');
+  });
+
+  test('視情況的寵物屬性不算毛孩友善', () => {
+    assert.equal(groupOf(cafe('x', { pet_friendly: 'maybe', has_pet: 'maybe' })), 'other');
+  });
+
+  test('只滿足一半的工作條件歸為其他', () => {
+    assert.equal(groupOf(cafe('x', { has_socket: 'yes' })), 'other');
+    assert.equal(groupOf(cafe('x', { limited_time: 'no' })), 'other');
+    assert.equal(groupOf(cafe('x', { has_socket: 'no', limited_time: 'no' })), 'other');
+  });
+
+  test('四個屬性都沒有資料歸為尚無資料', () => {
+    assert.equal(groupOf(cafe('x')), 'unknown');
+    assert.equal(groupOf({ place_id: 'no_attributes' }), 'unknown');
+  });
+});
+
+describe('filterCafes 隱藏分組', () => {
+  const cafes = [
+    cafe('work', { has_socket: 'yes', limited_time: 'no' }),
+    cafe('pet', { pet_friendly: 'yes' }),
+    cafe('other', { has_socket: 'no' }),
+    cafe('unknown'),
+  ];
+  const ids = (list) => list.map((c) => c.place_id);
+
+  test('隱藏的分組不顯示', () => {
+    assert.deepEqual(ids(filterCafes(cafes, new Set(), new Set(['pet', 'unknown']))), ['work', 'other']);
+  });
+
+  test('隱藏分組與屬性篩選同時套用', () => {
+    assert.deepEqual(ids(filterCafes(cafes, new Set(['socket']), new Set(['work']))), []);
+  });
+
+  test('未傳入隱藏分組時不影響', () => {
+    assert.deepEqual(ids(filterCafes(cafes, new Set())), ids(cafes));
+  });
+});
+
+describe('countFilters', () => {
+  test('計算每個篩選條件在全部店家中符合的數量', () => {
+    const cafes = [
+      cafe('a', { has_socket: 'yes', limited_time: 'no' }),
+      cafe('b', { has_socket: 'maybe', pet_friendly: 'yes' }),
+      cafe('c', { has_pet: 'yes' }),
+      cafe('d'),
+    ];
+    assert.deepEqual(countFilters(cafes), { socket: 2, no_time_limit: 1, pet_friendly: 1, has_pet: 1 });
+  });
+
+  test('空清單全部為 0', () => {
+    assert.deepEqual(countFilters([]), { socket: 0, no_time_limit: 0, pet_friendly: 0, has_pet: 0 });
+  });
+});
+
+describe('countGroups', () => {
+  test('計算每個分組的數量，沒有店家的分組為 0', () => {
+    const cafes = [
+      cafe('a', { has_socket: 'yes', limited_time: 'no' }),
+      cafe('b', { has_socket: 'yes', limited_time: 'maybe' }),
+      cafe('c', { has_pet: 'yes' }),
+    ];
+    assert.deepEqual(countGroups(cafes), { work: 2, pet: 1, other: 0, unknown: 0 });
   });
 });

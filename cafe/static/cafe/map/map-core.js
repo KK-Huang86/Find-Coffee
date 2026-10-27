@@ -16,6 +16,25 @@ export const FILTERS = [
   { id: 'has_pet', label: '店內有貓狗', attribute: 'has_pet', values: ['yes'] },
 ];
 
+// 地圖分色用的互斥分組，依陣列順序判斷，每間店只歸一組
+export const GROUPS = [
+  { id: 'work', label: '適合工作' },
+  { id: 'pet', label: '毛孩友善' },
+  { id: 'other', label: '其他' },
+  { id: 'unknown', label: '尚無資料' },
+];
+
+const ATTRIBUTE_KEYS = ['has_socket', 'limited_time', 'pet_friendly', 'has_pet'];
+
+// 與 LINE「工作友善咖啡」條件相同：有插座（很多或視座位）且不限時（不限時或視情況）
+export function groupOf(cafe) {
+  const a = cafe.attributes || {};
+  if (['yes', 'maybe'].includes(a.has_socket) && ['no', 'maybe'].includes(a.limited_time)) return 'work';
+  if (a.pet_friendly === 'yes' || a.has_pet === 'yes') return 'pet';
+  if (ATTRIBUTE_KEYS.every((key) => a[key] === null || a[key] === undefined)) return 'unknown';
+  return 'other';
+}
+
 // 與 LINE 卡片標籤文字一致
 const TAG_TEXTS = [
   ['has_socket', { yes: '🔌 有插座', maybe: '🔌 有插座' }],
@@ -24,9 +43,23 @@ const TAG_TEXTS = [
   ['has_pet', { yes: '🐈 有貓貓狗狗', maybe: '🐈 有貓貓狗狗' }],
 ];
 
-export function filterCafes(cafes, activeIds) {
+function matches(cafe, filter) {
+  return filter.values.includes(cafe.attributes?.[filter.attribute]);
+}
+
+export function filterCafes(cafes, activeIds, hiddenGroups = new Set()) {
   const active = FILTERS.filter((f) => activeIds.has(f.id));
-  return cafes.filter((cafe) => active.every((f) => f.values.includes(cafe.attributes?.[f.attribute])));
+  return cafes.filter((cafe) => !hiddenGroups.has(groupOf(cafe)) && active.every((f) => matches(cafe, f)));
+}
+
+export function countFilters(cafes) {
+  return Object.fromEntries(FILTERS.map((f) => [f.id, cafes.filter((cafe) => matches(cafe, f)).length]));
+}
+
+export function countGroups(cafes) {
+  const counts = Object.fromEntries(GROUPS.map((g) => [g.id, 0]));
+  for (const cafe of cafes) counts[groupOf(cafe)] += 1;
+  return counts;
 }
 
 export function attributeTags(attributes) {
@@ -47,7 +80,7 @@ export function toGeoJSON(cafes) {
       type: 'Feature',
       id: index,
       geometry: { type: 'Point', coordinates: [cafe.lng, cafe.lat] },
-      properties: { index, place_id: cafe.place_id },
+      properties: { index, place_id: cafe.place_id, group: groupOf(cafe) },
     });
   });
   return { type: 'FeatureCollection', features };

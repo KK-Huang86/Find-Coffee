@@ -194,6 +194,16 @@ base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 - 版型：桌面左側欄 360px；手機底部抽屜有三段高度（收合只露標題列與篩選、半開 50vh、全開 90vh），以拖曳把手切換
 - 文案自行撰寫，例如標題「我的咖啡地圖」、空狀態「還沒有收藏的咖啡店，回 LINE 收藏幾間吧 ☕️」
 
+### Decision 13：分組分色、圖例與選取圖釘（依使用者回饋調整）
+
+- 參考站的圖例是互斥的「來源圖層」；我們的四個屬性會重疊，改用「工作友善程度」組出互斥分組（規則見 spec「分組圖例」），由 `map-core.js` 的 `groupOf` 判斷，GeoJSON properties 帶 `group`，圓點以 `match` 表達式依 `--group-*` 色彩 token 上色
+- 分組色：適合工作 `#3F7D5A` / `#7FBF95`、毛孩友善 `#C0612C` / `#E89565`、其他 `#8A6A4F` / `#C4A485`、尚無資料 `#9AA0A6` / `#8B9096`（淺色 / 深色）
+- 選取店家改用 `maplibregl.Marker` 的 HTML 圖釘：不受群集影響、`anchor: 'bottom'` 讓針尖對準座標，並以 CSS keyframes 做落下彈跳與停留時的輕跳；`prefers-reduced-motion` 時關閉。選取中的店家從圓點圖層排除，避免圓點露在針尖下
+- 選取時至少放大到 16 級，`clusterMaxZoom` 降為 14，店家不會被包在群集裡（原本 15 級時仍在群集內，造成位置看起來不準）
+- 選取偏移改以地圖容器高度計算：桌面 `+28%`（上方留給 popup），手機 `-26%`（抽屜上方可見區中央）
+- 桌面版 `.app` 加上 `grid-template-rows: minmax(0, 1fr)`，側欄高度固定為視窗高度，清單才會在 `panel-body` 內捲動
+- 手機版標題列也可拖曳切換抽屜高度
+
 ### Decision 12：測試策略
 
 - pytest：fingerprint、生成規則（每個 spec scenario 都有對應測試，以 `now` 注入時間）、並發（`transaction=True` 測試 + threading，驗證只生成一次）、snapshot 序列化、views（狀態碼、標頭、不洩漏資料）、LINE handler 與 quick reply
