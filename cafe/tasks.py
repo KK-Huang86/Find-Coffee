@@ -147,7 +147,7 @@ def download_and_upload_cafe_photo(self, cafe_id, force=False):
 )
 def generate_cafe_ai_summary(cafe_id):
     """
-    異步產生咖啡店的 AI 摘要（ai_summary），供描述搜尋比對用。
+    異步產生咖啡店的 AI 摘要（ai_summary），同時用於咖啡店卡片顯示與描述搜尋比對。
     額度記在系統帳號（見 ApiUsageService.get_system_ai_user_id），不佔用真人使用者的月額度。
     """
     try:
