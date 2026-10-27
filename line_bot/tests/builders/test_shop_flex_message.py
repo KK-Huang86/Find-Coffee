@@ -741,6 +741,169 @@ class TestCreateShopFlexMessage:
         mock_get_photo_url.assert_called_once_with(info, allow_sync_resolve=False)
 
 
+class TestShopFlexMessageAiSummary:
+    """測試 create_shop_flex_message 的 AI 評論摘要區塊（見 openspec/changes/ai-summary-inline-display）"""
+
+    SUMMARY = '肉桂捲與手沖美式是招牌，空間安靜有插座，適合一個人工作或看書。'
+
+    def _make_info(self, **kwargs):
+        return TestCreateShopFlexMessage()._make_info(**kwargs)
+
+    def _build(self, is_multiple=False, **kwargs):
+        info = self._make_info(**kwargs)
+        return FlexMessageBuilder.create_shop_flex_message(
+            info, is_multiple=is_multiple, photo_url_override='https://example.com/x.jpg'
+        )
+
+    @staticmethod
+    def _find_summary_box(bubble):
+        for index, element in enumerate(bubble['body']['contents']):
+            if element.get('type') != 'box':
+                continue
+            texts = [c.get('text') for c in element.get('contents', []) if c.get('type') == 'text']
+            if '🤖 評論摘要' in texts:
+                return index, element
+        return None, None
+
+    @staticmethod
+    def _summary_text(box):
+        return next(c for c in box['contents'] if c.get('type') == 'text' and c['text'] != '🤖 評論摘要')
+
+    @staticmethod
+    def _has_separator(bubble):
+        return any(e.get('type') == 'separator' for e in bubble['body']['contents'])
+
+    def test_single_shows_summary_after_detail_box(self):
+        """單筆：摘要區塊位於營業時間所在的詳細資訊 box 之後，前面有 separator"""
+        bubble = self._build(ai_summary=self.SUMMARY)
+        contents = bubble['body']['contents']
+
+        index, box = self._find_summary_box(bubble)
+
+        assert box is not None
+        assert self._summary_text(box)['text'] == self.SUMMARY
+        assert contents[index - 1]['type'] == 'separator'
+        detail_index = next(
+            i for i, e in enumerate(contents)
+            if e.get('type') == 'box' and any(
+                c.get('type') == 'box' and any(t.get('text') == '⏰ 營業' for t in c.get('contents', []))
+                for c in e.get('contents', [])
+            )
+        )
+        assert detail_index < index - 1
+        assert index == len(contents) - 1
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_summary_style_is_small_muted_and_italic(self, is_multiple):
+        """單筆與多筆：摘要文字為 xs 灰色斜體、可換行（商業邏輯變更：由行數截斷改為完整呈現並改用斜體，見 spec「卡片完整顯示 AI 評論摘要」）"""
+        _, box = self._find_summary_box(self._build(is_multiple=is_multiple, ai_summary=self.SUMMARY))
+        text = self._summary_text(box)
+
+        assert text['text'] == self.SUMMARY
+        assert text['size'] == 'xs'
+        assert text['color'] == '#999999'
+        assert text['style'] == 'italic'
+        assert text['wrap'] is True
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_summary_is_not_line_truncated(self, is_multiple):
+        """單筆與多筆：摘要不設 maxLines，內容完整呈現"""
+        _, box = self._find_summary_box(self._build(is_multiple=is_multiple, ai_summary=self.SUMMARY))
+
+        assert 'maxLines' not in self._summary_text(box)
+
+    def test_old_100_char_summary_is_shown_in_full(self):
+        """舊版約 100 字的摘要完整顯示，不被截斷"""
+        old_summary = '咖' * 100
+
+        _, box = self._find_summary_box(self._build(is_multiple=True, ai_summary=old_summary))
+
+        assert self._summary_text(box)['text'] == old_summary
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_whitespace_between_detail_and_summary(self, is_multiple):
+        """店家資訊與摘要之間留白：separator 上方 xxl、摘要 box 上方 lg，大於詳細資訊 box 的 lg 間距"""
+        bubble = self._build(is_multiple=is_multiple, ai_summary=self.SUMMARY)
+        index, box = self._find_summary_box(bubble)
+        separator = bubble['body']['contents'][index - 1]
+
+        assert separator['margin'] == 'xxl'
+        assert box['margin'] == 'lg'
+
+    def test_summary_is_stripped(self):
+        """摘要前後空白與換行會被去除"""
+        _, box = self._find_summary_box(self._build(ai_summary=f'\n  {self.SUMMARY}  \n'))
+
+        assert self._summary_text(box)['text'] == self.SUMMARY
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    @pytest.mark.parametrize('summary', [None, '', '   ', '\n\t\n'])
+    def test_no_summary_block_when_blank(self, is_multiple, summary):
+        """摘要為 None、空字串、純空白時，不顯示標題、分隔線與任何 placeholder"""
+        bubble = self._build(is_multiple=is_multiple, ai_summary=summary)
+
+        _, box = self._find_summary_box(bubble)
+
+        assert box is None
+        assert not self._has_separator(bubble)
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_no_summary_block_when_key_missing(self, is_multiple):
+        """info 沒有 ai_summary key（例如舊資料或非 DB 來源）時，不顯示摘要區塊"""
+        info = self._make_info()
+        info.pop('ai_summary', None)
+
+        bubble = FlexMessageBuilder.create_shop_flex_message(
+            info, is_multiple=is_multiple, photo_url_override='https://example.com/x.jpg'
+        )
+
+        assert self._find_summary_box(bubble) == (None, None)
+        assert not self._has_separator(bubble)
+
+    def test_non_string_summary_is_ignored(self):
+        """ai_summary 型別錯誤（非字串）時不顯示，也不拋例外"""
+        bubble = self._build(ai_summary=123)
+
+        assert self._find_summary_box(bubble) == (None, None)
+
+    @pytest.mark.parametrize('is_multiple', [False, True])
+    def test_overlong_summary_is_capped_in_payload(self, is_multiple):
+        """模型不守字數時，送進 Flex JSON 的摘要仍有字數上限並以省略號結尾，避免 carousel 超過 LINE payload 上限"""
+        limit = FlexMessageBuilder.AI_SUMMARY_MAX_CHARS
+        _, box = self._find_summary_box(self._build(is_multiple=is_multiple, ai_summary='肉' * (limit * 10)))
+
+        text = self._summary_text(box)['text']
+        assert len(text) == limit + 1
+        assert text.endswith('…')
+
+    def test_summary_at_char_limit_is_not_truncated(self):
+        """剛好等於字數上限時不截斷、不加省略號"""
+        summary = '肉' * FlexMessageBuilder.AI_SUMMARY_MAX_CHARS
+
+        _, box = self._find_summary_box(self._build(ai_summary=summary))
+
+        assert self._summary_text(box)['text'] == summary
+
+    def test_char_limit_leaves_room_for_old_100_char_summaries(self):
+        """字數上限需大於舊版 100 字摘要，舊資料不會被字數上限截斷"""
+        assert FlexMessageBuilder.AI_SUMMARY_MAX_CHARS >= 100
+
+    def test_single_footer_and_tags_unchanged_with_summary(self):
+        """有摘要時，單筆 footer 按鈕順序與屬性標籤位置不變"""
+        bubble = self._build(ai_summary=self.SUMMARY, has_socket='yes', limited_time='no')
+
+        footer_labels = [btn['action']['label'] for btn in bubble['footer']['contents']]
+        assert footer_labels == ['看地圖', '打電話', '網站']
+        assert bubble['body']['contents'][2]['layout'] == 'horizontal'
+
+    def test_multiple_footer_unchanged_with_summary(self):
+        """有摘要時，多筆 footer 仍為「看地圖」「選擇這間」"""
+        bubble = self._build(is_multiple=True, ai_summary=self.SUMMARY)
+
+        footer_labels = [btn['action']['label'] for btn in bubble['footer']['contents']]
+        assert footer_labels == ['看地圖 ', '選擇這間']
+
+
 class TestBuildTelUri:
     """測試 FlexMessageBuilder._build_tel_uri"""
 

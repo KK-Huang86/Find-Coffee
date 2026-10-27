@@ -187,6 +187,68 @@ class TestSummarizeForSearch:
 
         assert result is None
 
+    def _sent_prompt(self, mock_client):
+        _, kwargs = mock_client.chat.completions.create.call_args
+        return kwargs['messages'][0]['content']
+
+    def test_prompt_requests_50_to_60_characters(self, mocker):
+        """prompt 要求摘要長度 50–60 字（同時用於卡片顯示與搜尋比對）"""
+        _, mock_client = _mock_groq_client(mocker)
+
+        GroqAPI.summarize_for_search(name='測試咖啡店', reviews=['好喝'])
+
+        prompt = self._sent_prompt(mock_client)
+        assert '50' in prompt and '60' in prompt
+        assert '100 字' not in prompt
+
+    def test_prompt_asks_to_keep_item_names_and_concrete_features(self, mocker):
+        """prompt 要求保留評論中的品項原名與具體環境特徵，讓「肉桂捲」「美式」等關鍵字能被比對到"""
+        _, mock_client = _mock_groq_client(mocker)
+
+        GroqAPI.summarize_for_search(name='測試咖啡店', reviews=['肉桂捲很好吃'])
+
+        prompt = self._sent_prompt(mock_client)
+        assert '品項' in prompt
+        assert '原名' in prompt
+        assert '空泛' in prompt
+
+    def test_prompt_contains_name_and_every_review(self, mocker):
+        """prompt 帶入店名與每一則評論原文"""
+        _, mock_client = _mock_groq_client(mocker)
+
+        GroqAPI.summarize_for_search(name='好咖啡', reviews=['肉桂捲很好吃', '美式偏酸'])
+
+        prompt = self._sent_prompt(mock_client)
+        assert '好咖啡' in prompt
+        assert '- 肉桂捲很好吃' in prompt
+        assert '- 美式偏酸' in prompt
+
+    def test_prompt_forbids_prefix_and_quotes(self, mocker):
+        """prompt 要求只輸出摘要本身，不加前綴、標題或引號"""
+        _, mock_client = _mock_groq_client(mocker)
+
+        GroqAPI.summarize_for_search(name='測試咖啡店', reviews=['好喝'])
+
+        prompt = self._sent_prompt(mock_client)
+        assert '前綴' in prompt and '標題' in prompt and '引號' in prompt
+
+    def test_strips_surrounding_whitespace(self, mocker):
+        """回傳內容前後的空白與換行會被去除，避免卡片多出空行"""
+        _mock_groq_client(mocker, content='\n  肉桂捲必點，適合安靜工作。  \n')
+
+        result = GroqAPI.summarize_for_search(name='測試咖啡店', reviews=['好喝'])
+
+        assert result == '肉桂捲必點，適合安靜工作。'
+
+    @pytest.mark.parametrize('content', ['', '   ', '\n\n', None])
+    def test_blank_response_returns_none(self, mocker, content):
+        """AI 回傳空字串、純空白或 None 時視同失敗回傳 None，避免把空白寫入 ai_summary"""
+        _mock_groq_client(mocker, content=content)
+
+        result = GroqAPI.summarize_for_search(name='測試咖啡店', reviews=['好喝'])
+
+        assert result is None
+
 
 class TestParseSearchDescription:
     """測試 GroqAPI.parse_search_description"""
