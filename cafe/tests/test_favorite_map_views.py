@@ -10,6 +10,15 @@ NOW = datetime(2026, 10, 27, 10, tzinfo=ZoneInfo('Asia/Taipei'))
 UNKNOWN_TOKEN = 'A' * 43
 
 
+@pytest.fixture(autouse=True)
+def plain_static_storage(settings):
+    # CI 以 core.settings 跑測試且不執行 collectstatic，manifest storage 會因找不到 manifest 而在 {% static %} 拋錯
+    settings.STORAGES = {
+        **settings.STORAGES,
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+
+
 @pytest.fixture
 def map_token(settings):
     settings.PUBLIC_BASE_URL = 'http://localhost:8000'
