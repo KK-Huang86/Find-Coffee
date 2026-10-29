@@ -1,0 +1,57 @@
+{% load static %}<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="strict-origin">
+  <title>我的咖啡地圖</title>
+  {# CSP 不允許 inline script，主題要在渲染前套用，所以獨立成同步載入的檔案 #}
+  <script src="{% static 'cafe/map/map-theme.js' %}"></script>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+        integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
+  <link rel="stylesheet" href="{% static 'cafe/map/map.css' %}">
+</head>
+<body>
+  <div class="app" id="app">
+    <main class="map-area" aria-label="咖啡店地圖">
+      <div class="map" id="map"></div>
+      <div class="legend" id="legend" hidden></div>
+    </main>
+
+    <aside class="panel" id="panel" data-sheet="peek" aria-label="店家清單">
+      <button class="panel-handle" id="panel-handle" type="button" aria-label="展開或收合清單">
+        <span class="panel-handle-bar"></span>
+      </button>
+
+      <header class="panel-header">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3c-3.6 0-6 3.4-6 8.5S8.4 21 12 21s6-4.4 6-9.5S15.6 3 12 3Z"/>
+            <path d="M12 4.5c-1.4 2.2-1.4 4.8 0 7s1.4 4.8 0 7.5"/>
+          </svg>
+          <div>
+            <h1 class="title">我的咖啡地圖</h1>
+            <p class="subtitle" id="summary">讀取中…</p>
+          </div>
+        </div>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="切換深色或淺色">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg>
+        </button>
+      </header>
+
+      <div class="filters" id="filters" role="group" aria-label="篩選條件"></div>
+
+      <div class="panel-body" id="panel-body">
+        <div class="status" id="status" role="status" hidden></div>
+        <section class="detail" id="detail" hidden></section>
+        <ol class="cafe-list" id="cafe-list"></ol>
+      </div>
+    </aside>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"
+          integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
+  <script type="module" src="{% static 'cafe/map/map-app.js' %}"></script>
+</body>
+</html>

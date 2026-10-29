@@ -14,6 +14,7 @@ from line_bot.handlers.postback_actions import (
     handle_all_pet_search,
     handle_description_search_text,
 )
+from cafe.services.favorite_map import FavoriteMapResult
 from cafe.services.search_service import CafeSearchResult
 from line_bot.tests.factories import CafeFactory, UserFactory
 
@@ -247,13 +248,14 @@ class TestHandleMenu:
         mock_api = MagicMock()
 
         flex_msg_mock = MagicMock()
-        flex_msg_mock.quick_reply = None
         with patch('line_bot.handlers.postback_actions.FavoritesPageBuilder.build_page_message',
                    return_value=flex_msg_mock), \
              patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
             handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
 
-        assert flex_msg_mock.quick_reply is None
+        # favorite-cafe-map 起收藏清單一律附「我的咖啡地圖」，因此改為斷言沒有「下一頁」
+        datas = [item.action.data for item in flex_msg_mock.quick_reply.items]
+        assert not any('action=next_page' in d for d in datas)
 
     def test_recent_search_no_history_replies_prompt(self):
         """RECENT_SEARCH 無紀錄時，回覆提示訊息"""
@@ -541,3 +543,104 @@ class TestHandleDescriptionSearchText:
 
         mock_search.assert_called_once_with('   ', user.id)
         mock_api.reply_message.assert_called_once()
+
+
+def _reply_texts(mock_api):
+    request = mock_api.reply_message.call_args[0][0]
+    return request.reply_token, [message.text for message in request.messages]
+
+
+@pytest.mark.django_db
+class TestMenuFavoriteMap:
+    """「我的咖啡地圖」：依 service 結果回覆連結與提示，一律使用 reply token"""
+
+    URL = 'http://localhost:8000/map/' + 'A' * 43 + '/'
+
+    def _reply_for(self, result):
+        from line_bot.handlers import postback_actions
+        user = UserFactory()
+        mock_api = MagicMock()
+        with patch.object(postback_actions, 'request_favorite_map', return_value=result) as mock_request:
+            handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITE_MAP})
+        mock_request.assert_called_once_with(user)
+        mock_api.push_message.assert_not_called()
+        mock_api.reply_message.assert_called_once()
+        reply_token, texts = _reply_texts(mock_api)
+        assert reply_token == 'test_token'
+        assert len(texts) == 1
+        return texts[0]
+
+    def test_created(self):
+        text = self._reply_for(FavoriteMapResult(status='created', url=self.URL))
+        assert self.URL in text
+        assert '擁有連結的人都能查看' in text
+
+    def test_generated(self):
+        text = self._reply_for(FavoriteMapResult(status='generated', url=self.URL))
+        assert self.URL in text
+        assert '已更新' in text
+
+    def test_unchanged(self):
+        text = self._reply_for(FavoriteMapResult(status='unchanged', url=self.URL))
+        assert self.URL in text
+        assert '分鐘' not in text
+
+    def test_cooldown_shows_minutes(self):
+        text = self._reply_for(FavoriteMapResult(status='cooldown', url=self.URL, wait_minutes=18))
+        assert self.URL in text
+        assert '18 分鐘後' in text
+
+    def test_daily_limit(self):
+        text = self._reply_for(FavoriteMapResult(status='daily_limit', url=self.URL))
+        assert self.URL in text
+        assert '今天的更新次數已用完' in text
+
+    def test_no_favorites(self):
+        text = self._reply_for(FavoriteMapResult(status='no_favorites', url=None))
+        assert '還沒有收藏' in text
+        assert 'http' not in text
+
+    def test_error(self):
+        text = self._reply_for(FavoriteMapResult(status='error', url=None))
+        assert '稍後再試' in text
+        assert 'http' not in text
+
+    def test_end_to_end_with_real_service(self, settings):
+        """不 mock service：有收藏的使用者拿到可開啟的連結"""
+        settings.PUBLIC_BASE_URL = 'http://localhost:8000'
+        user = UserFactory()
+        user.favorites.create(cafe=CafeFactory())
+        mock_api = MagicMock()
+
+        handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITE_MAP})
+
+        _, texts = _reply_texts(mock_api)
+        assert 'http://localhost:8000/map/' in texts[0]
+
+
+@pytest.mark.django_db
+class TestFavoritesFavoriteMapEntry:
+    """收藏清單回覆附上「🗺️ 我的咖啡地圖」"""
+
+    def _quick_reply_datas(self, favorite_count):
+        user = UserFactory()
+        for cafe in [CafeFactory() for _ in range(favorite_count)]:
+            user.favorites.create(cafe=cafe)
+        mock_api = MagicMock()
+        flex_msg_mock = MagicMock()
+        with patch('line_bot.handlers.postback_actions.FavoritesPageBuilder.build_page_message',
+                   return_value=flex_msg_mock), \
+             patch('line_bot.handlers.postback_actions.ReplyMessageRequest', return_value=MagicMock()):
+            handle_menu(mock_api, 'test_token', user, {'type': MenuAction.FAVORITES})
+        return [item.action.data for item in flex_msg_mock.quick_reply.items]
+
+    def test_single_page_has_map_entry(self):
+        datas = self._quick_reply_datas(3)
+        assert datas == [f'action=menu&type={MenuAction.FAVORITE_MAP}']
+
+    def test_multiple_pages_have_next_page_and_map_entry(self):
+        from line_bot.handlers.postback_actions import FAVORITES_PAGE_SIZE
+        datas = self._quick_reply_datas(FAVORITES_PAGE_SIZE + 1)
+        assert len(datas) == 2
+        assert 'action=next_page' in datas[0]
+        assert datas[1] == f'action=menu&type={MenuAction.FAVORITE_MAP}'
