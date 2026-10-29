@@ -2,7 +2,7 @@
 補產缺漏的咖啡店 AI 摘要（ai_summary）
 
 找出 ai_summary 為空值或純空白、且有 Google 評論的店家，逐筆排入 generate_cafe_ai_summary 背景任務。
-額度在任務內扣除（系統帳號，與真人使用者分開），這裡只依剩餘額度預估本次排入數量。
+摘要產生不受額度阻擋，成功後由任務記錄在系統帳號；這裡只負責以固定間隔排入，避免超過 Groq TPM 上限。
 
 使用方式：
     # 試跑：只列出會處理的店家數量，不排入任務
@@ -20,7 +20,6 @@ from django.db.models import Q
 
 from cafe.models import Cafe
 from cafe.tasks import generate_cafe_ai_summary
-from integrations.services import ApiUsageService
 from utils.utils import LockService
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ class Command(BaseCommand):
             '--limit',
             type=_non_negative_int,
             default=None,
-            help='本次最多排入幾間（預設不限，但仍受系統 AI 剩餘額度限制）',
+            help='本次最多排入幾間（預設不限）',
         )
         parser.add_argument(
             '--interval',
@@ -89,22 +88,10 @@ class Command(BaseCommand):
             self.stdout.write('試跑模式，未排入任何任務')
             return
 
-        system_user_id = ApiUsageService.get_system_ai_user_id()
-        remaining = ApiUsageService.get_remaining_ai_calls(system_user_id)
-        if remaining == 0:
-            self.stdout.write(self.style.WARNING('系統 AI 額度已用盡，本月無法補產'))
-            return
-
-        max_queue = remaining if limit is None else min(limit, remaining)
-        if total > remaining and (limit is None or limit > remaining):
-            self.stdout.write(self.style.WARNING(
-                f'系統 AI 剩餘額度只有 {remaining} 次，本次最多排入 {remaining} 間，其餘請下個月再執行'
-            ))
-
         queued = 0
         skipped = 0
         for cafe in targets.iterator(chunk_size=200):
-            if queued >= max_queue:
+            if limit is not None and queued >= limit:
                 break
             if not LockService.acquire(str(cafe.id), LOCK_ACTION, ttl=LOCK_TTL_SECONDS):
                 skipped += 1

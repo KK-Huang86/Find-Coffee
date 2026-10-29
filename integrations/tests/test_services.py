@@ -81,55 +81,61 @@ class TestSystemAiQuotaUsingExistingInterface:
 
 
 @pytest.mark.django_db
-class TestGetRemainingAiCalls:
-    """測試 ApiUsageService.get_remaining_ai_calls"""
+class TestRecordAiCall:
+    """測試 ApiUsageService.record_ai_call：只記錄用量、不受上限阻擋（背景 AI 摘要使用）"""
 
-    def _system_record(self, **kwargs):
+    def _record(self, user_id):
+        return ApiUsageRecord.objects.get(user_id=user_id, year_month=ApiUsageService._get_year_month())
+
+    def test_creates_record_and_counts_one(self):
+        """當月尚無紀錄時建立紀錄並記為 1"""
         user_id = ApiUsageService.get_system_ai_user_id()
-        record, _ = ApiUsageRecord.objects.get_or_create(
-            user_id=user_id, year_month=ApiUsageService._get_year_month()
+
+        ApiUsageService.record_ai_call(user_id)
+
+        assert self._record(user_id).ai_calls == 1
+
+    def test_counts_beyond_monthly_limit(self):
+        """已達或超過月上限時仍照常累加，不阻擋"""
+        user_id = ApiUsageService.get_system_ai_user_id()
+        ApiUsageRecord.objects.create(
+            user_id=user_id, year_month=ApiUsageService._get_year_month(), ai_calls=50, monthly_ai_limit=50,
         )
-        ApiUsageRecord.objects.filter(pk=record.pk).update(**kwargs)
-        return user_id
 
-    def test_no_record_returns_full_limit(self):
-        """當月尚無紀錄時回傳完整額度，並建立當月紀錄"""
+        ApiUsageService.record_ai_call(user_id)
+        ApiUsageService.record_ai_call(user_id)
+
+        assert self._record(user_id).ai_calls == 52
+
+    def test_counts_when_can_use_ai_false(self):
+        """can_use_ai 為 False 時仍記錄，且不改動 can_use_ai"""
+        user_id = ApiUsageService.get_system_ai_user_id()
+        ApiUsageRecord.objects.create(
+            user_id=user_id, year_month=ApiUsageService._get_year_month(), ai_calls=3, can_use_ai=False,
+        )
+
+        ApiUsageService.record_ai_call(user_id)
+
+        record = self._record(user_id)
+        assert record.ai_calls == 4
+        assert record.can_use_ai is False
+
+    def test_does_not_touch_other_counters(self):
+        """只累加 ai_calls，不影響 Google API 相關計數"""
         user_id = ApiUsageService.get_system_ai_user_id()
 
-        remaining = ApiUsageService.get_remaining_ai_calls(user_id)
+        ApiUsageService.record_ai_call(user_id)
 
-        record = ApiUsageRecord.objects.get(user_id=user_id, year_month=ApiUsageService._get_year_month())
-        assert remaining == record.monthly_ai_limit
+        record = self._record(user_id)
+        assert record.total_api_calls == 0
+        assert record.search_calls == 0
+        assert record.detail_calls == 0
 
-    def test_partially_used(self):
-        """已使用部分額度時回傳剩餘次數"""
-        user_id = self._system_record(monthly_ai_limit=50, ai_calls=12)
+    def test_does_not_affect_other_users(self):
+        """只記在指定帳號，不影響真人使用者"""
+        system_user_id = ApiUsageService.get_system_ai_user_id()
+        real_user = User.objects.create(line_user_id='U_real_user')
 
-        assert ApiUsageService.get_remaining_ai_calls(user_id) == 38
+        ApiUsageService.record_ai_call(system_user_id)
 
-    def test_exhausted_returns_zero(self):
-        """已用盡時回傳 0"""
-        user_id = self._system_record(monthly_ai_limit=50, ai_calls=50)
-
-        assert ApiUsageService.get_remaining_ai_calls(user_id) == 0
-
-    def test_over_limit_never_negative(self):
-        """ai_calls 超過上限（例如上限被調降）時回傳 0，不為負數"""
-        user_id = self._system_record(monthly_ai_limit=10, ai_calls=30)
-
-        assert ApiUsageService.get_remaining_ai_calls(user_id) == 0
-
-    def test_can_use_ai_false_returns_zero(self):
-        """can_use_ai 被關閉時回傳 0"""
-        user_id = self._system_record(monthly_ai_limit=50, ai_calls=0, can_use_ai=False)
-
-        assert ApiUsageService.get_remaining_ai_calls(user_id) == 0
-
-    def test_consistent_with_try_increment(self):
-        """剩餘額度與 try_increment_ai_calls 實際可成功的次數一致"""
-        user_id = self._system_record(monthly_ai_limit=3, ai_calls=1)
-
-        remaining = ApiUsageService.get_remaining_ai_calls(user_id)
-        successes = sum(ApiUsageService.try_increment_ai_calls(user_id) for _ in range(5))
-
-        assert remaining == successes == 2
+        assert not ApiUsageRecord.objects.filter(user=real_user).exists()

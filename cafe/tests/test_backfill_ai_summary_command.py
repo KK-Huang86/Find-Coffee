@@ -150,50 +150,30 @@ class TestBackfillAiSummaryOptions:
 
 @pytest.mark.django_db
 class TestBackfillAiSummaryQuota:
+    """商業邏輯變更：背景摘要不再受系統帳號月上限阻擋，原「依剩餘額度截斷／用盡時不排入」測試移除，
+    見 spec「AI 摘要產生不受額度限制但需記錄用量」"""
 
-    def test_caps_to_remaining_quota_and_warns(self, mock_summary_task):
-        _set_system_quota(limit=10, used=8)
-        CafeFactory.create_batch(5, reviews=['好喝'], ai_summary=None)
-
-        output = _run()
-
-        assert mock_summary_task.call_count == 2
-        assert '額度' in output
-
-    def test_quota_exhausted_queues_nothing(self, mock_summary_task):
-        _set_system_quota(limit=10, used=10)
-        CafeFactory(reviews=['好喝'], ai_summary=None)
-
-        output = _run()
-
-        mock_summary_task.assert_not_called()
-        assert '額度' in output
-
-    def test_quota_disabled_queues_nothing(self, mock_summary_task):
-        _set_system_quota(limit=10, used=0, can_use_ai=False)
-        CafeFactory(reviews=['好喝'], ai_summary=None)
+    @pytest.mark.parametrize('used, can_use_ai', [(50, True), (200, True), (0, False)])
+    def test_queues_regardless_of_system_usage(self, mock_summary_task, used, can_use_ai):
+        """系統帳號用量已達或超過上限、或 can_use_ai 關閉時，仍照常排入"""
+        _set_system_quota(limit=50, used=used, can_use_ai=can_use_ai)
+        CafeFactory.create_batch(3, reviews=['好喝'], ai_summary=None)
 
         _run()
 
-        mock_summary_task.assert_not_called()
-
-    def test_limit_smaller_than_quota_wins(self, mock_summary_task):
-        _set_system_quota(limit=10, used=0)
-        CafeFactory.create_batch(5, reviews=['好喝'], ai_summary=None)
-
-        _run('--limit', '3')
-
         assert mock_summary_task.call_count == 3
 
-    def test_command_itself_does_not_consume_quota(self, mock_summary_task):
-        """額度在任務內扣除，command 只查詢不扣"""
+    def test_command_itself_does_not_record_usage(self, mock_summary_task):
+        """command 只排入任務，用量在任務成功後才記錄"""
         _set_system_quota(limit=10, used=0)
         CafeFactory.create_batch(2, reviews=['好喝'], ai_summary=None)
 
         _run()
 
-        user_id = ApiUsageService.get_system_ai_user_id()
-        assert ApiUsageService.get_remaining_ai_calls(user_id) == 10
+        record = ApiUsageRecord.objects.get(
+            user_id=ApiUsageService.get_system_ai_user_id(), year_month=ApiUsageService._get_year_month()
+        )
+        assert record.ai_calls == 0
 
 
 @pytest.mark.django_db
