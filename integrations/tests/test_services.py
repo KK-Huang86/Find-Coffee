@@ -78,3 +78,64 @@ class TestSystemAiQuotaUsingExistingInterface:
             user_id=system_user_id, year_month=ApiUsageService._get_year_month()
         )
         assert record.ai_calls == 0
+
+
+@pytest.mark.django_db
+class TestRecordAiCall:
+    """測試 ApiUsageService.record_ai_call：只記錄用量、不受上限阻擋（背景 AI 摘要使用）"""
+
+    def _record(self, user_id):
+        return ApiUsageRecord.objects.get(user_id=user_id, year_month=ApiUsageService._get_year_month())
+
+    def test_creates_record_and_counts_one(self):
+        """當月尚無紀錄時建立紀錄並記為 1"""
+        user_id = ApiUsageService.get_system_ai_user_id()
+
+        ApiUsageService.record_ai_call(user_id)
+
+        assert self._record(user_id).ai_calls == 1
+
+    def test_counts_beyond_monthly_limit(self):
+        """已達或超過月上限時仍照常累加，不阻擋"""
+        user_id = ApiUsageService.get_system_ai_user_id()
+        ApiUsageRecord.objects.create(
+            user_id=user_id, year_month=ApiUsageService._get_year_month(), ai_calls=50, monthly_ai_limit=50,
+        )
+
+        ApiUsageService.record_ai_call(user_id)
+        ApiUsageService.record_ai_call(user_id)
+
+        assert self._record(user_id).ai_calls == 52
+
+    def test_counts_when_can_use_ai_false(self):
+        """can_use_ai 為 False 時仍記錄，且不改動 can_use_ai"""
+        user_id = ApiUsageService.get_system_ai_user_id()
+        ApiUsageRecord.objects.create(
+            user_id=user_id, year_month=ApiUsageService._get_year_month(), ai_calls=3, can_use_ai=False,
+        )
+
+        ApiUsageService.record_ai_call(user_id)
+
+        record = self._record(user_id)
+        assert record.ai_calls == 4
+        assert record.can_use_ai is False
+
+    def test_does_not_touch_other_counters(self):
+        """只累加 ai_calls，不影響 Google API 相關計數"""
+        user_id = ApiUsageService.get_system_ai_user_id()
+
+        ApiUsageService.record_ai_call(user_id)
+
+        record = self._record(user_id)
+        assert record.total_api_calls == 0
+        assert record.search_calls == 0
+        assert record.detail_calls == 0
+
+    def test_does_not_affect_other_users(self):
+        """只記在指定帳號，不影響真人使用者"""
+        system_user_id = ApiUsageService.get_system_ai_user_id()
+        real_user = User.objects.create(line_user_id='U_real_user')
+
+        ApiUsageService.record_ai_call(system_user_id)
+
+        assert not ApiUsageRecord.objects.filter(user=real_user).exists()

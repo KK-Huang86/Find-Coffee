@@ -148,7 +148,8 @@ def download_and_upload_cafe_photo(self, cafe_id, force=False):
 def generate_cafe_ai_summary(cafe_id):
     """
     異步產生咖啡店的 AI 摘要（ai_summary），同時用於咖啡店卡片顯示與描述搜尋比對。
-    額度記在系統帳號（見 ApiUsageService.get_system_ai_user_id），不佔用真人使用者的月額度。
+    屬於系統行為，不受任何額度阻擋；成功後在系統帳號（見 ApiUsageService.get_system_ai_user_id）記錄用量，
+    不佔用真人使用者的月額度。
     """
     try:
         cafe = Cafe.objects.get(id=cafe_id)
@@ -159,16 +160,12 @@ def generate_cafe_ai_summary(cafe_id):
     if not cafe.reviews:
         return {'status': 'skipped', 'reason': 'no_reviews'}
 
-    system_user_id = ApiUsageService.get_system_ai_user_id()
-    if not ApiUsageService.try_increment_ai_calls(system_user_id):
-        logger.warning(f'系統 AI 摘要額度已用盡，跳過 Cafe {cafe_id}')
-        return {'status': 'skipped', 'reason': 'quota_exceeded'}
-
     summary = GroqAPI.summarize_for_search(name=cafe.name, reviews=cafe.reviews)
     if not summary:
-        ApiUsageService.revert_ai_call(system_user_id)
+        logger.warning(f'AI 摘要產生失敗，保留原摘要: cafe_id={cafe_id}')
         return {'status': 'failed', 'reason': 'groq_error'}
 
     Cafe.objects.filter(id=cafe_id).update(ai_summary=summary)
+    ApiUsageService.record_ai_call(ApiUsageService.get_system_ai_user_id())
     logger.info(f'已產生 AI 摘要: {cafe.name} ({cafe.place_id})')
     return {'status': 'success', 'cafe_id': cafe.id}

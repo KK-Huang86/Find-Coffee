@@ -85,6 +85,17 @@ class ApiUsageService:
         return True
 
     @staticmethod
+    def record_ai_call(user_id):
+        """只記錄一次 AI 呼叫用量，不檢查也不受月上限阻擋（背景 AI 摘要等系統行為用於觀察實際用量）"""
+        year_month = ApiUsageService._get_year_month()
+        record, _ = ApiUsageRecord.objects.get_or_create(
+            user_id=user_id,
+            year_month=year_month,
+        )
+        ApiUsageRecord.objects.filter(pk=record.pk).update(ai_calls=F('ai_calls') + 1)
+        logger.info(f'User {user_id} ai_calls +1 ({year_month}, 不受額度限制)')
+
+    @staticmethod
     def revert_ai_call(user_id):
         """當 AI 呼叫失敗時，退回一次額度"""
         year_month = ApiUsageService._get_year_month()
