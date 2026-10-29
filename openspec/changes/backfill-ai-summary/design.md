@@ -20,6 +20,8 @@
 ### 以 command 端 sleep 控制節奏，而非 Celery countdown
 每排入一筆後 `time.sleep(interval)`。使用 countdown 分散時間的話，大量任務的 ETA 會超過 SQS visibility timeout，造成重複投遞與重複扣額度。command 端 sleep 讓排入速度約等於處理速度，代價只是 command 執行較久，對一次性維運工具可接受。
 
+預設間隔 25 秒：Groq `openai/gpt-oss-20b` 的 TPM 上限為 8000，每次摘要約 2–3k tokens（含推理 token），每分鐘最多約 3 筆。本機實測以 2 秒間隔排入 50 筆，37 筆因 429 失敗（額度已由任務退回）。50 筆約需 21 分鐘。
+
 ### 先依剩餘額度限制數量
 執行前查詢系統帳號當月剩餘 AI 額度，排入數量取 `min(符合條件數, --limit, 剩餘額度)`。額度為 0 時直接結束。這只是減少無效任務的預估值，真正的額度把關仍在任務內的 `try_increment_ai_calls`（原子更新），因此與其他同時產生摘要的流程併發時也不會超用。
 

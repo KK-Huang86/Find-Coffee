@@ -127,6 +127,16 @@ class TestBackfillAiSummaryOptions:
             _run(option, '-1')
         mock_summary_task.assert_not_called()
 
+    def test_default_interval_stays_under_groq_tpm(self, mock_sleep, mock_summary_task):
+        """未指定 --interval 時預設 25 秒：Groq gpt-oss-20b TPM 上限 8000、每次摘要約 2–3k tokens，
+        每分鐘最多約 3 筆；實測 2 秒間隔時 50 筆有 37 筆 429 失敗"""
+        _set_system_quota(limit=50)
+        CafeFactory.create_batch(2, reviews=['好喝'], ai_summary=None)
+
+        _run()
+
+        mock_sleep.assert_called_once_with(25.0)
+
     def test_sleeps_interval_between_queued_tasks(self, mock_sleep, mock_summary_task):
         """每筆之間 sleep，最後一筆之後不 sleep"""
         _set_system_quota(limit=50)

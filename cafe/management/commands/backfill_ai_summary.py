@@ -8,8 +8,8 @@
     # 試跑：只列出會處理的店家數量，不排入任務
     uv run python manage.py backfill_ai_summary --dry-run
 
-    # 最多處理 20 間，每筆間隔 3 秒
-    uv run python manage.py backfill_ai_summary --limit 20 --interval 3
+    # 最多處理 20 間（每筆間隔預設 25 秒）
+    uv run python manage.py backfill_ai_summary --limit 20
 """
 
 import logging
@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 LOCK_ACTION = 'ai_summary_backfill'
 # 已排入的店家在此期間內不會被重複排入（任務通常數秒內完成，留足 broker 排隊時間）
 LOCK_TTL_SECONDS = 600
+# Groq gpt-oss-20b TPM 上限 8000、每次摘要約 2–3k tokens（含推理），每分鐘最多約 3 筆
+DEFAULT_INTERVAL_SECONDS = 25.0
 
 
 def _non_negative_int(value):
@@ -62,8 +64,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--interval',
             type=_non_negative_float,
-            default=2.0,
-            help='每筆排入之間的間隔秒數，避免瞬間打爆 Groq rate limit（預設 2 秒）',
+            default=DEFAULT_INTERVAL_SECONDS,
+            help=f'每筆排入之間的間隔秒數，避免超過 Groq TPM 上限（預設 {DEFAULT_INTERVAL_SECONDS:g} 秒）',
         )
 
     def handle(self, *args, **options):

@@ -3,7 +3,7 @@
 #
 # 使用方式：
 #   scripts/backfill_ai_summary.sh --dry-run                 # 先試跑，確認會處理幾間
-#   scripts/backfill_ai_summary.sh --limit 20 --interval 3   # 實際排入，最多 20 間、每筆間隔 3 秒
+#   scripts/backfill_ai_summary.sh --limit 20                # 實際排入，最多 20 間（每筆間隔預設 25 秒）
 #
 # 環境變數：
 #   BACKFILL_SERVICE  執行 command 的 compose service（預設 web）
