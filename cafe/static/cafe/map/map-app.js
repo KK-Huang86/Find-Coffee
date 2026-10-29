@@ -9,6 +9,7 @@ import {
   countGroups,
   filterCafes,
   groupOf,
+  photoSrc,
   safeHttpUrl,
   safeTelUri,
   toGeoJSON,
@@ -118,14 +119,15 @@ function hideStatus() {
 
 // ---------- 店家卡片 ----------
 
-function buildPhoto(cafe) {
-  const placeholder = el('div', { className: 'card-photo card-photo-placeholder' }, [svg(CUP_PATHS)]);
-  const src = safeHttpUrl(cafe.photo_url);
+// 卡片大圖與清單縮圖共用；載入失敗時換成預設圖樣
+function buildPhoto(cafe, className = 'card-photo', alt = cafe.name || '') {
+  const placeholder = el('div', { className: `${className} photo-placeholder` }, [svg(CUP_PATHS)]);
+  const src = photoSrc(cafe);
   if (!src) return placeholder;
 
   const img = el('img', {
-    className: 'card-photo',
-    attrs: { src, alt: cafe.name || '', loading: 'lazy', referrerpolicy: 'no-referrer' },
+    className,
+    attrs: { src, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' },
   });
   img.addEventListener('error', () => img.replaceWith(placeholder), { once: true });
   return img;
@@ -298,7 +300,11 @@ function renderList() {
       metaText ? el('span', { className: 'cafe-item-meta', text: metaText }) : null,
       buildTags(cafe.attributes),
     ]);
-    button.prepend(el('span', { className: 'group-dot', attrs: { 'data-group': groupOf(cafe), 'aria-hidden': 'true' } }));
+    // 店名已在按鈕文字中，縮圖 alt 留空避免螢幕閱讀器重複念
+    button.prepend(
+      el('span', { className: 'group-dot', attrs: { 'data-group': groupOf(cafe), 'aria-hidden': 'true' } }),
+      buildPhoto(cafe, 'cafe-item-photo', ''),
+    );
     button.addEventListener('click', () => selectCafe(cafe.place_id));
     return el('li', {}, [button]);
   }));

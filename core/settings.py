@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    # 需排在 staticfiles 前：runserver 改由 WhiteNoise serve static 並帶 Cache-Control，改前端後不會沿用舊快取
+    'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
     'line_bot',
     'users',

@@ -466,7 +466,10 @@ button {
 
 .cafe-item {
   position: relative;
-  display: block;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
   width: 100%;
   padding: 12px 16px 12px 36px;
   border: 0;
@@ -489,6 +492,21 @@ button {
   position: absolute;
   top: 19px;
   left: 16px;
+}
+
+.cafe-item-photo {
+  grid-row: 1 / span 3;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.cafe-item-name,
+.cafe-item-meta,
+.cafe-item .tags {
+  grid-column: 2;
 }
 
 .cafe-item-name {
@@ -558,12 +576,12 @@ button {
   background: var(--bg);
 }
 
-.card-photo-placeholder {
+.photo-placeholder {
   display: grid;
   place-items: center;
 }
 
-.card-photo-placeholder svg {
+.photo-placeholder svg {
   width: 56px;
   height: 56px;
   fill: none;
@@ -571,6 +589,11 @@ button {
   stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.cafe-item-photo.photo-placeholder svg {
+  width: 28px;
+  height: 28px;
 }
 
 .card-body {

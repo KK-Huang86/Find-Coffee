@@ -114,3 +114,8 @@ export function safeHttpUrl(value) {
 export function safeTelUri(value) {
   return typeof value === 'string' && /^tel:\+?\d{3,15}$/.test(value) ? value : null;
 }
+
+// 卡片與清單縮圖共用；缺值或不安全網址時回傳 null，由呼叫端改用預設圖樣
+export function photoSrc(cafe) {
+  return safeHttpUrl(cafe?.photo_url);
+}

@@ -13,6 +13,7 @@ import {
   safeTelUri,
   computeView,
   attributeTags,
+  photoSrc,
 } from '../../static/cafe/map/map-core.js';
 
 const cafe = (placeId, attributes = {}, extra = {}) => ({
@@ -272,5 +273,29 @@ describe('countGroups', () => {
       cafe('c', { has_pet: 'yes' }),
     ];
     assert.deepEqual(countGroups(cafes), { work: 2, pet: 1, other: 0, unknown: 0 });
+  });
+});
+
+describe('photoSrc', () => {
+  test('回傳 https 照片網址', () => {
+    const url = 'https://d2itwu3kz2rfbm.cloudfront.net/cafe-photos/a.jpg';
+    assert.equal(photoSrc({ photo_url: url }), url);
+  });
+
+  test('沒有照片欄位、null 或空字串時回傳 null', () => {
+    assert.equal(photoSrc({}), null);
+    assert.equal(photoSrc({ photo_url: null }), null);
+    assert.equal(photoSrc({ photo_url: '' }), null);
+  });
+
+  test('不安全或相對的網址回傳 null', () => {
+    assert.equal(photoSrc({ photo_url: 'javascript:alert(1)' }), null);
+    assert.equal(photoSrc({ photo_url: 'data:image/png;base64,AAAA' }), null);
+    assert.equal(photoSrc({ photo_url: '/cafe-photos/a.jpg' }), null);
+  });
+
+  test('店家本身缺值時回傳 null', () => {
+    assert.equal(photoSrc(null), null);
+    assert.equal(photoSrc(undefined), null);
   });
 });
