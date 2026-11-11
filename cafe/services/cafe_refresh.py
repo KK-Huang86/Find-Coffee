@@ -1,4 +1,5 @@
 import logging
+import zlib
 from datetime import timedelta
 
 from django.utils import timezone
@@ -11,17 +12,33 @@ from utils.utils import LockService
 logger = logging.getLogger(__name__)
 
 DATA_REFRESH_DAYS = 30
+# 過期門檻依 place_id 提前 0～REFRESH_JITTER_HOURS 小時，避免同一批匯入的店同一天一起過期（防快取雪崩）
+REFRESH_JITTER_HOURS = 5 * 24
 PHOTO_REFRESH_DAYS = 180
 # 同一間店 TTL 內最多刷新一次；成功後 last_refreshed 已更新不會再進來，失敗時避免每次查詢都重打 Places Detail
 REFRESH_LOCK_TTL_SECONDS = 600
 
 
+def refresh_threshold(cafe):
+    """
+    店家資料的過期門檻，介於 DATA_REFRESH_DAYS - 5 天到 DATA_REFRESH_DAYS 天。
+
+    依 place_id 決定而非每次隨機：同一間店門檻固定，不會這次判斷過期、下次又判斷未過期。
+    只提前不延後，保證資料不會超過 DATA_REFRESH_DAYS 天未刷新。
+    """
+    base = timedelta(days=DATA_REFRESH_DAYS)
+    if not cafe.place_id:
+        return base
+    jitter_hours = zlib.crc32(cafe.place_id.encode('utf-8')) % (REFRESH_JITTER_HOURS + 1)
+    return base - timedelta(hours=jitter_hours)
+
+
 def is_cafe_stale(cafe, now=None):
-    """店家資料從未刷新，或距上次刷新已達 DATA_REFRESH_DAYS 天"""
+    """店家資料從未刷新，或距上次刷新已達自己的過期門檻"""
     if cafe.last_refreshed is None:
         return True
     now = now or timezone.now()
-    return now - cafe.last_refreshed >= timedelta(days=DATA_REFRESH_DAYS)
+    return now - cafe.last_refreshed >= refresh_threshold(cafe)
 
 
 def refresh_cafe_now(cafe):
