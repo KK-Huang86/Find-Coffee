@@ -11,6 +11,12 @@ from utils.distributed_lock import distributed_lock
 class TestDistributedLockCacheBackend:
     """非 Redis 快取後端（測試的 LocMem）：以 cache.add + token 實作"""
 
+    @pytest.fixture(autouse=True)
+    def use_cache_backend(self):
+        # CI 以 core.settings（Redis 快取）執行測試，明確指定走非 Redis 後端的路徑
+        with patch('utils.distributed_lock._get_redis_client', return_value=None):
+            yield
+
     def test_acquires_free_lock_and_releases_on_exit(self):
         """未被持有的鎖可以取得，離開後可以再次取得"""
         with distributed_lock('cafe:abc') as acquired:
