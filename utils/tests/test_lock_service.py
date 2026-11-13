@@ -54,3 +54,31 @@ class TestLockService:
 
         key_used = mock_add.call_args[0][0]
         assert key_used == 'lock:u123:my_action'
+
+
+class TestLockServiceRelease:
+    """測試 LockService.release"""
+
+    def setup_method(self):
+        cache.clear()
+
+    def test_release_allows_acquire_again(self):
+        """釋放後同一個 key 可以再次取得"""
+        LockService.acquire('cafe1', 'ai_summary_backfill', ttl=600)
+
+        LockService.release('cafe1', 'ai_summary_backfill')
+
+        assert LockService.acquire('cafe1', 'ai_summary_backfill', ttl=600) is True
+
+    def test_release_nonexistent_lock_does_not_raise(self):
+        """釋放不存在的鎖不拋例外"""
+        LockService.release('nobody', 'nothing')
+
+    def test_release_does_not_affect_other_keys(self):
+        """只釋放指定 user_id + action 的鎖"""
+        LockService.acquire('cafe1', 'ai_summary_backfill', ttl=600)
+        LockService.acquire('cafe2', 'ai_summary_backfill', ttl=600)
+
+        LockService.release('cafe1', 'ai_summary_backfill')
+
+        assert LockService.acquire('cafe2', 'ai_summary_backfill', ttl=600) is False

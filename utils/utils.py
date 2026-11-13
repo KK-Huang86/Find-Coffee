@@ -10,3 +10,9 @@ class LockService:
 
         key = f'lock:{user_id}:{action}'
         return cache.add(key, 1, timeout=ttl)  # SETNX + TTL
+
+    @staticmethod
+    def release(user_id, action):
+        """提前釋放鎖，讓失敗的動作可以立即重試"""
+
+        cache.delete(f'lock:{user_id}:{action}')
