@@ -1,0 +1,769 @@
+/* 咖啡地圖：「烘焙」色系，焦糖店家點、深焙棕主色、抹茶綠標籤 */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #FAF7F2;
+  --surface: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --text: #2B211A;
+  --muted: #7C6F63;
+  --border: #E6DED3;
+  --primary: #5A3825;
+  --on-primary: #FFFFFF;
+  --marker: #C07A2C;
+  --marker-stroke: #FFFFFF;
+  --ring: #5A3825;
+  --group-work: #3F7D5A;
+  --group-pet: #C0612C;
+  --group-other: #8A6A4F;
+  --group-unknown: #9AA0A6;
+  --cluster: #5A3825;
+  --tag: #4E7655;
+  --tag-bg: #EAF1EA;
+  --chip-active-bg: #5A3825;
+  --chip-active-text: #FFFFFF;
+  --shadow: 0 8px 28px rgba(43, 33, 26, 0.14);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121417;
+  --surface: #1C1F24;
+  --surface-raised: #23272D;
+  --text: #EDE6DC;
+  --muted: #A49A8E;
+  --border: #2E3238;
+  --primary: #E0A96D;
+  --on-primary: #1C1208;
+  --marker: #E0A96D;
+  --marker-stroke: #121417;
+  --ring: #EDE6DC;
+  --group-work: #7FBF95;
+  --group-pet: #E89565;
+  --group-other: #C4A485;
+  --group-unknown: #8B9096;
+  --cluster: #C07A2C;
+  --tag: #8FBF97;
+  --tag-bg: #1F2B22;
+  --chip-active-bg: #E0A96D;
+  --chip-active-text: #1C1208;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- 版型：手機為全螢幕地圖 + 底部抽屜 ---------- */
+
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.map-area {
+  position: absolute;
+  inset: 0;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---------- 分組色點與地圖圖例 ---------- */
+
+.group-dot {
+  flex: none;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--group-unknown);
+}
+
+.group-dot[data-group="work"] { background: var(--group-work); }
+.group-dot[data-group="pet"] { background: var(--group-pet); }
+.group-dot[data-group="other"] { background: var(--group-other); }
+
+.legend {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  min-width: 168px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.legend-dots {
+  display: inline-flex;
+}
+
+.legend-dots .group-dot {
+  border: 2px solid var(--surface);
+}
+
+.legend-dots .group-dot + .group-dot {
+  margin-left: -3px;
+}
+
+.legend-chevron {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  transition: transform 0.2s ease;
+}
+
+.legend-toggle[aria-expanded="true"] .legend-chevron {
+  transform: rotate(180deg);
+}
+
+.legend-rows {
+  display: grid;
+  padding: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.legend-row:hover {
+  background: var(--bg);
+}
+
+.legend-label {
+  flex: 1;
+}
+
+.legend-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend-row[aria-pressed="false"] {
+  color: var(--muted);
+}
+
+.legend-row[aria-pressed="false"] .group-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--border);
+}
+
+.legend-row[aria-pressed="false"] .legend-label {
+  text-decoration: line-through;
+}
+
+/* ---------- 選取的店家：圖釘與跳動動畫 ---------- */
+
+.selected-pin {
+  --pin-color: var(--group-unknown);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.selected-pin[data-group="work"] { --pin-color: var(--group-work); }
+.selected-pin[data-group="pet"] { --pin-color: var(--group-pet); }
+.selected-pin[data-group="other"] { --pin-color: var(--group-other); }
+
+.selected-pin-head {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--marker-stroke);
+  border-radius: 50% 50% 50% 0;
+  background: var(--pin-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: rotate(-45deg);
+  transform-origin: center;
+  animation: pin-bounce 0.9s cubic-bezier(0.28, 0.84, 0.42, 1) both, pin-hop 2.4s ease-in-out 1.2s infinite;
+}
+
+.selected-pin-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #FFFFFF;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(45deg);
+}
+
+.selected-pin-shadow {
+  width: 14px;
+  height: 5px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.28);
+  animation: pin-shadow 0.9s cubic-bezier(0.28, 0.84, 0.42, 1) both, pin-shadow-hop 2.4s ease-in-out 1.2s infinite;
+}
+
+/* 落下後彈跳兩次 */
+@keyframes pin-bounce {
+  0% { transform: translateY(-48px) rotate(-45deg); opacity: 0; }
+  35% { transform: translateY(0) rotate(-45deg); opacity: 1; }
+  55% { transform: translateY(-16px) rotate(-45deg); }
+  72% { transform: translateY(0) rotate(-45deg); }
+  86% { transform: translateY(-6px) rotate(-45deg); }
+  100% { transform: translateY(0) rotate(-45deg); }
+}
+
+@keyframes pin-shadow {
+  0% { transform: scale(0.3); opacity: 0; }
+  35%, 72%, 100% { transform: scale(1); opacity: 1; }
+  55% { transform: scale(0.6); }
+  86% { transform: scale(0.85); }
+}
+
+/* 停留時輕輕跳動，提示目前選取的店家 */
+@keyframes pin-hop {
+  0%, 70%, 100% { transform: translateY(0) rotate(-45deg); }
+  80% { transform: translateY(-10px) rotate(-45deg); }
+  90% { transform: translateY(0) rotate(-45deg); }
+}
+
+@keyframes pin-shadow-hop {
+  0%, 70%, 100% { transform: scale(1); }
+  80% { transform: scale(0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selected-pin-head,
+  .selected-pin-shadow {
+    animation: none;
+  }
+}
+
+.panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: var(--sheet-height, 176px);
+  max-height: 92dvh;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow);
+  transition: height 0.25s ease;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.panel[data-sheet="peek"] { --sheet-height: 176px; }
+.panel[data-sheet="half"] { --sheet-height: 52dvh; }
+.panel[data-sheet="full"] { --sheet-height: 92dvh; }
+
+.panel-handle {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 0 4px;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.panel-handle-bar {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.panel-header {
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 16px 10px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--primary);
+  fill: none;
+  stroke: var(--on-primary);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.icon-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+/* ---------- 篩選 ---------- */
+
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.filters::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--chip-active-bg);
+  background: var(--chip-active-bg);
+  color: var(--chip-active-text);
+}
+
+.chip-icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chip-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip[aria-pressed="true"] .chip-count {
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* ---------- 清單 ---------- */
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--border);
+}
+
+.cafe-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cafe-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 12px 16px 12px 36px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cafe-item:hover,
+.cafe-item[aria-current="true"] {
+  background: var(--bg);
+}
+
+.cafe-item[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--marker);
+}
+
+.cafe-item > .group-dot {
+  position: absolute;
+  top: 19px;
+  left: 16px;
+}
+
+.cafe-item-photo {
+  grid-row: 1 / span 3;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.cafe-item-name,
+.cafe-item-meta,
+.cafe-item .tags {
+  grid-column: 2;
+}
+
+.cafe-item-name {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cafe-item-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.cafe-item .tags {
+  margin-top: 6px;
+}
+
+/* ---------- 狀態 ---------- */
+
+.status {
+  padding: 28px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.status p {
+  margin: 0 0 12px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button-secondary {
+  background: transparent;
+  color: var(--primary);
+}
+
+/* ---------- 店家卡片 ---------- */
+
+.card {
+  overflow: hidden;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.card-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.photo-placeholder {
+  display: grid;
+  place-items: center;
+}
+
+.photo-placeholder svg {
+  width: 56px;
+  height: 56px;
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cafe-item-photo.photo-placeholder svg {
+  width: 28px;
+  height: 28px;
+}
+
+.card-body {
+  padding: 14px 16px 16px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.card-meta,
+.card-address {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.card-rating {
+  color: var(--marker);
+  font-weight: 700;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--tag-bg);
+  color: var(--tag);
+  font-size: 12px;
+}
+
+.card-section {
+  margin: 12px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--tag);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.card-section-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 16px 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.detail .card {
+  margin: 10px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* ---------- MapLibre popup 與控制項 ---------- */
+
+.maplibregl-popup.cafe-popup .maplibregl-popup-content {
+  width: 320px;
+  max-width: calc(100vw - 48px);
+  padding: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.maplibregl-popup.cafe-popup .maplibregl-popup-tip {
+  border-top-color: var(--surface-raised);
+  border-bottom-color: var(--surface-raised);
+}
+
+.maplibregl-popup.cafe-popup .maplibregl-popup-close-button {
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #FFFFFF;
+  font-size: 18px;
+  line-height: 1;
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-group,
+:root[data-theme="dark"] .maplibregl-ctrl-attrib {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-group button + button {
+  border-top-color: var(--border);
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+
+:root[data-theme="dark"] .maplibregl-ctrl-attrib a {
+  color: var(--muted);
+}
+
+/* ---------- 桌面：左側欄 + 地圖 ---------- */
+
+@media (min-width: 768px) {
+  /* 列高固定為視窗高度，側欄清單才會在 panel-body 內捲動，而不是撐開整頁 */
+  .app {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .map-area {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .panel {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .panel-handle {
+    display: none;
+  }
+
+  .panel-header {
+    padding-top: 18px;
+    touch-action: auto;
+  }
+
+  .filters {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}

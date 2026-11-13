@@ -134,3 +134,18 @@ class TestQuickReplyBuilderCreateRecentSearchQuickReply:
         with patch('line_bot.builders.quick_reply.SearchHistoryService.get_search_history', return_value=history):
             result = QuickReplyBuilder.create_recent_search_quick_reply('user123')
         assert result.items[0].action.display_text == '星巴克'
+
+
+class TestQuickReplyBuilderFavoriteMapEntry:
+    """「🗺️ 我的咖啡地圖」入口"""
+
+    def test_more_info_contains_favorite_map(self):
+        result = QuickReplyBuilder.create_more_info_actions()
+        items = [item for item in result.items if MenuAction.FAVORITE_MAP in item.action.data]
+        assert len(items) == 1
+        assert items[0].action.label == '🗺️ 我的咖啡地圖'
+
+    def test_favorite_map_item(self):
+        item = QuickReplyBuilder.create_favorite_map_item()
+        assert item.action.label == '🗺️ 我的咖啡地圖'
+        assert item.action.data == f'action=menu&type={MenuAction.FAVORITE_MAP}'

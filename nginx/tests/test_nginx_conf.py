@@ -35,3 +35,25 @@ class TestXForwardedFor:
 
     def test_x_forwarded_for_uses_remote_addr(self, conf):
         assert "X-Forwarded-For $remote_addr" in conf
+
+
+def location_block(conf, header):
+    start = conf.index(header)
+    return conf[start:conf.index("}", start)]
+
+
+class TestFavoriteMapRateLimit:
+    """咖啡地圖以 token 公開存取，需獨立 rate limit 防止暴力猜 token"""
+
+    def test_map_zone_defined(self, conf):
+        assert "limit_req_zone $binary_remote_addr zone=map:10m rate=30r/m;" in conf
+
+    def test_map_location_uses_map_zone(self, conf):
+        block = location_block(conf, "location /map/ {")
+        assert "limit_req zone=map burst=20 nodelay;" in block
+        assert "limit_req_status 429;" in block
+
+    def test_map_location_proxies_to_django(self, conf):
+        block = location_block(conf, "location /map/ {")
+        assert "proxy_pass http://django;" in block
+        assert "X-Forwarded-For $remote_addr" in block
